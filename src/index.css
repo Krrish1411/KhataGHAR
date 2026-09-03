@@ -1,0 +1,248 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root, [data-theme="pine"] {
+    --color-ink: #10201a;
+    --color-moss: #edf4ee;
+    --color-card: #ffffff;
+    --color-line: #c9dccf;
+
+    --hero-a: #0e5138;
+    --hero-b: #0b3d2e;
+    --hero-c: #07271e;
+
+    color-scheme: light;
+  }
+
+  [data-theme="ember"] {
+    --color-ink: #211910;
+    --color-moss: #f2ecdc;
+    --color-card: #fffdf6;
+    --color-line: #d5c6a4;
+
+    --hero-a: #6b4a20;
+    --hero-b: #4a3315;
+    --hero-c: #2e1f0c;
+
+    color-scheme: light;
+  }
+
+  [data-theme="night"], .dark {
+    --color-ink: #eaf3ed;
+    --color-moss: #0a0f0c;
+    --color-card: #16201a;
+    --color-line: #26382e;
+
+    --hero-a: #123528;
+    --hero-b: #0d271e;
+    --hero-c: #081b14;
+
+    color-scheme: dark;
+  }
+
+  [data-theme="ocean"] {
+    --color-ink: #0d1f2e;
+    --color-moss: #e7f0f6;
+    --color-card: #ffffff;
+    --color-line: #bfd4e2;
+
+    --hero-a: #175573;
+    --hero-b: #113d54;
+    --hero-c: #0a2838;
+
+    color-scheme: light;
+  }
+
+  [data-theme="dusk"] {
+    --color-ink: #e9edf6;
+    --color-moss: #10131c;
+    --color-card: #181d2a;
+    --color-line: #2e374f;
+
+    --hero-a: #22335c;
+    --hero-b: #182547;
+    --hero-c: #0e1730;
+
+    color-scheme: dark;
+  }
+
+  [data-theme="sand"] {
+    --color-ink: #2a2117;
+    --color-moss: #f3edde;
+    --color-card: #fffdf6;
+    --color-line: #d6c9a8;
+
+    --hero-a: #55702a;
+    --hero-b: #425a21;
+    --hero-c: #2c3d15;
+
+    color-scheme: light;
+  }
+
+  [data-theme="berry"] {
+    --color-ink: #f5eaf0;
+    --color-moss: #170f14;
+    --color-card: #211720;
+    --color-line: #3b2838;
+
+    --hero-a: #4a1730;
+    --hero-b: #3a1126;
+    --hero-c: #26091a;
+
+    color-scheme: dark;
+  }
+
+  [data-theme="graphite"] {
+    --color-ink: #f0f3f1;
+    --color-moss: #0c0e0d;
+    --color-card: #151816;
+    --color-line: #29302c;
+
+    --hero-a: #262c28;
+    --hero-b: #1c201d;
+    --hero-c: #101412;
+
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-moss);
+    color: var(--color-ink);
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    touch-action: manipulation;
+  }
+
+  *:focus-visible {
+    outline: 2px solid #12855a;
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+}
+
+@layer components {
+  /* Financial monospaced tabular numerals */
+  .tabular-nums, .num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+    letter-spacing: -0.01em;
+  }
+
+  /* PaisaBook Ambient Page Texture */
+  .page-bg {
+    background:
+      radial-gradient(1100px 480px at 85% -8%, rgba(18, 133, 90, 0.08), transparent 62%),
+      radial-gradient(900px 420px at -12% 18%, rgba(232, 148, 10, 0.06), transparent 58%),
+      radial-gradient(rgba(11, 61, 46, 0.04) 1px, transparent 1.4px),
+      var(--color-moss);
+    background-size: auto, auto, 22px 22px, auto;
+    background-attachment: fixed;
+  }
+
+  /* PaisaBook Hero Weave Graphic Card */
+  .hero-weave {
+    background:
+      radial-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1.5px),
+      linear-gradient(160deg, var(--hero-a, #0e5138) 0%, var(--hero-b, #0b3d2e) 46%, var(--hero-c, #07271e) 100%);
+    background-size: 18px 18px, auto;
+  }
+
+  .hero-sheen {
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-sheen::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 34%;
+    background: linear-gradient(105deg, transparent, rgba(255, 255, 255, 0.07) 45%, rgba(255, 255, 255, 0.13) 50%, rgba(255, 255, 255, 0.07) 55%, transparent);
+    animation: sheen 5.5s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes sheen {
+    0% { transform: translateX(-120%) skewX(-18deg); }
+    100% { transform: translateX(240%) skewX(-18deg); }
+  }
+
+  .rupee-watermark {
+    position: absolute;
+    right: -14px;
+    bottom: -46px;
+    font-size: 200px;
+    line-height: 1;
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-weight: 800;
+    color: rgba(255, 255, 255, 0.05);
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* Direct Card Surface */
+  .surface-card {
+    @apply rounded-2xl border border-line bg-card shadow-card;
+  }
+
+  /* Inset Surface */
+  .surface-inset {
+    @apply rounded-xl border border-line bg-moss/60;
+  }
+
+  /* PaisaBook Hover Lift */
+  .lift {
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+  .lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px -16px rgba(8, 45, 34, 0.25);
+    border-color: rgba(18, 133, 90, 0.35);
+  }
+
+  /* PaisaBook Ledger Rows */
+  .ledger-row + .ledger-row {
+    border-top: 1px dashed var(--color-line);
+  }
+}
+
+/* PaisaBook Animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.94) translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+@keyframes tickIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.anim-fade-up { animation: fadeUp 0.5s cubic-bezier(0.22, 0.9, 0.3, 1) both; }
+.anim-pop { animation: popIn 0.32s cubic-bezier(0.22, 0.9, 0.3, 1) both; }
+.anim-sheet { animation: sheetUp 0.36s cubic-bezier(0.22, 0.9, 0.3, 1) both; }
+.anim-tick { animation: tickIn 0.3s ease both; }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* Modern minimal scrollbars */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(18, 133, 90, 0.2); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(18, 133, 90, 0.4); }
+
+.custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(18, 133, 90, 0.2); border-radius: 9999px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(18, 133, 90, 0.4); }
