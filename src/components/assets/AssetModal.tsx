@@ -19,7 +19,7 @@ export const AssetModal: React.FC<AssetModalProps> = ({
   onClose,
   assetToEdit,
 }) => {
-  const { addAsset, updateAsset, activeVault } = useVault();
+  const { addAsset, updateAsset, activeVault, accounts, addTransaction } = useVault();
 
   const [name, setName] = useState(assetToEdit?.name || '');
   const [type, setType] = useState<AssetType>(assetToEdit?.type || 'mutual_fund');
@@ -31,6 +31,8 @@ export const AssetModal: React.FC<AssetModalProps> = ({
   const [premiumAmount, setPremiumAmount] = useState(assetToEdit?.premiumAmount ? String(assetToEdit.premiumAmount) : '');
   const [maturityDate, setMaturityDate] = useState(assetToEdit?.maturityDate || '');
   const [notes, setNotes] = useState(assetToEdit?.notes || '');
+  const [linkToBank, setLinkToBank] = useState(false);
+  const [bankAccountId, setBankAccountId] = useState(accounts[0]?.id || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -66,7 +68,7 @@ export const AssetModal: React.FC<AssetModalProps> = ({
           notes: notes.trim() || undefined,
         });
       } else {
-        await addAsset({
+        const newAsset = await addAsset({
           name: name.trim(),
           type,
           currentValue: numVal,
@@ -78,6 +80,22 @@ export const AssetModal: React.FC<AssetModalProps> = ({
           maturityDate: maturityDate || undefined,
           notes: notes.trim() || undefined,
         });
+
+        if (linkToBank && bankAccountId) {
+          const costToDeduct = purchasePrice ? parseFloat(purchasePrice) : numVal;
+          if (costToDeduct > 0) {
+            await addTransaction({
+              date: purchaseDate || formatDateISO(new Date()),
+              amount: costToDeduct,
+              type: 'expense',
+              currency,
+              accountId: bankAccountId,
+              note: `Initial purchase: ${name.trim()}`,
+              linkedAssetId: newAsset.id,
+              subType: 'investment',
+            } as any);
+          }
+        }
       }
       onClose();
     } catch (err: any) {
@@ -215,6 +233,52 @@ export const AssetModal: React.FC<AssetModalProps> = ({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
+
+        {/* Bank Deduction Toggle for New Assets */}
+        {!assetToEdit && (
+          <div className="p-3.5 rounded-2xl border border-line bg-moss/60 space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <span className="block text-xs font-bold text-ink">
+                  Bank Account Deduction
+                </span>
+                <span className="block text-[11px] text-ink/50 mt-0.5">
+                  {linkToBank
+                    ? 'Deducts purchase price from your bank account ledger'
+                    : 'Pre-existing holding — does not affect bank balance (Recommended for old assets)'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLinkToBank(!linkToBank)}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  linkToBank ? 'bg-pine-600' : 'bg-ink/20'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                    linkToBank ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {linkToBank && (
+              <div className="pt-2 border-t border-line/60">
+                <Select
+                  label="Deduct Initial Cost from Account"
+                  value={bankAccountId}
+                  onChange={(e: any) => setBankAccountId(e.target.value)}
+                  options={accounts.map((a) => ({
+                    value: a.id,
+                    label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
+                  }))}
+                  helperText="Creates a linked double-entry transaction from this account"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>

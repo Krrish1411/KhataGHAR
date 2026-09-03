@@ -181,7 +181,7 @@ export const ImportView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto px-1 sm:px-2 pb-16 anim-fade">
+    <div className="space-y-6 w-full max-w-[1600px] mx-auto px-1 sm:px-2 pb-16 anim-fade">
       {/* Header */}
       <div className="flex items-center gap-2">
         <span className="w-8 h-8 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 grid place-items-center text-pine-600">

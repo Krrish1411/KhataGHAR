@@ -28,6 +28,7 @@ export interface VaultMeta {
   autoLockMinutes: number; // e.g. 5
   exchangeRates: Record<CurrencyCode, number>; // e.g. { USD: 86.5, EUR: 92.0, GBP: 110.0 }
   decoyConfig?: DecoyVaultConfig;
+  isDemo?: boolean;
 }
 
 export type AccountType = 'bank' | 'cash' | 'credit_card' | 'wallet' | 'upi' | 'investment' | 'other';
@@ -71,6 +72,11 @@ export interface Transaction {
   documentIds?: string[];
   rawSource?: string; // For imported transactions
   referenceNumber?: string;
+  // Linked Asset or Liability for investments and loan paydowns
+  linkedAssetId?: string;
+  linkedLiabilityId?: string;
+  trancheId?: string;
+  subType?: 'investment' | 'debt_payment' | 'regular';
   updatedAt: string;
 }
 
@@ -180,6 +186,16 @@ export interface ValuationLog {
   note?: string;
 }
 
+export interface AssetTranche {
+  id: string;
+  date: string; // YYYY-MM-DD
+  amount: number; // Purchase price / invested capital
+  units?: number; // Shares, mutual fund units, gold grams
+  unitPrice?: number; // NAV or price per unit at purchase
+  transactionId?: string; // Linked bank ledger transaction ID
+  note?: string;
+}
+
 export interface Asset {
   id: string;
   vaultId: string;
@@ -195,6 +211,13 @@ export interface Asset {
   premiumDueDate?: string; // For insurance / recurring policies
   premiumAmount?: number;
   maturityDate?: string;
+  // Multi-lot / SIP capabilities
+  tranches?: AssetTranche[];
+  totalUnits?: number;
+  currentUnitPrice?: number; // Current NAV / market price per unit
+  isSip?: boolean;
+  sipMonthlyAmount?: number;
+  sipDayOfMonth?: number;
   updatedAt: string;
 }
 

@@ -73,11 +73,12 @@ export const Modal: React.FC<ModalProps> = ({
 
   const maxWidthClasses = {
     sm: 'max-w-sm',
-    md: 'max-w-md',
-    lg: 'max-w-lg',
-    xl: 'max-w-xl',
-    '2xl': 'max-w-2xl',
-    '3xl': 'max-w-3xl',
+    md: 'max-w-md sm:max-w-lg',
+    lg: 'max-w-lg sm:max-w-xl lg:max-w-2xl',
+    xl: 'max-w-xl sm:max-w-2xl lg:max-w-3xl',
+    '2xl': 'max-w-2xl sm:max-w-3xl lg:max-w-4xl',
+    '3xl': 'max-w-3xl sm:max-w-4xl lg:max-w-5xl',
+    '4xl': 'max-w-4xl sm:max-w-5xl lg:max-w-6xl',
   };
 
   return createPortal(

@@ -6,6 +6,7 @@ import { Badge } from '../components/common/Badge';
 import { AnimatedNumber } from '../components/common/AnimatedNumber';
 import { AssetModal } from '../components/assets/AssetModal';
 import { ValuationModal } from '../components/assets/ValuationModal';
+import { AssetDetailModal } from '../components/assets/AssetDetailModal';
 import { LiabilityModal } from '../components/liabilities/LiabilityModal';
 import { DebtSimulatorModal } from '../components/assets/DebtSimulatorModal';
 import { formatCurrency, formatCompactCurrency, formatPercent } from '../utils/formatters';
@@ -46,6 +47,7 @@ export const AssetsLiabilitiesView: React.FC = () => {
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
   const [assetToEdit, setAssetToEdit] = useState<Asset | undefined>(undefined);
   const [valuationAsset, setValuationAsset] = useState<Asset | null>(null);
+  const [detailAsset, setDetailAsset] = useState<Asset | null>(null);
 
   const [isLiabilityModalOpen, setIsLiabilityModalOpen] = useState(false);
   const [liabilityToEdit, setLiabilityToEdit] = useState<Liability | undefined>(undefined);
@@ -95,7 +97,7 @@ export const AssetsLiabilitiesView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto px-1 sm:px-2 pb-14 anim-fade">
+    <div className="space-y-5 w-full max-w-[1600px] mx-auto px-1 sm:px-2 pb-14 anim-fade">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -322,12 +324,28 @@ export const AssetsLiabilitiesView: React.FC = () => {
                       <div>
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <h3 className="font-display font-bold text-sm text-ink truncate">
+                            <h3
+                              onClick={() => setDetailAsset(asset)}
+                              className="font-display font-bold text-sm text-ink truncate cursor-pointer hover:text-pine-600 transition-colors"
+                              title="Click to view SIP installments and unit details"
+                            >
                               {asset.name}
                             </h3>
-                            <Badge tone="pine" size="xs" className="mt-1 capitalize">
-                              {asset.type.replace('_', ' ')}
-                            </Badge>
+                            <div className="flex items-center gap-1 mt-1 flex-wrap">
+                              <Badge tone="pine" size="xs" className="capitalize">
+                                {asset.type.replace('_', ' ')}
+                              </Badge>
+                              {asset.tranches && asset.tranches.length > 0 && (
+                                <Badge tone="sky" size="xs">
+                                  SIP • {asset.tranches.length} lots
+                                </Badge>
+                              )}
+                              {asset.totalUnits && asset.totalUnits > 0 && (
+                                <span className="text-[11px] font-mono text-ink/50">
+                                  {asset.totalUnits.toFixed(2)} units
+                                </span>
+                              )}
+                            </div>
                           </div>
 
                           <div className="flex items-center gap-0.5">
@@ -394,11 +412,15 @@ export const AssetsLiabilitiesView: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Update Value Button */}
+                      {/* Card Footer Actions */}
                       <div className="pt-2.5 border-t border-line flex items-center justify-between">
-                        <span className="text-[11px] text-ink/45 font-medium">
-                          {asset.valuationHistory?.length || 1} valuation log(s)
-                        </span>
+                        <button
+                          onClick={() => setDetailAsset(asset)}
+                          className="text-[11.5px] text-pine-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Layers className="w-3 h-3" />
+                          <span>{asset.tranches && asset.tranches.length > 0 ? `${asset.tranches.length} SIP Lots` : 'Lots & Details'}</span>
+                        </button>
 
                         <button
                           onClick={() => setValuationAsset(asset)}
@@ -574,6 +596,15 @@ export const AssetsLiabilitiesView: React.FC = () => {
           liabilities={liabilities}
           baseCurrency={baseCurrency}
           numberFormat={numberFormat}
+        />
+      )}
+
+      {/* Asset Detail & SIP Lots Modal */}
+      {detailAsset && (
+        <AssetDetailModal
+          isOpen={Boolean(detailAsset)}
+          onClose={() => setDetailAsset(null)}
+          asset={assets.find((a) => a.id === detailAsset.id) || detailAsset}
         />
       )}
     </div>

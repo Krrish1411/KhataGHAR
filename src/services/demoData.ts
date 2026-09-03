@@ -78,6 +78,7 @@ export function generateDemoDataset(vaultId: string, baseCurrency: CurrencyCode 
     name,
     type,
     balance,
+    initialBalance: balance,
     currency: baseCurrency,
     tag: 'personal',
     isVisibleOnDashboard: true,

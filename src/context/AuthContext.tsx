@@ -15,6 +15,7 @@ interface AuthContextType {
   refreshVaultList: () => Promise<void>;
   setActiveVaultMeta: (vault: VaultMeta) => void;
   setSessionCredentials: (vault: VaultMeta, key: CryptoKey) => void;
+  exitDemoVault: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,15 +31,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isUnlocked = Boolean(activeVault && sessionKey);
 
-  // Load all vaults from IndexedDB on initial mount
-  const refreshVaultList = useCallback(async () => {
+  // Load all vaults from IndexedDB on initial mount (and purge temporary demo vaults on refresh)
+  const refreshVaultList = useCallback(async (isInitialStartup = false) => {
     try {
+      if (isInitialStartup) {
+        // Automatically delete ephemeral demo vaults on browser refresh/startup
+        const allVaultsInDb = await db.vaults.toArray();
+        const demoVaults = allVaultsInDb.filter(
+          (v) => v.isDemo || v.name.toLowerCase().includes('demo')
+        );
+        for (const dv of demoVaults) {
+          await db.records.where('vaultId').equals(dv.id).delete();
+          await db.vaults.delete(dv.id);
+        }
+      }
+
       const vaults = await db.vaults.toArray();
       setAllVaults(vaults);
       if (!activeVault && vaults.length > 0) {
-        // Select primary or first vault by default
+        // Select primary or first non-demo vault by default
         const primary = vaults.find((v) => v.isPrimary) || vaults[0];
         setActiveVault(primary);
+      } else if (vaults.length === 0) {
+        setActiveVault(null);
       }
     } catch (err) {
       console.error('Failed to load vaults:', err);
@@ -48,7 +63,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [activeVault]);
 
   useEffect(() => {
-    refreshVaultList();
+    refreshVaultList(true);
+  }, []);
+
+  // Exit & delete demo vault cleanly
+  const exitDemoVault = useCallback(async () => {
+    try {
+      const allVaultsInDb = await db.vaults.toArray();
+      const demoVaults = allVaultsInDb.filter(
+        (v) => v.isDemo || v.name.toLowerCase().includes('demo')
+      );
+      for (const dv of demoVaults) {
+        await db.records.where('vaultId').equals(dv.id).delete();
+        await db.vaults.delete(dv.id);
+      }
+    } catch (err) {
+      console.error('Error exiting demo vault:', err);
+    }
+    setSessionKey(null);
+    setActiveVault(null);
+    await refreshVaultList(false);
   }, [refreshVaultList]);
 
   // Lock the active session: wipe sessionKey and reset state
@@ -165,6 +199,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setActiveVaultMeta,
         setSessionCredentials,
         isDecoyMode,
+        exitDemoVault,
       }}
     >
       {children}

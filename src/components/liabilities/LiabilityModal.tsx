@@ -18,7 +18,7 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
   onClose,
   liabilityToEdit,
 }) => {
-  const { addLiability, updateLiability, activeVault } = useVault();
+  const { addLiability, updateLiability, activeVault, accounts, addTransaction } = useVault();
 
   const [name, setName] = useState(liabilityToEdit?.name || '');
   const [type, setType] = useState<LiabilityType>(liabilityToEdit?.type || 'home_loan');
@@ -43,6 +43,8 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
     liabilityToEdit?.currency || activeVault?.currency || 'INR'
   );
   const [notes, setNotes] = useState(liabilityToEdit?.notes || '');
+  const [linkToBank, setLinkToBank] = useState(false);
+  const [bankAccountId, setBankAccountId] = useState(accounts[0]?.id || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -83,7 +85,7 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
           notes: notes.trim() || undefined,
         });
       } else {
-        await addLiability({
+        const newLiability = await addLiability({
           name: name.trim(),
           type,
           lender: lender.trim(),
@@ -96,6 +98,19 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
           currency,
           notes: notes.trim() || undefined,
         });
+
+        if (linkToBank && bankAccountId && numOutstanding > 0) {
+          await addTransaction({
+            date: new Date().toISOString().split('T')[0],
+            amount: numOutstanding,
+            type: 'income',
+            currency,
+            accountId: bankAccountId,
+            note: `Loan disbursement: ${name.trim()} (${lender.trim()})`,
+            linkedLiabilityId: newLiability.id,
+            subType: 'regular',
+          } as any);
+        }
       }
       onClose();
     } catch (err: any) {
@@ -227,6 +242,52 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
+
+        {/* Bank Credit Toggle for New Liabilities */}
+        {!liabilityToEdit && (
+          <div className="p-3.5 rounded-2xl border border-line bg-moss/60 space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <span className="block text-xs font-bold text-ink">
+                  Bank Balance Credit
+                </span>
+                <span className="block text-[11px] text-ink/50 mt-0.5">
+                  {linkToBank
+                    ? 'Credits newly disbursed loan amount into your bank account ledger'
+                    : 'Pre-existing loan / debt — does not affect current bank balance (Recommended for existing loans)'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLinkToBank(!linkToBank)}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  linkToBank ? 'bg-pine-600' : 'bg-ink/20'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                    linkToBank ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {linkToBank && (
+              <div className="pt-2 border-t border-line/60">
+                <Select
+                  label="Credit Loan Proceeds Into Account"
+                  value={bankAccountId}
+                  onChange={(e: any) => setBankAccountId(e.target.value)}
+                  options={accounts.map((a) => ({
+                    value: a.id,
+                    label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
+                  }))}
+                  helperText="Creates a linked double-entry disbursement into this account"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>

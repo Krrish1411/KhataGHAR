@@ -53,11 +53,29 @@ import {
   Pie,
   Cell,
 } from 'recharts';
+import { computeFinancialInsights, type FinancialInsight } from '../services/insights';
 
 export const ReportsView: React.FC = () => {
   const { activeVault, transactions, accounts, categories, peopleLedger, budgets, assets, liabilities, plannedExpenses } =
     useVault();
   const { isPrivacyMode } = usePrivacy();
+
+  // Comprehensive Automated Financial Insights
+  const insights = useMemo(() => {
+    return computeFinancialInsights({
+      accounts,
+      transactions,
+      budgets,
+      categories,
+      peopleLedger,
+      assets,
+      liabilities,
+      plannedExpenses: plannedExpenses || [],
+      baseCurrency: activeVault?.currency || 'INR',
+      numberFormat: activeVault?.numberFormat || 'indian',
+      isPrivacyMode,
+    });
+  }, [accounts, transactions, budgets, categories, peopleLedger, assets, liabilities, plannedExpenses, activeVault, isPrivacyMode]);
 
   const [timelinePreset, setTimelinePreset] = useState<string>('this-month');
   const [customStart, setCustomStart] = useState<string>('');
@@ -477,7 +495,7 @@ export const ReportsView: React.FC = () => {
   }, [ratios]);
 
   return (
-    <div className="space-y-7 max-w-7xl mx-auto px-1 sm:px-2 pb-16 anim-fade">
+    <div className="space-y-7 w-full max-w-[1600px] mx-auto px-1 sm:px-2 pb-16 anim-fade">
       {/* Top Header & Export Action Strip */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -564,6 +582,92 @@ export const ReportsView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* FINANCIAL INTELLIGENCE & ACTIONABLE INSIGHTS HUB */}
+      <section id="insights-hub" className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-4 shadow-sm lift">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-line pb-3.5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-mari-100 dark:bg-mari-950/60 border border-mari-400/40 grid place-items-center text-mari-700 dark:text-mari-300 shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-display font-extrabold text-base text-ink">
+                  Financial Intelligence & Actionable Insights Hub
+                </h2>
+                <Badge tone={insights.some((i) => i.severity === 'critical') ? 'flare' : 'pine'} size="xs">
+                  {insights.length} Insights Active
+                </Badge>
+              </div>
+              <p className="text-xs text-ink/50 mt-0.5">
+                Automated continuous audit across budgets, overdrafts, custodial claims, upcoming bills & debts
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {insights.length === 0 ? (
+          <div className="text-center py-6 border border-dashed border-line rounded-xl bg-moss/30">
+            <CheckCircle className="w-8 h-8 text-pine-600 mx-auto mb-1.5" />
+            <p className="text-xs font-bold text-ink">Zero Financial Red Flags</p>
+            <p className="text-[11px] text-ink/50 mt-0.5">
+              All accounts, budgets, and custodial settlements are operating in perfect health.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {insights.map((insight) => (
+              <div
+                key={insight.id}
+                className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-3 shadow-xs hover:shadow-md ${
+                  insight.severity === 'critical'
+                    ? 'border-flare-500/40 bg-flare-50/40 dark:bg-flare-950/25'
+                    : insight.severity === 'warning'
+                    ? 'border-amber-500/40 bg-amber-50/40 dark:bg-amber-950/25'
+                    : insight.severity === 'positive'
+                    ? 'border-pine-500/40 bg-pine-50/40 dark:bg-pine-950/25'
+                    : 'border-line bg-moss/40'
+                }`}
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {insight.severity === 'critical' && <AlertTriangle className="w-4 h-4 text-flare-600 shrink-0" />}
+                      {insight.severity === 'warning' && <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />}
+                      {insight.severity === 'positive' && <CheckCircle className="w-4 h-4 text-pine-600 shrink-0" />}
+                      {insight.severity === 'info' && <Info className="w-4 h-4 text-sky-600 shrink-0" />}
+                      <span className="font-display font-bold text-xs text-ink truncate">
+                        {insight.title}
+                      </span>
+                    </div>
+                    {insight.metric && (
+                      <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-lg bg-card border border-line text-ink shrink-0 shadow-2xs">
+                        {insight.metric}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-ink/75 leading-relaxed">
+                    {insight.description}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between pt-2.5 border-t border-line/60">
+                  <span className="text-[10px] uppercase tracking-wider font-bold text-ink/40">
+                    Target: {insight.category}
+                  </span>
+                  <button
+                    onClick={() => (window.location.hash = insight.targetRoute)}
+                    className="px-3.5 py-1.5 rounded-xl bg-card hover:bg-moss border border-line text-xs font-bold text-pine-700 dark:text-pine-300 flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 transition-all"
+                  >
+                    <span>{insight.actionLabel}</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-pine-600" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* SECTION 1: Executive KPI Summary */}
       <div className="space-y-3">

@@ -371,7 +371,7 @@ export const SettingsView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-7 max-w-4xl mx-auto px-1 sm:px-2 pb-20 anim-fade">
+    <div className="space-y-8 w-full max-w-[1600px] mx-auto px-1 sm:px-2 pb-20 anim-fade">
       {/* Header */}
       <div className="flex items-center gap-2">
         <span className="w-8 h-8 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 grid place-items-center text-pine-600">
@@ -393,7 +393,7 @@ export const SettingsView: React.FC = () => {
           General & Formatting Preferences
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
           {/* Theme */}
           <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-2.5 shadow-sm lift">
             <label className="block text-xs font-semibold text-ink">
@@ -475,7 +475,7 @@ export const SettingsView: React.FC = () => {
           </div>
 
           {/* Tab Switch Auto-Lock */}
-          <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-2.5 shadow-sm lift md:col-span-2">
+          <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-2.5 shadow-sm lift sm:col-span-2 xl:col-span-4">
             <div className="flex items-center justify-between">
               <div>
                 <span className="block text-xs font-bold text-ink">
@@ -496,14 +496,18 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Master Password Re-Encryption */}
+            {/* 2-Column Responsive Grid: Eliminates dead space & balances cards side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        {/* Left Column: Access, Backups & Datasets */}
+        <div className="space-y-6">
+{/* Master Password Re-Encryption */}
       <div className="space-y-3">
         <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink/75 px-1 flex items-center gap-2">
           <KeyRound className="w-4 h-4 text-pine-600" />
           <span>Change Master Password (Re-encrypt Vault)</span>
         </h3>
 
-        <div className="rounded-2xl border border-line bg-card max-w-xl p-5 sm:p-6 space-y-4 shadow-sm lift">
+        <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-4 shadow-sm lift">
           <p className="text-xs text-ink/60 leading-relaxed">
             Changing your password derives a new PBKDF2-SHA256 key and re-encrypts every single record in this vault atomically.
           </p>
@@ -553,14 +557,122 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Duress PIN & Decoy Vault */}
+      {/* Backup & Export */}
+      <div className="space-y-3">
+        <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink/75 px-1 flex items-center gap-2">
+          <Download className="w-4 h-4 text-pine-600" />
+          <span>Export Encrypted Backup (.khataghar)</span>
+        </h3>
+
+        <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-4 shadow-sm lift">
+          <p className="text-xs text-ink/60 leading-relaxed">
+            Export a zero-knowledge encrypted backup file containing all accounts, transactions, documents, and ledger entries.
+          </p>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-xs text-ink">
+              <input
+                type="checkbox"
+                id="use12words"
+                checked={use12WordPhrase}
+                onChange={(e) => {
+                  setUse12WordPhrase(e.target.checked);
+                  if (e.target.checked) handleGenerate12Word();
+                  else {
+                    setGeneratedPhrase('');
+                    setBackupSecret('');
+                  }
+                }}
+                className="rounded text-pine-600 focus:ring-pine-500 w-4 h-4 cursor-pointer"
+              />
+              <label htmlFor="use12words" className="cursor-pointer font-semibold">
+                Generate 12-Word Passphrase for this backup
+              </label>
+            </div>
+
+            {use12WordPhrase && generatedPhrase ? (
+              <div className="p-3.5 rounded-xl bg-moss/70 border border-line space-y-2">
+                <span className="text-[11px] font-bold text-pine-700 dark:text-pine-400 block">
+                  Write down these 12 words in order:
+                </span>
+                <div className="p-2.5 rounded-lg bg-card border border-line font-mono text-xs font-bold text-ink tracking-wide">
+                  {generatedPhrase}
+                </div>
+              </div>
+            ) : (
+              <Input
+                type="password"
+                label="Backup Decryption Password"
+                placeholder="Password to protect this file…"
+                value={backupSecret}
+                onChange={(e) => setBackupSecret(e.target.value)}
+              />
+            )}
+
+            <Button
+              onClick={handleExportBackup}
+              variant="primary"
+              size="sm"
+              isLoading={isExporting}
+            >
+              <Download className="w-4 h-4 mr-1.5" />
+              <span>Download Encrypted File</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Demo Data & Accounts */}
+      <div className="space-y-3">
+        <h3 className="font-display font-bold text-xs uppercase tracking-wider text-pine-700 dark:text-pine-400 px-1 flex items-center gap-2">
+          <Database className="w-4 h-4 text-pine-600" />
+          <span>Demo Data & Accounts</span>
+        </h3>
+
+        <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-3.5 shadow-sm lift">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-ink/70">Current Ledger Size</span>
+            <span className="font-mono font-bold text-ink num">
+              {transactions.length} entries · {accounts.length} accounts
+            </span>
+          </div>
+
+          <div className="pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              isLoading={isLoadingDemo}
+              onClick={handleLoadDemo}
+            >
+              <Sparkles className="w-4 h-4 mr-1.5 text-pine-600" />
+              <span>Load Realistic Indian Demo Data</span>
+            </Button>
+          </div>
+
+          <p className="text-[11px] text-ink/50 leading-relaxed">
+            Populates 4 accounts (HDFC, Cash, Paytm, SBI Credit Card), 4 months of transactions (Salary, Rent, SIP, Swiggy, Groceries), custodial funds (sister Priya & friend Amit), budgets, goals, and planned bills.
+          </p>
+
+          {demoSuccess && (
+            <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold">
+              {demoSuccess}
+            </div>
+          )}
+        </div>
+      </div>
+
+              </div>
+
+        {/* Right Column: Decoy Camouflage, Recovery & Danger Zone */}
+        <div className="space-y-6">
+{/* Duress PIN & Decoy Vault */}
       <div className="space-y-3">
         <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink/75 px-1 flex items-center gap-2">
           <EyeOff className="w-4 h-4 text-mari-600" />
           <span>Duress PIN & Decoy Vault (Physical Coercion Shield)</span>
         </h3>
 
-        <div className="rounded-2xl border border-line bg-card max-w-xl p-5 sm:p-6 space-y-4 shadow-sm lift">
+        <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-4 shadow-sm lift">
           {/* Plain language explanation banner */}
           <div className="p-3.5 rounded-xl bg-mari-100/60 dark:bg-mari-950/40 border border-mari-400/40 space-y-1 text-xs">
             <span className="font-bold text-mari-800 dark:text-mari-300 flex items-center gap-1.5">
@@ -685,71 +797,6 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Backup & Export */}
-      <div className="space-y-3">
-        <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink/75 px-1 flex items-center gap-2">
-          <Download className="w-4 h-4 text-pine-600" />
-          <span>Export Encrypted Backup (.khataghar)</span>
-        </h3>
-
-        <div className="rounded-2xl border border-line bg-card max-w-xl p-5 sm:p-6 space-y-4 shadow-sm lift">
-          <p className="text-xs text-ink/60 leading-relaxed">
-            Export a zero-knowledge encrypted backup file containing all accounts, transactions, documents, and ledger entries.
-          </p>
-
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-xs text-ink">
-              <input
-                type="checkbox"
-                id="use12words"
-                checked={use12WordPhrase}
-                onChange={(e) => {
-                  setUse12WordPhrase(e.target.checked);
-                  if (e.target.checked) handleGenerate12Word();
-                  else {
-                    setGeneratedPhrase('');
-                    setBackupSecret('');
-                  }
-                }}
-                className="rounded text-pine-600 focus:ring-pine-500 w-4 h-4 cursor-pointer"
-              />
-              <label htmlFor="use12words" className="cursor-pointer font-semibold">
-                Generate 12-Word Passphrase for this backup
-              </label>
-            </div>
-
-            {use12WordPhrase && generatedPhrase ? (
-              <div className="p-3.5 rounded-xl bg-moss/70 border border-line space-y-2">
-                <span className="text-[11px] font-bold text-pine-700 dark:text-pine-400 block">
-                  Write down these 12 words in order:
-                </span>
-                <div className="p-2.5 rounded-lg bg-card border border-line font-mono text-xs font-bold text-ink tracking-wide">
-                  {generatedPhrase}
-                </div>
-              </div>
-            ) : (
-              <Input
-                type="password"
-                label="Backup Decryption Password"
-                placeholder="Password to protect this file…"
-                value={backupSecret}
-                onChange={(e) => setBackupSecret(e.target.value)}
-              />
-            )}
-
-            <Button
-              onClick={handleExportBackup}
-              variant="primary"
-              size="sm"
-              isLoading={isExporting}
-            >
-              <Download className="w-4 h-4 mr-1.5" />
-              <span>Download Encrypted File</span>
-            </Button>
-          </div>
-        </div>
-      </div>
-
       {/* Restore Backup */}
       <div className="space-y-3">
         <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink/75 px-1 flex items-center gap-2">
@@ -757,7 +804,7 @@ export const SettingsView: React.FC = () => {
           <span>Restore Encrypted Backup File</span>
         </h3>
 
-        <div className="rounded-2xl border border-line bg-card max-w-xl p-5 sm:p-6 space-y-4 shadow-sm lift">
+        <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-4 shadow-sm lift">
           <p className="text-xs text-ink/60 leading-relaxed">
             Restore a `.khataghar` backup file from another device or cold storage.
           </p>
@@ -810,45 +857,6 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Demo Data & Accounts */}
-      <div className="space-y-3">
-        <h3 className="font-display font-bold text-xs uppercase tracking-wider text-pine-700 dark:text-pine-400 px-1 flex items-center gap-2">
-          <Database className="w-4 h-4 text-pine-600" />
-          <span>Demo Data & Accounts</span>
-        </h3>
-
-        <div className="rounded-2xl border border-line bg-card max-w-xl p-5 sm:p-6 space-y-3.5 shadow-sm lift">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-ink/70">Current Ledger Size</span>
-            <span className="font-mono font-bold text-ink num">
-              {transactions.length} entries · {accounts.length} accounts
-            </span>
-          </div>
-
-          <div className="pt-1">
-            <Button
-              variant="outline"
-              size="sm"
-              isLoading={isLoadingDemo}
-              onClick={handleLoadDemo}
-            >
-              <Sparkles className="w-4 h-4 mr-1.5 text-pine-600" />
-              <span>Load Realistic Indian Demo Data</span>
-            </Button>
-          </div>
-
-          <p className="text-[11px] text-ink/50 leading-relaxed">
-            Populates 4 accounts (HDFC, Cash, Paytm, SBI Credit Card), 4 months of transactions (Salary, Rent, SIP, Swiggy, Groceries), custodial funds (sister Priya & friend Amit), budgets, goals, and planned bills.
-          </p>
-
-          {demoSuccess && (
-            <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold">
-              {demoSuccess}
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* Danger Zone */}
       <div className="space-y-3">
         <h3 className="font-display font-bold text-xs text-flare-600 uppercase tracking-wider px-1 flex items-center gap-2">
@@ -856,7 +864,7 @@ export const SettingsView: React.FC = () => {
           <span>Danger Zone</span>
         </h3>
 
-        <div className="rounded-2xl border border-flare-500/40 bg-flare-100/10 max-w-xl p-5 sm:p-6 space-y-3 shadow-sm">
+        <div className="rounded-2xl border border-flare-500/40 bg-flare-100/10 w-full p-5 sm:p-6 space-y-3 shadow-sm">
           <div>
             <h4 className="font-display font-bold text-sm text-ink">
               Delete This Vault Irreversibly
@@ -877,7 +885,10 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Onboarding Modal */}
+              </div>
+      </div>
+
+{/* Onboarding Modal */}
       {isNewVaultOpen && (
         <OnboardingModal
           isOpen={isNewVaultOpen}

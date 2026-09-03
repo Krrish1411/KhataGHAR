@@ -74,8 +74,7 @@ export function computeFinancialRatios(params: RatioCalculatorParams): Financial
 
   // Monthly EMI Outflow from liabilities
   const totalMonthlyEMI = liabilities.reduce((sum, l) => sum + (l.emiAmount || 0), 0);
-  const monthlyIncomeEstimated = totalIncome > 0 ? totalIncome : 1;
-  const debtToIncomeRatio = totalMonthlyEMI / monthlyIncomeEstimated;
+  const debtToIncomeRatio = totalIncome > 0 ? totalMonthlyEMI / totalIncome : totalMonthlyEMI > 0 ? 1 : 0;
 
   // Essential vs Discretionary spend ratio
   const essentialSpendRatio = totalExpense > 0 ? (essentialExpense / totalExpense) * 100 : 50;

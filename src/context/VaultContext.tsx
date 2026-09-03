@@ -7,6 +7,7 @@ import type {
   Budget,
   SavingsGoal,
   Asset,
+  AssetTranche,
   Liability,
   DocumentRecord,
   PlannedExpense,
@@ -49,6 +50,7 @@ interface VaultContextType {
   addAccount: (account: Omit<Account, 'id' | 'vaultId' | 'updatedAt'>) => Promise<Account>;
   updateAccount: (account: Account) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
+  reconcileAccounts: () => Promise<void>;
 
   // Transaction Operations
   addTransaction: (tx: Omit<Transaction, 'id' | 'vaultId' | 'updatedAt'>) => Promise<Transaction>;
@@ -86,6 +88,9 @@ interface VaultContextType {
   updateAsset: (asset: Asset) => Promise<void>;
   addValuationLog: (assetId: string, log: Omit<ValuationLog, 'id'>) => Promise<void>;
   deleteAsset: (id: string) => Promise<void>;
+  addAssetTranche: (assetId: string, tranche: Omit<AssetTranche, 'id'>) => Promise<void>;
+  deleteAssetTranche: (assetId: string, trancheId: string) => Promise<void>;
+  updateAssetUnitPrice: (assetId: string, newUnitPrice: number) => Promise<void>;
 
   // Liability Operations
   addLiability: (liability: Omit<Liability, 'id' | 'vaultId' | 'updatedAt'>) => Promise<Liability>;
@@ -300,6 +305,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Account Operations
   const addAccount = async (data: Omit<Account, 'id' | 'vaultId' | 'updatedAt'>): Promise<Account> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    if (activeVault.isDemo || activeVault.name.toLowerCase().includes('demo')) {
+      throw new Error('Demo Exploration Mode: Creating new accounts is disabled. In demo mode, you can inspect accounts and edit transactions!');
+    }
     const newAccount: Account = {
       ...data,
       id: generateUUID(),
@@ -319,15 +327,79 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteAccount = async (id: string): Promise<void> => {
+    if (activeVault?.isDemo || activeVault?.name.toLowerCase().includes('demo')) {
+      throw new Error('Demo Exploration Mode: Deleting accounts is disabled.');
+    }
     setAccounts((prev) => prev.filter((a) => a.id !== id));
     await deleteRecord(id);
+  };
+
+  // Financial arithmetic precision helper (avoids floating-point errors like 0.1 + 0.2 = 0.30000000000000004)
+  const round2 = (num: number): number => Math.round((num + Number.EPSILON) * 100) / 100;
+
+  // Reconcile and recalculate current account balances from the complete transaction ledger and people records
+  const reconcileAccounts = async (): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+
+    // 1. Calculate ledger deltas for each account
+    const calculatedDeltas: Record<string, number> = {};
+
+    transactions.forEach((tx) => {
+      const amt = round2(Math.abs(Number(tx.amount))) || 0;
+      if (tx.type === 'expense') {
+        calculatedDeltas[tx.accountId] = (calculatedDeltas[tx.accountId] || 0) - amt;
+      } else if (tx.type === 'income') {
+        calculatedDeltas[tx.accountId] = (calculatedDeltas[tx.accountId] || 0) + amt;
+      } else if (tx.type === 'transfer') {
+        calculatedDeltas[tx.accountId] = (calculatedDeltas[tx.accountId] || 0) - amt;
+        if (tx.toAccountId) {
+          calculatedDeltas[tx.toAccountId] = (calculatedDeltas[tx.toAccountId] || 0) + amt;
+        }
+      }
+    });
+
+    peopleLedger.forEach((entry) => {
+      if (entry.accountId) {
+        const delta = entry.type === 'lent' ? -entry.amount : entry.amount;
+        calculatedDeltas[entry.accountId] = (calculatedDeltas[entry.accountId] || 0) + delta;
+      }
+      (entry.settlements || []).forEach((s) => {
+        if (s.accountId) {
+          const sDelta = entry.type === 'lent' ? s.amount : -s.amount;
+          calculatedDeltas[s.accountId] = (calculatedDeltas[s.accountId] || 0) + sDelta;
+        }
+      });
+    });
+
+    // 2. Recompute each account's balance from its baseline initialBalance
+    const updatedAccs = accounts.map((acc) => {
+      const delta = calculatedDeltas[acc.id] || 0;
+      const initial = acc.initialBalance !== undefined ? acc.initialBalance : round2(acc.balance - delta);
+      const newBal = round2(initial + delta);
+      return {
+        ...acc,
+        initialBalance: initial,
+        balance: newBal,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    setAccounts(updatedAccs);
+    for (const a of updatedAccs) {
+      await saveEncryptedRecord('account', a, sessionKey);
+    }
   };
 
   // Transaction Operations
   const addTransaction = async (data: Omit<Transaction, 'id' | 'vaultId' | 'updatedAt'>): Promise<Transaction> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    if (activeVault.isDemo || activeVault.name.toLowerCase().includes('demo')) {
+      throw new Error('Demo Exploration Mode: Adding new transactions is disabled. You can edit any existing transaction to test live recalculations!');
+    }
+    const validAmount = round2(Math.abs(Number(data.amount)));
     const newTx: Transaction = {
       ...data,
+      amount: validAmount,
       id: generateUUID(),
       vaultId: activeVault.id,
       updatedAt: new Date().toISOString(),
@@ -336,12 +408,12 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Update in-memory state & sort
     setTransactions((prev) => [newTx, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
 
-    // Update connected account balances
+    // Update connected account balances with precise 2-decimal rounding
     if (newTx.type === 'expense') {
       setAccounts((prev) =>
         prev.map((acc) => {
           if (acc.id === newTx.accountId) {
-            const updated = { ...acc, balance: acc.balance - newTx.amount, updatedAt: new Date().toISOString() };
+            const updated = { ...acc, balance: round2(acc.balance - newTx.amount), updatedAt: new Date().toISOString() };
             saveEncryptedRecord('account', updated, sessionKey);
             return updated;
           }
@@ -352,7 +424,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setAccounts((prev) =>
         prev.map((acc) => {
           if (acc.id === newTx.accountId) {
-            const updated = { ...acc, balance: acc.balance + newTx.amount, updatedAt: new Date().toISOString() };
+            const updated = { ...acc, balance: round2(acc.balance + newTx.amount), updatedAt: new Date().toISOString() };
             saveEncryptedRecord('account', updated, sessionKey);
             return updated;
           }
@@ -363,12 +435,12 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setAccounts((prev) =>
         prev.map((acc) => {
           if (acc.id === newTx.accountId) {
-            const updated = { ...acc, balance: acc.balance - newTx.amount, updatedAt: new Date().toISOString() };
+            const updated = { ...acc, balance: round2(acc.balance - newTx.amount), updatedAt: new Date().toISOString() };
             saveEncryptedRecord('account', updated, sessionKey);
             return updated;
           }
           if (acc.id === newTx.toAccountId) {
-            const updated = { ...acc, balance: acc.balance + newTx.amount, updatedAt: new Date().toISOString() };
+            const updated = { ...acc, balance: round2(acc.balance + newTx.amount), updatedAt: new Date().toISOString() };
             saveEncryptedRecord('account', updated, sessionKey);
             return updated;
           }
@@ -377,18 +449,222 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       );
     }
 
+    // If linked to an Asset (Investment / SIP / Asset purchase)
+    if (newTx.linkedAssetId) {
+      const targetAsset = assets.find((a) => a.id === newTx.linkedAssetId);
+      if (targetAsset) {
+        const trancheId = generateUUID();
+        newTx.trancheId = trancheId;
+        const trancheUnits = (newTx as any).units || undefined;
+        const trancheUnitPrice = (newTx as any).unitPrice || undefined;
+
+        const newTranche: AssetTranche = {
+          id: trancheId,
+          date: newTx.date,
+          amount: newTx.amount,
+          units: trancheUnits,
+          unitPrice: trancheUnitPrice,
+          transactionId: newTx.id,
+          note: newTx.note,
+        };
+
+        const updatedTranches = [...(targetAsset.tranches || []), newTranche];
+        const newTotalUnits = (targetAsset.totalUnits || 0) + (trancheUnits || 0);
+        let newCurrentVal = round2(targetAsset.currentValue + newTx.amount);
+        if (targetAsset.currentUnitPrice && newTotalUnits > 0) {
+          newCurrentVal = round2(newTotalUnits * targetAsset.currentUnitPrice);
+        }
+
+        const updatedAsset: Asset = {
+          ...targetAsset,
+          tranches: updatedTranches,
+          totalUnits: newTotalUnits > 0 ? newTotalUnits : undefined,
+          currentValue: newCurrentVal,
+          purchasePrice: round2((targetAsset.purchasePrice || 0) + newTx.amount),
+          updatedAt: new Date().toISOString(),
+        };
+
+        setAssets((prev) => prev.map((a) => (a.id === updatedAsset.id ? updatedAsset : a)));
+        await saveEncryptedRecord('asset', updatedAsset, sessionKey);
+      }
+    }
+
+    // If linked to a Liability (Debt payment / EMI / Prepayment)
+    if (newTx.linkedLiabilityId) {
+      const targetLiab = liabilities.find((l) => l.id === newTx.linkedLiabilityId);
+      if (targetLiab) {
+        const newOutstanding = Math.max(0, round2(targetLiab.outstandingBalance - newTx.amount));
+        const updatedLiab: Liability = {
+          ...targetLiab,
+          outstandingBalance: newOutstanding,
+          updatedAt: new Date().toISOString(),
+        };
+
+        setLiabilities((prev) => prev.map((l) => (l.id === updatedLiab.id ? updatedLiab : l)));
+        await saveEncryptedRecord('liability', updatedLiab, sessionKey);
+      }
+    }
+
     await saveEncryptedRecord('transaction', newTx, sessionKey);
     return newTx;
   };
 
   const updateTransaction = async (tx: Transaction): Promise<void> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    const updated = { ...tx, updatedAt: new Date().toISOString() };
+    const validAmount = round2(Math.abs(Number(tx.amount)));
+    const updated: Transaction = {
+      ...tx,
+      amount: validAmount,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const oldTx = transactions.find((t) => t.id === tx.id);
+    if (oldTx) {
+      const balanceDeltas: Record<string, number> = {};
+
+      // 1. Reverse old transaction's financial effect
+      if (oldTx.type === 'expense') {
+        balanceDeltas[oldTx.accountId] = (balanceDeltas[oldTx.accountId] || 0) + oldTx.amount;
+      } else if (oldTx.type === 'income') {
+        balanceDeltas[oldTx.accountId] = (balanceDeltas[oldTx.accountId] || 0) - oldTx.amount;
+      } else if (oldTx.type === 'transfer' && oldTx.toAccountId) {
+        balanceDeltas[oldTx.accountId] = (balanceDeltas[oldTx.accountId] || 0) + oldTx.amount;
+        balanceDeltas[oldTx.toAccountId] = (balanceDeltas[oldTx.toAccountId] || 0) - oldTx.amount;
+      }
+
+      // 2. Apply updated transaction's financial effect
+      if (updated.type === 'expense') {
+        balanceDeltas[updated.accountId] = (balanceDeltas[updated.accountId] || 0) - updated.amount;
+      } else if (updated.type === 'income') {
+        balanceDeltas[updated.accountId] = (balanceDeltas[updated.accountId] || 0) + updated.amount;
+      } else if (updated.type === 'transfer' && updated.toAccountId) {
+        balanceDeltas[updated.accountId] = (balanceDeltas[updated.accountId] || 0) - updated.amount;
+        balanceDeltas[updated.toAccountId] = (balanceDeltas[updated.toAccountId] || 0) + updated.amount;
+      }
+
+      // 3. Apply net non-zero balance changes to accounts
+      const changedIds = Object.keys(balanceDeltas).filter((accId) => Math.abs(balanceDeltas[accId]) > 0.0001);
+      if (changedIds.length > 0) {
+        setAccounts((prev) =>
+          prev.map((acc) => {
+            if (balanceDeltas[acc.id]) {
+              const updatedAcc = {
+                ...acc,
+                balance: round2(acc.balance + balanceDeltas[acc.id]),
+                updatedAt: new Date().toISOString(),
+              };
+              saveEncryptedRecord('account', updatedAcc, sessionKey);
+              return updatedAcc;
+            }
+            return acc;
+          })
+        );
+      }
+    }
+
     setTransactions((prev) => prev.map((t) => (t.id === updated.id ? updated : t)).sort((a, b) => b.date.localeCompare(a.date)));
     await saveEncryptedRecord('transaction', updated, sessionKey);
   };
 
   const deleteTransaction = async (id: string): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    if (activeVault?.isDemo || activeVault?.name.toLowerCase().includes('demo')) {
+      throw new Error('Demo Exploration Mode: Deleting transactions is disabled in demo mode.');
+    }
+    const txToDel = transactions.find((t) => t.id === id);
+
+    if (txToDel) {
+      // Mathematically reverse the transaction's effect on connected account(s)
+      if (txToDel.type === 'expense') {
+        // Deleting expense refunds money back to account
+        setAccounts((prev) =>
+          prev.map((acc) => {
+            if (acc.id === txToDel.accountId) {
+              const updated = { ...acc, balance: round2(acc.balance + txToDel.amount), updatedAt: new Date().toISOString() };
+              saveEncryptedRecord('account', updated, sessionKey);
+              return updated;
+            }
+            return acc;
+          })
+        );
+      } else if (txToDel.type === 'income') {
+        // Deleting income deducts money from account
+        setAccounts((prev) =>
+          prev.map((acc) => {
+            if (acc.id === txToDel.accountId) {
+              const updated = { ...acc, balance: round2(acc.balance - txToDel.amount), updatedAt: new Date().toISOString() };
+              saveEncryptedRecord('account', updated, sessionKey);
+              return updated;
+            }
+            return acc;
+          })
+        );
+      } else if (txToDel.type === 'transfer' && txToDel.toAccountId) {
+        // Deleting transfer refunds accountId and deducts toAccountId
+        setAccounts((prev) =>
+          prev.map((acc) => {
+            if (acc.id === txToDel.accountId) {
+              const updated = { ...acc, balance: round2(acc.balance + txToDel.amount), updatedAt: new Date().toISOString() };
+              saveEncryptedRecord('account', updated, sessionKey);
+              return updated;
+            }
+            if (acc.id === txToDel.toAccountId) {
+              const updated = { ...acc, balance: round2(acc.balance - txToDel.amount), updatedAt: new Date().toISOString() };
+              saveEncryptedRecord('account', updated, sessionKey);
+              return updated;
+            }
+            return acc;
+          })
+        );
+      }
+
+      // If linked to an Asset, remove the tranche and adjust valuation/units
+      if (txToDel.linkedAssetId) {
+        const targetAsset = assets.find((a) => a.id === txToDel.linkedAssetId);
+        if (targetAsset && targetAsset.tranches) {
+          const trancheToRemove = targetAsset.tranches.find(
+            (t) => t.id === txToDel.trancheId || t.transactionId === txToDel.id
+          );
+          const updatedTranches = targetAsset.tranches.filter(
+            (t) => t.id !== txToDel.trancheId && t.transactionId !== txToDel.id
+          );
+          const unitsToSubtract = trancheToRemove?.units || 0;
+          const newTotalUnits = Math.max(0, (targetAsset.totalUnits || 0) - unitsToSubtract);
+          let newCurrentVal = Math.max(0, round2(targetAsset.currentValue - txToDel.amount));
+          if (targetAsset.currentUnitPrice && newTotalUnits > 0) {
+            newCurrentVal = round2(newTotalUnits * targetAsset.currentUnitPrice);
+          }
+
+          const updatedAsset: Asset = {
+            ...targetAsset,
+            tranches: updatedTranches,
+            totalUnits: newTotalUnits > 0 ? newTotalUnits : undefined,
+            currentValue: newCurrentVal,
+            purchasePrice: Math.max(0, round2((targetAsset.purchasePrice || 0) - txToDel.amount)),
+            updatedAt: new Date().toISOString(),
+          };
+
+          setAssets((prev) => prev.map((a) => (a.id === updatedAsset.id ? updatedAsset : a)));
+          await saveEncryptedRecord('asset', updatedAsset, sessionKey);
+        }
+      }
+
+      // If linked to a Liability, restore the debt balance
+      if (txToDel.linkedLiabilityId) {
+        const targetLiab = liabilities.find((l) => l.id === txToDel.linkedLiabilityId);
+        if (targetLiab) {
+          const updatedLiab: Liability = {
+            ...targetLiab,
+            outstandingBalance: round2(targetLiab.outstandingBalance + txToDel.amount),
+            updatedAt: new Date().toISOString(),
+          };
+
+          setLiabilities((prev) => prev.map((l) => (l.id === updatedLiab.id ? updatedLiab : l)));
+          await saveEncryptedRecord('liability', updatedLiab, sessionKey);
+        }
+      }
+    }
+
     setTransactions((prev) => prev.filter((t) => t.id !== id));
     await deleteRecord(id);
   };
@@ -399,6 +675,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
     const newTxs: Transaction[] = items.map((data) => ({
       ...data,
+      amount: round2(Math.abs(Number(data.amount))),
       id: generateUUID(),
       vaultId: activeVault.id,
       updatedAt: new Date().toISOString(),
@@ -406,13 +683,16 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setTransactions((prev) => [...newTxs, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
 
-    // Update balances
+    // Update balances including transfers
     const balanceDeltas: Record<string, number> = {};
     newTxs.forEach((tx) => {
       if (tx.type === 'expense') {
         balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) - tx.amount;
       } else if (tx.type === 'income') {
         balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) + tx.amount;
+      } else if (tx.type === 'transfer' && tx.toAccountId) {
+        balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) - tx.amount;
+        balanceDeltas[tx.toAccountId] = (balanceDeltas[tx.toAccountId] || 0) + tx.amount;
       }
     });
 
@@ -421,7 +701,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (balanceDeltas[acc.id]) {
           const updated = {
             ...acc,
-            balance: acc.balance + balanceDeltas[acc.id],
+            balance: round2(acc.balance + balanceDeltas[acc.id]),
             updatedAt: new Date().toISOString(),
           };
           saveEncryptedRecord('account', updated, sessionKey);
@@ -465,8 +745,10 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     data: Omit<PeopleLedgerEntry, 'id' | 'vaultId' | 'updatedAt' | 'settlements' | 'status'>
   ): Promise<PeopleLedgerEntry> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const validAmount = round2(Math.abs(Number(data.amount)));
     const newEntry: PeopleLedgerEntry = {
       ...data,
+      amount: validAmount,
       id: generateUUID(),
       vaultId: activeVault.id,
       settlements: [],
@@ -475,12 +757,28 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     setPeopleLedger((prev) => [newEntry, ...prev]);
     await saveEncryptedRecord('people', newEntry, sessionKey);
+
+    // If an account is linked to this debt / loan, adjust account balance
+    if (data.accountId) {
+      const delta = data.type === 'lent' ? -validAmount : validAmount;
+      setAccounts((prev) =>
+        prev.map((acc) => {
+          if (acc.id === data.accountId) {
+            const updated = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
+            saveEncryptedRecord('account', updated, sessionKey);
+            return updated;
+          }
+          return acc;
+        })
+      );
+    }
+
     return newEntry;
   };
 
   const updatePeopleEntry = async (entry: PeopleLedgerEntry): Promise<void> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    const updated = { ...entry, updatedAt: new Date().toISOString() };
+    const updated = { ...entry, amount: round2(Math.abs(Number(entry.amount))), updatedAt: new Date().toISOString() };
     setPeopleLedger((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
     await saveEncryptedRecord('people', updated, sessionKey);
   };
@@ -490,13 +788,15 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const target = peopleLedger.find((p) => p.id === entryId);
     if (!target) return;
 
+    const validSettlementAmt = round2(Math.abs(Number(settlement.amount)));
     const newSettlement: SettlementRecord = {
       ...settlement,
+      amount: validSettlementAmt,
       id: generateUUID(),
     };
 
     const newSettlements = [...target.settlements, newSettlement];
-    const totalSettled = newSettlements.reduce((sum, s) => sum + s.amount, 0);
+    const totalSettled = round2(newSettlements.reduce((sum, s) => sum + s.amount, 0));
 
     let newStatus: PeopleLedgerEntry['status'] = 'open';
     if (totalSettled >= target.amount) {
@@ -519,9 +819,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (settlement.accountId) {
       const acc = accounts.find((a) => a.id === settlement.accountId);
       if (acc) {
-        // If lent money returned: +balance. If borrowed money paid back: -balance.
-        const delta = target.type === 'lent' ? settlement.amount : -settlement.amount;
-        const updatedAcc = { ...acc, balance: acc.balance + delta, updatedAt: new Date().toISOString() };
+        // If lent money returned: +balance. If borrowed/held money paid back: -balance.
+        const delta = target.type === 'lent' ? validSettlementAmt : -validSettlementAmt;
+        const updatedAcc = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
         setAccounts((prev) => prev.map((a) => (a.id === updatedAcc.id ? updatedAcc : a)));
         await saveEncryptedRecord('account', updatedAcc, sessionKey);
       }
@@ -529,6 +829,46 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deletePeopleEntry = async (id: string): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const target = peopleLedger.find((p) => p.id === id);
+
+    if (target) {
+      const balanceDeltas: Record<string, number> = {};
+
+      // 1. Reverse initial principal if linked to an account
+      if (target.accountId) {
+        const revDelta = target.type === 'lent' ? target.amount : -target.amount;
+        balanceDeltas[target.accountId] = (balanceDeltas[target.accountId] || 0) + revDelta;
+      }
+
+      // 2. Reverse each settlement
+      (target.settlements || []).forEach((s) => {
+        if (s.accountId) {
+          const sRevDelta = target.type === 'lent' ? -s.amount : s.amount;
+          balanceDeltas[s.accountId] = (balanceDeltas[s.accountId] || 0) + sRevDelta;
+        }
+      });
+
+      // Apply deltas to accounts
+      const changedIds = Object.keys(balanceDeltas).filter((aId) => Math.abs(balanceDeltas[aId]) > 0.0001);
+      if (changedIds.length > 0) {
+        setAccounts((prev) =>
+          prev.map((acc) => {
+            if (balanceDeltas[acc.id]) {
+              const updatedAcc = {
+                ...acc,
+                balance: round2(acc.balance + balanceDeltas[acc.id]),
+                updatedAt: new Date().toISOString(),
+              };
+              saveEncryptedRecord('account', updatedAcc, sessionKey);
+              return updatedAcc;
+            }
+            return acc;
+          })
+        );
+      }
+    }
+
     setPeopleLedger((prev) => prev.filter((p) => p.id !== id));
     await deleteRecord(id);
   };
@@ -655,6 +995,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     data: Omit<Asset, 'id' | 'vaultId' | 'updatedAt' | 'valuationHistory'>
   ): Promise<Asset> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    if (activeVault.isDemo || activeVault.name.toLowerCase().includes('demo')) {
+      throw new Error('Demo Exploration Mode: Adding new assets is disabled. You can edit existing transactions to test!');
+    }
     const newAsset: Asset = {
       ...data,
       id: generateUUID(),
@@ -700,14 +1043,111 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteAsset = async (id: string): Promise<void> => {
+    if (activeVault?.isDemo || activeVault?.name.toLowerCase().includes('demo')) {
+      throw new Error('Demo Exploration Mode: Deleting assets is disabled in demo mode.');
+    }
     setAssets((prev) => prev.filter((a) => a.id !== id));
     await deleteRecord(id);
+  };
+
+  const addAssetTranche = async (assetId: string, trancheData: Omit<AssetTranche, 'id'>): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const asset = assets.find((a) => a.id === assetId);
+    if (!asset) return;
+
+    const validAmount = round2(Math.abs(Number(trancheData.amount)));
+    const newTranche: AssetTranche = {
+      ...trancheData,
+      id: generateUUID(),
+      amount: validAmount,
+      units: trancheData.units ? Number(trancheData.units) : undefined,
+      unitPrice: trancheData.unitPrice ? Number(trancheData.unitPrice) : undefined,
+    };
+
+    const updatedTranches = [...(asset.tranches || []), newTranche];
+    const newTotalUnits = (asset.totalUnits || 0) + (newTranche.units || 0);
+    let newCurrentVal = round2(asset.currentValue + newTranche.amount);
+    if (asset.currentUnitPrice && newTotalUnits > 0) {
+      newCurrentVal = round2(newTotalUnits * asset.currentUnitPrice);
+    }
+
+    const updatedAsset: Asset = {
+      ...asset,
+      tranches: updatedTranches,
+      totalUnits: newTotalUnits > 0 ? newTotalUnits : undefined,
+      currentValue: newCurrentVal,
+      purchasePrice: round2((asset.purchasePrice || 0) + newTranche.amount),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setAssets((prev) => prev.map((a) => (a.id === assetId ? updatedAsset : a)));
+    await saveEncryptedRecord('asset', updatedAsset, sessionKey);
+  };
+
+  const deleteAssetTranche = async (assetId: string, trancheId: string): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const asset = assets.find((a) => a.id === assetId);
+    if (!asset || !asset.tranches) return;
+
+    const targetTranche = asset.tranches.find((t) => t.id === trancheId);
+    if (!targetTranche) return;
+
+    const updatedTranches = asset.tranches.filter((t) => t.id !== trancheId);
+    const newTotalUnits = Math.max(0, (asset.totalUnits || 0) - (targetTranche.units || 0));
+    let newCurrentVal = Math.max(0, round2(asset.currentValue - targetTranche.amount));
+    if (asset.currentUnitPrice && newTotalUnits > 0) {
+      newCurrentVal = round2(newTotalUnits * asset.currentUnitPrice);
+    }
+
+    const updatedAsset: Asset = {
+      ...asset,
+      tranches: updatedTranches,
+      totalUnits: newTotalUnits > 0 ? newTotalUnits : undefined,
+      currentValue: newCurrentVal,
+      purchasePrice: Math.max(0, round2((asset.purchasePrice || 0) - targetTranche.amount)),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setAssets((prev) => prev.map((a) => (a.id === assetId ? updatedAsset : a)));
+    await saveEncryptedRecord('asset', updatedAsset, sessionKey);
+  };
+
+  const updateAssetUnitPrice = async (assetId: string, newUnitPrice: number): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const asset = assets.find((a) => a.id === assetId);
+    if (!asset) return;
+
+    const validPrice = round2(Math.abs(Number(newUnitPrice)));
+    const newCurrentVal = asset.totalUnits && asset.totalUnits > 0
+      ? round2(asset.totalUnits * validPrice)
+      : asset.currentValue;
+
+    const newLog: ValuationLog = {
+      id: generateUUID(),
+      date: new Date().toISOString().split('T')[0],
+      value: newCurrentVal,
+      note: `NAV / Market price updated to ${validPrice}`,
+    };
+
+    const updatedAsset: Asset = {
+      ...asset,
+      currentUnitPrice: validPrice,
+      currentValue: newCurrentVal,
+      valuationHistory: [...(asset.valuationHistory || []), newLog],
+      updatedAt: new Date().toISOString(),
+    };
+
+    setAssets((prev) => prev.map((a) => (a.id === assetId ? updatedAsset : a)));
+    await saveEncryptedRecord('asset', updatedAsset, sessionKey);
   };
 
   const addLiability = async (
     data: Omit<Liability, 'id' | 'vaultId' | 'updatedAt'>
   ): Promise<Liability> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    if (activeVault.isDemo || activeVault.name.toLowerCase().includes('demo')) {
+      throw new Error('Demo Exploration Mode: Adding new liabilities is disabled.');
+    }
     const newLiability: Liability = {
       ...data,
       id: generateUUID(),
@@ -727,6 +1167,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteLiability = async (id: string): Promise<void> => {
+    if (activeVault?.isDemo || activeVault?.name.toLowerCase().includes('demo')) {
+      throw new Error('Demo Exploration Mode: Deleting liabilities is disabled in demo mode.');
+    }
     setLiabilities((prev) => prev.filter((l) => l.id !== id));
     await deleteRecord(id);
   };
@@ -801,6 +1244,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addAccount,
         updateAccount,
         deleteAccount,
+        reconcileAccounts,
         addTransaction,
         updateTransaction,
         deleteTransaction,
@@ -826,6 +1270,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateAsset,
         addValuationLog,
         deleteAsset,
+        addAssetTranche,
+        deleteAssetTranche,
+        updateAssetUnitPrice,
         addLiability,
         updateLiability,
         deleteLiability,

@@ -75,9 +75,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={() => {
-        if (!isInitialSetup) onClose();
-      }}
+      onClose={onClose}
       title={
         <div className="flex items-center gap-2.5">
           <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 flex-shrink-0">
@@ -186,11 +184,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         </Surface>
 
         <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-white/[0.06]">
-          {!isInitialSetup && (
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-              Cancel
-            </Button>
-          )}
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
           <Button
             type="submit"
             variant="primary"

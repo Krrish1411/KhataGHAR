@@ -4,6 +4,7 @@ import { usePrivacy } from '../../context/PrivacyContext';
 import { useTheme, type ThemePalette } from '../../context/ThemeContext';
 import { Button } from '../common/Button';
 import { OnboardingModal } from '../security/OnboardingModal';
+import { PWAInstallModal } from '../common/PWAInstallModal';
 import {
   Eye,
   EyeOff,
@@ -15,11 +16,14 @@ import {
   Menu,
   Check,
   IndianRupee,
+  HelpCircle,
+  Download,
 } from 'lucide-react';
 
 interface HeaderProps {
   onOpenQuickAdd: () => void;
   onToggleMobileMenu: () => void;
+  onOpenWelcome?: () => void;
 }
 
 const THEME_PRESETS: Array<{ id: ThemePalette; name: string; isDark: boolean; color: string }> = [
@@ -33,7 +37,7 @@ const THEME_PRESETS: Array<{ id: ThemePalette; name: string; isDark: boolean; co
   { id: 'graphite', name: 'Monochrome', isDark: true, color: '#18181b' },
 ];
 
-export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMenu }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMenu, onOpenWelcome }) => {
   const { activeVault, allVaults, lockVault, setActiveVaultMeta } = useAuth();
   const { isPrivacyMode, togglePrivacy } = usePrivacy();
   const { currentPalette, setTheme } = useTheme();
@@ -41,10 +45,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
   const [vaultDropdownOpen, setVaultDropdownOpen] = useState(false);
   const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
   const [isNewVaultModalOpen, setIsNewVaultModalOpen] = useState(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-30 bg-moss/80 backdrop-blur-md border-b border-line px-4 sm:px-6 h-[60px] flex items-center transition-colors">
-      <div className="flex items-center justify-between gap-3 max-w-8xl mx-auto w-full">
+      <div className="flex items-center justify-between gap-3 w-full max-w-[1600px] mx-auto w-full">
         {/* Left: Mobile Menu Trigger + Vault Selector */}
         <div className="flex items-center gap-2 sm:gap-3">
           <button
@@ -55,32 +60,23 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
             <Menu className="w-5 h-5" />
           </button>
 
-          {/* Brand Icon */}
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-pine-700 text-white shadow-md shadow-pine-900/20">
-              <IndianRupee className="w-4 h-4 stroke-[2.5]" />
-            </div>
-            <div className="hidden sm:block leading-tight">
-              <h1 className="text-xs font-bold font-display tracking-tight text-ink">Khata Ghar</h1>
-              <p className="text-[10px] text-ink/50 -mt-0.5">Encrypted wealth ledger</p>
-            </div>
-          </div>
-
-          {/* Vault Selector Dropdown */}
-          <div className="relative ml-1 sm:ml-2">
+          {/* Unified Vault & Enclave Selector (Single element, no duplicate side-by-side) */}
+          <div className="relative">
             <button
               onClick={() => setVaultDropdownOpen(!vaultDropdownOpen)}
-              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-card hover:border-pine-300 border border-line text-xs font-semibold text-ink transition-all cursor-pointer shadow-xs"
+              className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-card hover:border-pine-400 border border-line text-xs font-bold text-ink transition-all cursor-pointer shadow-xs"
               aria-haspopup="true"
               aria-expanded={vaultDropdownOpen}
               aria-label="Select active vault enclave"
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-pine-500 flex-shrink-0" />
-              <Shield className="w-3.5 h-3.5 text-pine-600 flex-shrink-0" />
-              <span className="truncate max-w-[110px] sm:max-w-[180px]">
-                {activeVault?.name || 'My Vault'}
+              <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-pine-700 text-white shrink-0 shadow-sm shadow-pine-900/30">
+                <IndianRupee className="w-3.5 h-3.5 stroke-[2.5]" />
+              </div>
+              <span className="truncate max-w-[130px] sm:max-w-[190px] font-display font-extrabold text-[13px] tracking-tight text-ink">
+                {activeVault?.name || 'KhataGHAR'}
               </span>
-              <ChevronDown className="w-3 h-3 text-ink/40 flex-shrink-0" />
+              <span className="w-1.5 h-1.5 rounded-full bg-pine-500 shrink-0" />
+              <ChevronDown className="w-3 h-3 text-ink/40 shrink-0" />
             </button>
 
             {vaultDropdownOpen && (
@@ -227,6 +223,28 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
             )}
           </div>
 
+          {/* Welcome Guide / Info Tour */}
+          {onOpenWelcome && (
+            <button
+              onClick={onOpenWelcome}
+              title="Welcome Guide & Feature Tour"
+              className="p-2 rounded-xl bg-card border border-line text-ink/70 hover:text-pine-600 hover:border-pine-300 transition-colors cursor-pointer"
+              aria-label="Welcome Guide & Feature Tour"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-pine-600" />
+            </button>
+          )}
+
+          {/* Install Standalone Offline App */}
+          <button
+            onClick={() => setIsInstallModalOpen(true)}
+            title="Install Standalone Offline App (Android, iOS, Mac, Windows)"
+            className="p-2 rounded-xl bg-card border border-line text-ink/70 hover:text-pine-600 hover:border-pine-300 transition-colors cursor-pointer"
+            aria-label="Install Standalone Offline App"
+          >
+            <Download className="w-3.5 h-3.5 text-pine-600" />
+          </button>
+
           {/* Lock Session Button */}
           <button
             onClick={lockVault}
@@ -245,6 +263,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
           isOpen={isNewVaultModalOpen}
           onClose={() => setIsNewVaultModalOpen(false)}
           isInitialSetup={false}
+        />
+      )}
+
+      {/* PWA Install Modal */}
+      {isInstallModalOpen && (
+        <PWAInstallModal
+          isOpen={isInstallModalOpen}
+          onClose={() => setIsInstallModalOpen(false)}
         />
       )}
     </header>

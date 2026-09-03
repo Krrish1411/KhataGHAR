@@ -33,7 +33,9 @@ import {
   PieChart,
   Command,
   Keyboard,
+  ArrowRight,
 } from 'lucide-react';
+import { computeFinancialInsights, type FinancialInsight } from '../services/insights';
 import {
   AreaChart,
   Area,
@@ -45,7 +47,7 @@ import {
 } from 'recharts';
 
 export const DashboardView: React.FC = () => {
-  const { activeVault, accounts, transactions, categories, peopleLedger, budgets, assets, liabilities, loadDemoData } =
+  const { activeVault, accounts, transactions, categories, peopleLedger, budgets, assets, liabilities, plannedExpenses, loadDemoData } =
     useVault();
   const { isPrivacyMode, togglePrivacy } = usePrivacy();
 
@@ -117,45 +119,27 @@ export const DashboardView: React.FC = () => {
     return s.length > 1 ? s[s.length - 1].netWorth - s[s.length - 2].netWorth : 0;
   }, [d.series]);
 
-  // Dynamic PaisaBook alerts
-  const alerts = useMemo(() => {
-    const list: Array<{ id: string; text: string; tone: 'warn' | 'over' }> = [];
-
-    // Over budget or approaching 85%
-    budgets.forEach((b) => {
-      const cat = categories.find((c) => c.id === b.categoryId);
-      const spent = transactions
-        .filter((t) => t.type === 'expense' && t.categoryId === b.categoryId)
-        .reduce((sum, t) => sum + t.amount, 0);
-      if (spent > b.amount) {
-        list.push({
-          id: `b-${b.id}`,
-          text: `${cat?.name || 'Budget'} is over by ${formatCompactCurrency(spent - b.amount, baseCurrency, numberFormat, isPrivacyMode)}`,
-          tone: 'over',
-        });
-      } else if (b.amount > 0 && spent / b.amount >= 0.85) {
-        list.push({
-          id: `b-${b.id}`,
-          text: `${cat?.name || 'Budget'} is at ${Math.round((spent / b.amount) * 100)}% (${formatCompactCurrency(b.amount - spent, baseCurrency, numberFormat, isPrivacyMode)} remaining)`,
-          tone: 'warn',
-        });
-      }
+  // Comprehensive Automated Financial Insights
+  const insights = useMemo(() => {
+    return computeFinancialInsights({
+      accounts,
+      transactions,
+      budgets,
+      categories,
+      peopleLedger,
+      assets,
+      liabilities,
+      plannedExpenses,
+      baseCurrency,
+      numberFormat,
+      isPrivacyMode,
     });
+  }, [accounts, transactions, budgets, categories, peopleLedger, assets, liabilities, plannedExpenses, baseCurrency, numberFormat, isPrivacyMode]);
 
-    // Custodial overdue
-    const today = new Date().toISOString().split('T')[0];
-    peopleLedger
-      .filter((p) => p.status !== 'closed' && p.dueDate && p.dueDate < today)
-      .forEach((p) => {
-        list.push({
-          id: `p-${p.id}`,
-          text: `${p.contactName}'s money (${formatCompactCurrency(p.amount, baseCurrency, numberFormat, isPrivacyMode)}) is overdue for settlement`,
-          tone: 'over',
-        });
-      });
-
-    return list;
-  }, [budgets, categories, transactions, peopleLedger, baseCurrency, numberFormat, isPrivacyMode]);
+  // Only actionable items (critical & warning) show on the top notification banner
+  const actionableInsights = useMemo(() => {
+    return insights.filter((i) => i.severity === 'critical' || i.severity === 'warning');
+  }, [insights]);
 
   // Account helper mapping
   const accountHeldMap = useMemo(() => {
@@ -219,28 +203,77 @@ export const DashboardView: React.FC = () => {
   }, []);
 
   return (
-    <div className="space-y-4 max-w-7xl mx-auto px-1 sm:px-2 pb-12 anim-fade">
-      {/* 0. PAISABOOK LIVING ALERTS */}
-      {alerts.length > 0 && (
-        <button
-          onClick={() => (window.location.hash = '#/budgets')}
-          className="w-full text-left rounded-2xl border border-mari-400/50 bg-mari-100/75 dark:bg-mari-950/40 px-4 py-3 flex items-start gap-2.5 hover:-translate-y-0.5 hover:shadow-md transition-all anim-fade-up cursor-pointer"
-        >
-          <Bell
-            className={`w-4 h-4 shrink-0 mt-0.5 ${
-              alerts.some((a) => a.tone === 'over') ? 'text-flare-600' : 'text-mari-600'
-            }`}
-          />
-          <span className="flex-1 min-w-0">
-            <span className="block text-[12.5px] font-bold text-ink">
-              {alerts.length} item{alerts.length > 1 ? 's' : ''} need{alerts.length === 1 ? 's' : ''} attention
-            </span>
-            <span className="block text-[11.5px] text-ink/70 truncate mt-0.5">
-              {alerts[0].text}
-              {alerts.length > 1 ? ` · +${alerts.length - 1} more` : ''}
-            </span>
-          </span>
-        </button>
+    <div className="space-y-4 w-full max-w-[1600px] mx-auto px-1 sm:px-2 pb-12 anim-fade">
+      {/* 0. FINANCIAL INTELLIGENCE LIVING ALERT BANNER */}
+      {actionableInsights.length > 0 && (
+        <div className="w-full rounded-2xl border border-mari-400/50 bg-mari-100/75 dark:bg-mari-950/40 p-4 shadow-xs anim-fade-up">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0">
+              <div
+                className={`w-8 h-8 rounded-xl grid place-items-center shrink-0 mt-0.5 ${
+                  actionableInsights.some((a) => a.severity === 'critical')
+                    ? 'bg-flare-100 text-flare-600 dark:bg-flare-950 dark:text-flare-400 border border-flare-500/30'
+                    : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400 border border-amber-500/30'
+                }`}
+              >
+                <Bell className="w-4 h-4" />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-ink">
+                    {actionableInsights.length} item{actionableInsights.length > 1 ? 's' : ''} require attention
+                  </span>
+                  <span className="text-[11px] font-semibold text-ink/50">
+                    · Financial Insight
+                  </span>
+                </div>
+                <p className="text-xs font-bold text-ink truncate">
+                  {actionableInsights[0].title}
+                </p>
+                <p className="text-xs text-ink/75 leading-relaxed line-clamp-2 sm:line-clamp-none">
+                  {actionableInsights[0].description}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+              <button
+                onClick={() => (window.location.hash = actionableInsights[0].targetRoute)}
+                className="px-3.5 py-2 rounded-xl bg-card border border-line text-xs font-bold text-ink hover:bg-moss active:scale-95 transition-all shadow-xs cursor-pointer"
+              >
+                {actionableInsights[0].actionLabel}
+              </button>
+              <button
+                onClick={() => (window.location.hash = '#/reports')}
+                className="px-3.5 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 text-white text-xs font-bold active:scale-95 transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+              >
+                <span>View in Reports Hub</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* If multiple actionable insights, list each one clearly without '+1 more' hiding */}
+          {actionableInsights.length > 1 && (
+            <div className="mt-3 pt-3 border-t border-mari-400/30 flex flex-wrap gap-2 items-center">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-ink/50">
+                Also flagged:
+              </span>
+              {actionableInsights.slice(1).map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => (window.location.hash = item.targetRoute)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card/80 border border-line text-xs font-medium text-ink hover:border-pine-400 hover:text-pine-700 transition-colors cursor-pointer"
+                  title={item.description}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  <span className="font-semibold">{item.title}</span>
+                  <ArrowRight className="w-3 h-3 text-ink/40" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* 1. HERO WEAVE CARD (PaisaBook Exact Signature) */}

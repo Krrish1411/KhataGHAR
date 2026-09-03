@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
+import { PWAInstallModal } from '../common/PWAInstallModal';
 import {
   LayoutDashboard,
   Wallet,
@@ -17,6 +18,7 @@ import {
   Shield,
   IndianRupee,
   CalendarClock,
+  Download,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
@@ -64,6 +66,8 @@ const NAV_GROUPS = [
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile }) => {
+  const [isInstallOpen, setIsInstallOpen] = useState(false);
+
   useEffect(() => {
     if (!isMobileOpen || !onCloseMobile) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -165,14 +169,38 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
           ))}
         </nav>
 
-        {/* Bottom Status Badge */}
-        <div className="p-3 border-t border-line flex-shrink-0">
-          <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-moss/70 border border-line text-xs text-ink/65">
-            <Shield className="w-4 h-4 text-pine-600 flex-shrink-0" />
-            <span className="truncate font-medium">Zero-Knowledge Encrypted</span>
+        {/* Install Standalone App CTA */}
+        <div className="px-3 pb-2 flex-shrink-0">
+          <button
+            onClick={() => setIsInstallOpen(true)}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-pine-50 hover:bg-pine-100 dark:bg-pine-950/40 dark:hover:bg-pine-950/70 border border-pine-200/70 dark:border-pine-800/60 text-xs font-bold text-pine-700 dark:text-pine-300 transition-all cursor-pointer shadow-xs"
+          >
+            <Download className="w-3.5 h-3.5 text-pine-600 shrink-0" />
+            <span>Install Offline App</span>
+          </button>
+        </div>
+
+        {/* Bottom Status Badge & Author Attribution */}
+        <div className="p-3 border-t border-line flex-shrink-0 space-y-1.5">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-moss/80 border border-line text-xs text-ink/75">
+            <Shield className="w-3.5 h-3.5 text-pine-600 flex-shrink-0" />
+            <span className="truncate font-semibold text-[11.5px]">Zero-Knowledge Encrypted</span>
+          </div>
+          <div className="px-1 text-center">
+            <span className="text-[11px] font-medium text-ink/40 tracking-tight block">
+              Crafted by <span className="text-pine-600 dark:text-pine-400 font-bold">Krish Patel</span>
+            </span>
           </div>
         </div>
       </aside>
+
+      {/* PWA Install Modal */}
+      {isInstallOpen && (
+        <PWAInstallModal
+          isOpen={isInstallOpen}
+          onClose={() => setIsInstallOpen(false)}
+        />
+      )}
     </>
   );
 };

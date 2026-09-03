@@ -20,12 +20,15 @@ import {
   Download,
   Plus,
   Trash2,
+  Edit2,
+  RefreshCw,
   Repeat,
   Calendar,
 } from 'lucide-react';
+import { EditTransactionModal } from '../components/transactions/EditTransactionModal';
 
 export const TransactionsView: React.FC = () => {
-  const { transactions, accounts, categories, deleteTransaction, activeVault } = useVault();
+  const { transactions, accounts, categories, deleteTransaction, updateTransaction, reconcileAccounts, activeVault } = useVault();
   const { isPrivacyMode } = usePrivacy();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,6 +37,8 @@ export const TransactionsView: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [dateRangePreset, setDateRangePreset] = useState<string>('all-time');
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [txToEdit, setTxToEdit] = useState<Transaction | null>(null);
+  const [isReconciling, setIsReconciling] = useState(false);
 
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
@@ -97,13 +102,24 @@ export const TransactionsView: React.FC = () => {
     }
   };
 
+  const handleReconcile = async () => {
+    if (window.confirm('Recalculate and reconcile all account balances based on your verified transaction ledger?')) {
+      setIsReconciling(true);
+      try {
+        await reconcileAccounts();
+      } finally {
+        setIsReconciling(false);
+      }
+    }
+  };
+
   const handleExportCSV = () => {
     if (!activeVault) return;
     exportTransactionsToCSV(filteredTransactions, categories, accounts, activeVault);
   };
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto px-1 sm:px-2 pb-16 anim-fade">
+    <div className="space-y-5 w-full max-w-[1600px] mx-auto px-1 sm:px-2 pb-16 anim-fade">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -121,6 +137,16 @@ export const TransactionsView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleReconcile}
+            disabled={isReconciling}
+            className="px-3.5 py-2 rounded-xl border border-line bg-card hover:bg-moss active:scale-[0.97] text-xs font-semibold text-ink flex items-center gap-1.5 cursor-pointer transition-all"
+            title="Recalculate and reconcile all account balances with the ledger"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-pine-600 ${isReconciling ? 'animate-spin' : ''}`} />
+            <span>{isReconciling ? 'Reconciling…' : 'Reconcile Balances'}</span>
+          </button>
+
           <button
             onClick={handleExportCSV}
             className="px-3.5 py-2 rounded-xl border border-line bg-card hover:bg-moss active:scale-[0.97] text-xs font-semibold text-ink flex items-center gap-1.5 cursor-pointer transition-all"
@@ -403,13 +429,24 @@ export const TransactionsView: React.FC = () => {
 
                       {/* Actions */}
                       <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => handleDelete(tx.id)}
-                          className="p-1.5 text-ink/40 hover:text-flare-600 rounded-lg cursor-pointer transition-colors"
-                          title="Delete entry"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => setTxToEdit(tx)}
+                            className="p-1.5 text-ink/40 hover:text-pine-600 rounded-lg cursor-pointer transition-colors"
+                            title="Edit entry"
+                            aria-label="Edit entry"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(tx.id)}
+                            className="p-1.5 text-ink/40 hover:text-flare-600 rounded-lg cursor-pointer transition-colors"
+                            title="Delete entry"
+                            aria-label="Delete entry"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -425,6 +462,15 @@ export const TransactionsView: React.FC = () => {
         <QuickAddModal
           isOpen={isQuickAddOpen}
           onClose={() => setIsQuickAddOpen(false)}
+        />
+      )}
+
+      {/* Edit Transaction Modal */}
+      {txToEdit && (
+        <EditTransactionModal
+          isOpen={!!txToEdit}
+          transaction={txToEdit}
+          onClose={() => setTxToEdit(null)}
         />
       )}
     </div>

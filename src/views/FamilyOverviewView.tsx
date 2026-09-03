@@ -39,7 +39,7 @@ export const FamilyOverviewView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto px-1 sm:px-2 pb-14 anim-fade">
+    <div className="space-y-5 w-full max-w-[1600px] mx-auto px-1 sm:px-2 pb-14 anim-fade">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>

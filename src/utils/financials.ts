@@ -42,10 +42,18 @@ export function computeDerivedFinancials(
   const lastMonthKey = monthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1));
 
   // 1. Account Balances
-  // Non-credit balances count towards liquid money
-  const liquidBalance = accounts
-    .filter((a) => a.type !== 'credit_card')
-    .reduce((sum, a) => sum + Math.max(0, a.balance), 0);
+  // Overdraft on non-credit accounts (negative balances)
+  const overdraftDebt = accounts
+    .filter((a) => a.type !== 'credit_card' && a.balance < 0)
+    .reduce((sum, a) => sum + Math.abs(a.balance), 0);
+
+  // Net positive liquid money across non-credit accounts
+  const liquidBalance = Math.max(
+    0,
+    accounts
+      .filter((a) => a.type !== 'credit_card')
+      .reduce((sum, a) => sum + a.balance, 0)
+  );
 
   // Credit card debt is negative balance on credit accounts
   const creditOutstanding = Math.max(
@@ -58,7 +66,7 @@ export function computeDerivedFinancials(
   const monthlyEMIs = liabilities.reduce((sum, l) => sum + (l.emiAmount || 0), 0);
 
   const totalAssets = accounts.reduce((sum, a) => sum + Math.max(0, a.balance), 0) + extraAssetsVal;
-  const totalLiabilities = creditOutstanding + extraLiabVal;
+  const totalLiabilities = creditOutstanding + overdraftDebt + extraLiabVal;
 
   // 2. People Ledger ("Not Your Money")
   const activeEntries = peopleLedger.filter((p) => p.status !== 'closed');
@@ -114,10 +122,15 @@ export function computeDerivedFinancials(
   const avgMonthlyIncome = (incPast.reduce((s, v) => s + v, 0) || thisM.income) / 3;
 
   // 7. Money Vitals / Ratios
-  const savingsRate = thisM.income > 0 ? (thisM.income - thisM.expense) / thisM.income : 0;
-  const expenseRatio = thisM.income > 0 ? thisM.expense / thisM.income : 0;
-  const liquidityRatio = avgMonthlyExpense > 0 ? liquidBalance / avgMonthlyExpense : 0;
-  const debtToIncome = avgMonthlyIncome > 0 ? (creditOutstanding + reservedBorrowed + monthlyEMIs) / avgMonthlyIncome : 0;
+  const savingsRate = thisM.income > 0 ? Math.max(-1, Math.min(1, (thisM.income - thisM.expense) / thisM.income)) : 0;
+  const expenseRatio = thisM.income > 0 ? thisM.expense / thisM.income : thisM.expense > 0 ? 1 : 0;
+  const liquidityRatio = avgMonthlyExpense > 0 ? liquidBalance / avgMonthlyExpense : liquidBalance > 0 ? 99 : 0;
+
+  // Monthly credit card servicing obligation (5% Minimum Amount Due as per RBI/CIBIL) + monthly EMIs
+  const monthlyCreditObligation = (creditOutstanding * 0.05) + monthlyEMIs;
+  const debtToIncome = avgMonthlyIncome > 0
+    ? monthlyCreditObligation / avgMonthlyIncome
+    : (monthlyCreditObligation > 0 ? 1 : 0);
 
   // 8. 8-Month Historical Trajectory
   const series: Array<{ key: string; label: string; income: number; expense: number; netWorth: number }> = [];
@@ -130,6 +143,9 @@ export function computeDerivedFinancials(
 
     // Net worth at this point in time
     let historicalLiquid = 0;
+    let historicalCredit = 0;
+    let historicalOverdraft = 0;
+
     for (const a of accounts) {
       let accBal = a.balance;
       for (const t of transactions) {
@@ -144,10 +160,18 @@ export function computeDerivedFinancials(
           }
         }
       }
-      if (a.type !== 'credit_card') historicalLiquid += Math.max(0, accBal);
+      if (a.type === 'credit_card') {
+        historicalCredit += Math.max(0, -accBal);
+      } else {
+        if (accBal >= 0) {
+          historicalLiquid += accBal;
+        } else {
+          historicalOverdraft += Math.abs(accBal);
+        }
+      }
     }
 
-    const nw = historicalLiquid - creditOutstanding + extraAssetsVal - extraLiabVal - reservedTotal + givenOutTotal;
+    const nw = historicalLiquid - historicalCredit - historicalOverdraft + extraAssetsVal - extraLiabVal - reservedTotal + givenOutTotal;
     series.push({
       key,
       label: `${MONTH_NAMES[d.getMonth()]} ${`${d.getFullYear()}`.slice(2)}`,

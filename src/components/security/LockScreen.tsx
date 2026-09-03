@@ -4,12 +4,14 @@ import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { Modal } from '../common/Modal';
 import { OnboardingModal } from './OnboardingModal';
+import { WelcomeLandingView } from '../welcome/WelcomeLandingView';
 import { importVaultEncrypted } from '../../services/backup';
-import { Lock, Unlock, Shield, Plus, Upload, KeyRound, CheckCircle2 } from 'lucide-react';
+import { Lock, Unlock, Shield, Plus, Upload, KeyRound, CheckCircle2, Sparkles } from 'lucide-react';
 
 export const LockScreen: React.FC = () => {
   const { allVaults, activeVault, unlockVaultWithPassword, setActiveVaultMeta, refreshVaultList } = useAuth();
 
+  const [showWelcomeLanding, setShowWelcomeLanding] = useState(allVaults.length === 0);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isUnlocking, setIsUnlocking] = useState(false);
@@ -79,16 +81,20 @@ export const LockScreen: React.FC = () => {
     }
   };
 
-  if (allVaults.length === 0) {
+  if (showWelcomeLanding || allVaults.length === 0) {
     return (
-      <div className="min-h-screen bg-navy-950 flex flex-col items-center justify-center p-4">
-        <OnboardingModal isOpen={true} onClose={() => {}} isInitialSetup={true} />
-      </div>
+      <WelcomeLandingView
+        canGoBackToLock={allVaults.length > 0}
+        onBackToLock={() => setShowWelcomeLanding(false)}
+      />
     );
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 text-slate-100 flex flex-col items-center justify-center p-4 relative select-none">
+    <div
+      style={{ zoom: 1.25 }}
+      className="min-h-screen bg-navy-950 text-slate-100 flex flex-col items-center justify-center p-4 relative select-none"
+    >
       <div className="w-full max-w-sm space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-1.5">
@@ -193,6 +199,18 @@ export const LockScreen: React.FC = () => {
             >
               <Upload className="w-3.5 h-3.5" />
               <span>Restore Backup</span>
+            </button>
+          </div>
+
+          {/* Full Screen Feature Guide & Tour */}
+          <div className="mt-3.5 pt-3 border-t border-white/[0.06] text-center">
+            <button
+              type="button"
+              onClick={() => setShowWelcomeLanding(true)}
+              className="text-xs font-semibold text-amber-400 hover:text-amber-300 hover:underline inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Explore Features & Simple Language Guide</span>
             </button>
           </div>
         </div>

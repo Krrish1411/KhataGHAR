@@ -23,12 +23,14 @@ import {
   Smartphone,
   ShieldAlert,
   Database,
+  RefreshCw,
 } from 'lucide-react';
 
 export const AccountsView: React.FC = () => {
-  const { accounts, transactions, peopleLedger, activeVault, deleteAccount, updateAccount, loadDemoData } = useVault();
+  const { accounts, transactions, peopleLedger, activeVault, deleteAccount, updateAccount, loadDemoData, reconcileAccounts } = useVault();
   const { isPrivacyMode } = usePrivacy();
   const [isLoadingDemo, setIsLoadingDemo] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
 
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [accountToEdit, setAccountToEdit] = useState<Account | undefined>(undefined);
@@ -179,6 +181,26 @@ export const AccountsView: React.FC = () => {
           >
             <Database className="w-3.5 h-3.5 mr-1 text-pine-600" />
             <span>Load Demo Accounts</span>
+          </Button>
+
+          <Button
+            onClick={async () => {
+              if (window.confirm('Recalculate and reconcile all account balances based on your complete transaction ledger?')) {
+                setIsReconciling(true);
+                try {
+                  await reconcileAccounts();
+                } finally {
+                  setIsReconciling(false);
+                }
+              }
+            }}
+            variant="outline"
+            size="sm"
+            isLoading={isReconciling}
+            title="Recalculate balances from ledger"
+          >
+            <RefreshCw className="w-3.5 h-3.5 mr-1 text-pine-600" />
+            <span>Reconcile</span>
           </Button>
 
           <Button

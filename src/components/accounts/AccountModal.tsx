@@ -23,7 +23,11 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   const [name, setName] = useState(accountToEdit?.name || '');
   const [type, setType] = useState<AccountType>(accountToEdit?.type || 'bank');
   const [currency, setCurrency] = useState<CurrencyCode>(accountToEdit?.currency || 'INR');
-  const [balance, setBalance] = useState(accountToEdit?.balance !== undefined ? String(accountToEdit.balance) : '0');
+  const [balance, setBalance] = useState(
+    accountToEdit?.balance !== undefined
+      ? String(accountToEdit.type === 'credit_card' ? Math.abs(accountToEdit.balance) : accountToEdit.balance)
+      : '0'
+  );
   const [tag, setTag] = useState<AccountTag>(accountToEdit?.tag || 'personal');
   const [isVisibleOnDashboard, setIsVisibleOnDashboard] = useState(accountToEdit?.isVisibleOnDashboard ?? true);
   const [institutionName, setInstitutionName] = useState(accountToEdit?.institutionName || '');
@@ -39,11 +43,15 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       return;
     }
 
-    const numBalance = parseFloat(balance);
-    if (isNaN(numBalance)) {
+    const rawNum = parseFloat(balance);
+    if (isNaN(rawNum)) {
       setError('Please provide a valid balance');
       return;
     }
+
+    const parsed = Math.round((rawNum + Number.EPSILON) * 100) / 100;
+    // Credit card outstanding balance is stored as a negative liability balance
+    const finalBalance = type === 'credit_card' ? -Math.abs(parsed) : parsed;
 
     setIsSubmitting(true);
     setError('');
@@ -55,7 +63,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           name: name.trim(),
           type,
           currency,
-          balance: numBalance,
+          balance: finalBalance,
+          initialBalance: accountToEdit.initialBalance !== undefined ? accountToEdit.initialBalance : finalBalance,
           tag,
           isVisibleOnDashboard,
           institutionName: institutionName.trim() || undefined,
@@ -67,8 +76,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           name: name.trim(),
           type,
           currency,
-          balance: numBalance,
-          initialBalance: numBalance,
+          balance: finalBalance,
+          initialBalance: finalBalance,
           tag,
           isVisibleOnDashboard,
           institutionName: institutionName.trim() || undefined,
@@ -147,7 +156,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
         <Input
           type="number"
           step="any"
-          label="Current Balance"
+          label={type === 'credit_card' ? 'Current Outstanding Balance (Amount you owe)' : 'Current Balance'}
+          helperText={type === 'credit_card' ? 'Enter current debt as a positive amount. It will be tracked as an outstanding credit card liability.' : undefined}
           placeholder="0.00"
           value={balance}
           onChange={(e) => setBalance(e.target.value)}
