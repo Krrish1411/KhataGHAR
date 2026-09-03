@@ -1,0 +1,58 @@
+name: Release — Tag & Publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    name: Build & Create GitHub Release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Production build
+        run: npm run build
+
+      - name: Zip dist for release
+        run: |
+          cd dist
+          zip -r ../khata-ghar-${{ github.ref_name }}.zip .
+          cd ..
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: khata-ghar-${{ github.ref_name }}.zip
+          generate_release_notes: true
+          body: |
+            ## KhataGHAR ${{ github.ref_name }}
+
+            ### Installation
+            1. Download the `khata-ghar-${{ github.ref_name }}.zip` below
+            2. Extract to any static hosting provider (GitHub Pages, Netlify, Vercel, etc.)
+            3. Open `index.html` in your browser — **no server required**
+
+            ### Features
+            - 🔒 AES-GCM encrypted IndexedDB vault (zero cloud, zero server)
+            - 📊 Full financial dashboard with Net Worth, Cashflow Forecast, Burn Radar
+            - 🎭 Duress PIN & Decoy Vault (Mirror-Scaled or Full-Dummy mode)
+            - 📄 Rich PDF export with configurable sections
+            - 🏦 Asset & Liability tracker (Indian Income Tax Schedule AL compliant)
+            - 💡 Financial Health Score, Debt Payoff Simulator, What-If sliders
+            - 👨‍👩‍👧 Family Hub, Plans, Documents vault
