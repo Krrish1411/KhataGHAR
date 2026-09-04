@@ -9,6 +9,7 @@ import { ValuationModal } from '../components/assets/ValuationModal';
 import { AssetDetailModal } from '../components/assets/AssetDetailModal';
 import { LiabilityModal } from '../components/liabilities/LiabilityModal';
 import { DebtSimulatorModal } from '../components/assets/DebtSimulatorModal';
+import { AmortizationScheduleModal } from '../components/liabilities/AmortizationScheduleModal';
 import { formatCurrency, formatCompactCurrency, formatPercent } from '../utils/formatters';
 import { formatReadableDate } from '../utils/dates';
 import type { Asset, Liability, AssetType } from '../types';
@@ -52,6 +53,7 @@ export const AssetsLiabilitiesView: React.FC = () => {
   const [isLiabilityModalOpen, setIsLiabilityModalOpen] = useState(false);
   const [liabilityToEdit, setLiabilityToEdit] = useState<Liability | undefined>(undefined);
   const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
+  const [selectedLoanForSchedule, setSelectedLoanForSchedule] = useState<Liability | null>(null);
 
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
@@ -553,6 +555,26 @@ export const AssetsLiabilitiesView: React.FC = () => {
                         {loan.nextDueDate ? formatReadableDate(loan.nextDueDate) : '—'}
                       </span>
                     </div>
+                  </div>
+
+                  {/* Amortization Schedule & Benchmark CTA */}
+                  <div className="pt-2 border-t border-line/60 flex items-center justify-between gap-2">
+                    {loan.interestType === 'floating' ? (
+                      <span className="text-[10px] text-pine-600 font-semibold flex items-center gap-1 truncate">
+                        <Zap className="w-3 h-3 shrink-0" />
+                        <span>Repo {loan.benchmarkRate || 6.5}% + {loan.spread || 2.05}%</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10.5px] text-ink/40 font-medium">Fixed Rate</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLoanForSchedule(loan)}
+                      className="px-2.5 py-1 rounded-xl bg-card border border-line hover:border-pine-300 hover:bg-moss text-xs font-semibold text-ink flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                    >
+                      <Calendar className="w-3 h-3 text-pine-600" />
+                      <span>Repayment Schedule</span>
+                    </button>
                   </div>
                 </div>
               ))}

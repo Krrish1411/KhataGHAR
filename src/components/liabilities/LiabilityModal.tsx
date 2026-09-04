@@ -32,6 +32,18 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
   const [interestRate, setInterestRate] = useState(
     liabilityToEdit ? String(liabilityToEdit.interestRate) : '8.5'
   );
+  const [interestType, setInterestType] = useState<'fixed' | 'floating'>(
+    liabilityToEdit?.interestType || 'fixed'
+  );
+  const [benchmarkName, setBenchmarkName] = useState(
+    liabilityToEdit?.benchmarkName || 'RBI Repo Rate'
+  );
+  const [benchmarkRate, setBenchmarkRate] = useState(
+    liabilityToEdit?.benchmarkRate ? String(liabilityToEdit.benchmarkRate) : '6.50'
+  );
+  const [spread, setSpread] = useState(
+    liabilityToEdit?.spread ? String(liabilityToEdit.spread) : '2.05'
+  );
   const [emiAmount, setEmiAmount] = useState(
     liabilityToEdit ? String(liabilityToEdit.emiAmount) : ''
   );
@@ -57,7 +69,8 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
 
     const numPrincipal = parseFloat(principalAmount);
     const numOutstanding = parseFloat(outstandingBalance);
-    const numRate = parseFloat(interestRate) || 0;
+    const computedFloatingRate = Math.round(((parseFloat(benchmarkRate) || 0) + (parseFloat(spread) || 0)) * 100) / 100;
+    const numRate = interestType === 'floating' ? computedFloatingRate : (parseFloat(interestRate) || 0);
     const numEmi = parseFloat(emiAmount) || 0;
 
     if (isNaN(numOutstanding) || numOutstanding < 0) {
@@ -79,6 +92,10 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
           outstandingBalance: numOutstanding,
           interestRate: numRate,
           emiAmount: numEmi,
+          interestType,
+          benchmarkName: interestType === 'floating' ? benchmarkName : undefined,
+          benchmarkRate: interestType === 'floating' ? parseFloat(benchmarkRate) || 0 : undefined,
+          spread: interestType === 'floating' ? parseFloat(spread) || 0 : undefined,
           nextDueDate: nextDueDate || undefined,
           tenureRemainingMonths: tenureRemainingMonths ? parseInt(tenureRemainingMonths, 10) : undefined,
           currency,
@@ -93,6 +110,10 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
           outstandingBalance: numOutstanding,
           interestRate: numRate,
           emiAmount: numEmi,
+          interestType,
+          benchmarkName: interestType === 'floating' ? benchmarkName : undefined,
+          benchmarkRate: interestType === 'floating' ? parseFloat(benchmarkRate) || 0 : undefined,
+          spread: interestType === 'floating' ? parseFloat(spread) || 0 : undefined,
           nextDueDate: nextDueDate || undefined,
           tenureRemainingMonths: tenureRemainingMonths ? parseInt(tenureRemainingMonths, 10) : undefined,
           currency,
@@ -196,17 +217,105 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Input
-            type="number"
-            step="any"
-            label="Annual Interest Rate (%)"
-            placeholder="e.g. 8.75"
-            value={interestRate}
-            onChange={(e) => setInterestRate(e.target.value)}
-            tabularNums
-          />
+        {/* Interest Type & Rate Configuration */}
+        <div className="p-3.5 rounded-2xl bg-moss/60 border border-line space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-ink/60">
+              Interest Structure
+            </label>
+            <div className="flex items-center gap-1 p-0.5 bg-card border border-line rounded-xl text-xs">
+              <button
+                type="button"
+                onClick={() => setInterestType('fixed')}
+                className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                  interestType === 'fixed'
+                    ? 'bg-pine-700 text-white shadow-xs'
+                    : 'text-ink/60 hover:text-ink'
+                }`}
+              >
+                Fixed Rate
+              </button>
+              <button
+                type="button"
+                onClick={() => setInterestType('floating')}
+                className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                  interestType === 'floating'
+                    ? 'bg-pine-700 text-white shadow-xs'
+                    : 'text-ink/60 hover:text-ink'
+                }`}
+              >
+                Floating (RBI Repo)
+              </button>
+            </div>
+          </div>
 
+          {interestType === 'floating' ? (
+            <div className="space-y-2.5 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-[10.5px] font-bold uppercase text-ink/50 mb-1">
+                    Benchmark
+                  </label>
+                  <select
+                    value={benchmarkName}
+                    onChange={(e) => setBenchmarkName(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-xl border border-line bg-card text-xs font-semibold text-ink outline-none focus:border-pine-500"
+                  >
+                    <option value="RBI Repo Rate">RBI Repo Rate</option>
+                    <option value="MCLR 1-Year">1-Yr MCLR</option>
+                    <option value="Treasury Bill">3-Mo T-Bill</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10.5px] font-bold uppercase text-ink/50 mb-1">
+                    Benchmark Rate (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={benchmarkRate}
+                    onChange={(e) => setBenchmarkRate(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-xl border border-line bg-card text-xs font-mono font-bold text-ink outline-none focus:border-pine-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10.5px] font-bold uppercase text-ink/50 mb-1">
+                    Lender Spread (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={spread}
+                    onChange={(e) => setSpread(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-xl border border-line bg-card text-xs font-mono font-bold text-ink outline-none focus:border-pine-500"
+                  />
+                </div>
+              </div>
+
+              {/* Effective APR Dynamic Callout */}
+              <div className="p-2.5 rounded-xl bg-card border border-pine-200 dark:border-pine-800 flex items-center justify-between text-xs">
+                <span className="text-ink/70 font-medium">Effective Floating APR:</span>
+                <span className="font-mono font-extrabold text-pine-700 dark:text-pine-400">
+                  {benchmarkRate}% (Repo) + {spread}% (Spread) = {((parseFloat(benchmarkRate) || 0) + (parseFloat(spread) || 0)).toFixed(2)}% p.a.
+                </span>
+              </div>
+            </div>
+          ) : (
+            <Input
+              type="number"
+              step="any"
+              label="Fixed Annual Interest Rate (%)"
+              placeholder="e.g. 8.75"
+              value={interestRate}
+              onChange={(e) => setInterestRate(e.target.value)}
+              tabularNums
+            />
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
           <Input
             type="number"
             step="any"
@@ -216,15 +325,6 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
             onChange={(e) => setEmiAmount(e.target.value)}
             tabularNums
           />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Input
-            type="date"
-            label="Next EMI Due Date"
-            value={nextDueDate}
-            onChange={(e) => setNextDueDate(e.target.value)}
-          />
 
           <Input
             type="number"
@@ -233,6 +333,15 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
             value={tenureRemainingMonths}
             onChange={(e) => setTenureRemainingMonths(e.target.value)}
             tabularNums
+          />
+        </div>
+
+        <div>
+          <Input
+            type="date"
+            label="Next EMI Due Date"
+            value={nextDueDate}
+            onChange={(e) => setNextDueDate(e.target.value)}
           />
         </div>
 

@@ -57,6 +57,7 @@ interface VaultContextType {
   updateTransaction: (tx: Transaction) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   bulkAddTransactions: (txs: Array<Omit<Transaction, 'id' | 'vaultId' | 'updatedAt'>>) => Promise<void>;
+  undoImport: (importBatchId: string) => Promise<number>;
 
   // Category Operations
   addCategory: (cat: Omit<Category, 'id' | 'vaultId' | 'updatedAt'>) => Promise<Category>;
@@ -91,6 +92,20 @@ interface VaultContextType {
   addAssetTranche: (assetId: string, tranche: Omit<AssetTranche, 'id'>) => Promise<void>;
   deleteAssetTranche: (assetId: string, trancheId: string) => Promise<void>;
   updateAssetUnitPrice: (assetId: string, newUnitPrice: number) => Promise<void>;
+  sellAsset: (assetId: string, params: {
+    unitsSold: number;
+    salePricePerUnit?: number;
+    totalProceeds: number;
+    accountId: string;
+    date: string;
+    note?: string;
+  }) => Promise<void>;
+  recordDividend: (assetId: string, params: {
+    amount: number;
+    accountId: string;
+    date: string;
+    note?: string;
+  }) => Promise<void>;
 
   // Liability Operations
   addLiability: (liability: Omit<Liability, 'id' | 'vaultId' | 'updatedAt'>) => Promise<Liability>;
@@ -346,13 +361,23 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     transactions.forEach((tx) => {
       const amt = round2(Math.abs(Number(tx.amount))) || 0;
-      if (tx.type === 'expense') {
-        calculatedDeltas[tx.accountId] = (calculatedDeltas[tx.accountId] || 0) - amt;
-      } else if (tx.type === 'income') {
-        calculatedDeltas[tx.accountId] = (calculatedDeltas[tx.accountId] || 0) + amt;
-      } else if (tx.type === 'transfer') {
-        calculatedDeltas[tx.accountId] = (calculatedDeltas[tx.accountId] || 0) - amt;
-        if (tx.toAccountId) {
+      const sourceAcc = accounts.find((a) => a.id === tx.accountId);
+      const sourceAsOf = sourceAcc?.balanceAsOfDate || '1970-01-01';
+
+      if (tx.date > sourceAsOf) {
+        if (tx.type === 'expense') {
+          calculatedDeltas[tx.accountId] = (calculatedDeltas[tx.accountId] || 0) - amt;
+        } else if (tx.type === 'income') {
+          calculatedDeltas[tx.accountId] = (calculatedDeltas[tx.accountId] || 0) + amt;
+        } else if (tx.type === 'transfer') {
+          calculatedDeltas[tx.accountId] = (calculatedDeltas[tx.accountId] || 0) - amt;
+        }
+      }
+
+      if (tx.type === 'transfer' && tx.toAccountId) {
+        const destAcc = accounts.find((a) => a.id === tx.toAccountId);
+        const destAsOf = destAcc?.balanceAsOfDate || '1970-01-01';
+        if (tx.date > destAsOf) {
           calculatedDeltas[tx.toAccountId] = (calculatedDeltas[tx.toAccountId] || 0) + amt;
         }
       }
@@ -360,13 +385,21 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     peopleLedger.forEach((entry) => {
       if (entry.accountId) {
-        const delta = entry.type === 'lent' ? -entry.amount : entry.amount;
-        calculatedDeltas[entry.accountId] = (calculatedDeltas[entry.accountId] || 0) + delta;
+        const acc = accounts.find((a) => a.id === entry.accountId);
+        const asOf = acc?.balanceAsOfDate || '1970-01-01';
+        if (entry.date > asOf) {
+          const delta = entry.type === 'lent' ? -entry.amount : entry.amount;
+          calculatedDeltas[entry.accountId] = (calculatedDeltas[entry.accountId] || 0) + delta;
+        }
       }
       (entry.settlements || []).forEach((s) => {
         if (s.accountId) {
-          const sDelta = entry.type === 'lent' ? s.amount : -s.amount;
-          calculatedDeltas[s.accountId] = (calculatedDeltas[s.accountId] || 0) + sDelta;
+          const acc = accounts.find((a) => a.id === s.accountId);
+          const asOf = acc?.balanceAsOfDate || '1970-01-01';
+          if (s.date > asOf) {
+            const sDelta = entry.type === 'lent' ? s.amount : -s.amount;
+            calculatedDeltas[s.accountId] = (calculatedDeltas[s.accountId] || 0) + sDelta;
+          }
         }
       });
     });
@@ -413,6 +446,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setAccounts((prev) =>
         prev.map((acc) => {
           if (acc.id === newTx.accountId) {
+            const asOf = acc.balanceAsOfDate || '1970-01-01';
+            if (newTx.date <= asOf) return acc;
             const updated = { ...acc, balance: round2(acc.balance - newTx.amount), updatedAt: new Date().toISOString() };
             saveEncryptedRecord('account', updated, sessionKey);
             return updated;
@@ -424,6 +459,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setAccounts((prev) =>
         prev.map((acc) => {
           if (acc.id === newTx.accountId) {
+            const asOf = acc.balanceAsOfDate || '1970-01-01';
+            if (newTx.date <= asOf) return acc;
             const updated = { ...acc, balance: round2(acc.balance + newTx.amount), updatedAt: new Date().toISOString() };
             saveEncryptedRecord('account', updated, sessionKey);
             return updated;
@@ -435,11 +472,15 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setAccounts((prev) =>
         prev.map((acc) => {
           if (acc.id === newTx.accountId) {
+            const asOf = acc.balanceAsOfDate || '1970-01-01';
+            if (newTx.date <= asOf) return acc;
             const updated = { ...acc, balance: round2(acc.balance - newTx.amount), updatedAt: new Date().toISOString() };
             saveEncryptedRecord('account', updated, sessionKey);
             return updated;
           }
           if (acc.id === newTx.toAccountId) {
+            const asOf = acc.balanceAsOfDate || '1970-01-01';
+            if (newTx.date <= asOf) return acc;
             const updated = { ...acc, balance: round2(acc.balance + newTx.amount), updatedAt: new Date().toISOString() };
             saveEncryptedRecord('account', updated, sessionKey);
             return updated;
@@ -502,6 +543,48 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         setLiabilities((prev) => prev.map((l) => (l.id === updatedLiab.id ? updatedLiab : l)));
         await saveEncryptedRecord('liability', updatedLiab, sessionKey);
+      }
+    }
+
+    // If transaction has Splits with linked assets or liabilities
+    if (newTx.splits && newTx.splits.length > 0) {
+      for (const sp of newTx.splits) {
+        if (sp.linkedAssetId && sp.amount > 0) {
+          const targetAsset = assets.find((a) => a.id === sp.linkedAssetId);
+          if (targetAsset) {
+            const trancheId = generateUUID();
+            const newTranche: AssetTranche = {
+              id: trancheId,
+              date: newTx.date,
+              amount: sp.amount,
+              transactionId: newTx.id,
+              note: sp.note || newTx.note || 'Split Allocation',
+            };
+            const updatedTranches = [...(targetAsset.tranches || []), newTranche];
+            const updatedAsset: Asset = {
+              ...targetAsset,
+              tranches: updatedTranches,
+              currentValue: round2(targetAsset.currentValue + sp.amount),
+              purchasePrice: round2((targetAsset.purchasePrice || 0) + sp.amount),
+              updatedAt: new Date().toISOString(),
+            };
+            setAssets((prev) => prev.map((a) => (a.id === updatedAsset.id ? updatedAsset : a)));
+            await saveEncryptedRecord('asset', updatedAsset, sessionKey);
+          }
+        }
+        if (sp.linkedLiabilityId && sp.amount > 0) {
+          const targetLiab = liabilities.find((l) => l.id === sp.linkedLiabilityId);
+          if (targetLiab) {
+            const newOutstanding = Math.max(0, round2(targetLiab.outstandingBalance - sp.amount));
+            const updatedLiab: Liability = {
+              ...targetLiab,
+              outstandingBalance: newOutstanding,
+              updatedAt: new Date().toISOString(),
+            };
+            setLiabilities((prev) => prev.map((l) => (l.id === updatedLiab.id ? updatedLiab : l)));
+            await saveEncryptedRecord('liability', updatedLiab, sessionKey);
+          }
+        }
       }
     }
 
@@ -663,6 +746,41 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           await saveEncryptedRecord('liability', updatedLiab, sessionKey);
         }
       }
+
+      // If transaction had splits, reverse split assets and liabilities
+      if (txToDel.splits && txToDel.splits.length > 0) {
+        for (const sp of txToDel.splits) {
+          if (sp.linkedAssetId && sp.amount > 0) {
+            const targetAsset = assets.find((a) => a.id === sp.linkedAssetId);
+            if (targetAsset && targetAsset.tranches) {
+              const updatedTranches = targetAsset.tranches.filter(
+                (t) => t.transactionId !== txToDel.id
+              );
+              const updatedAsset: Asset = {
+                ...targetAsset,
+                tranches: updatedTranches,
+                currentValue: Math.max(0, round2(targetAsset.currentValue - sp.amount)),
+                purchasePrice: Math.max(0, round2((targetAsset.purchasePrice || 0) - sp.amount)),
+                updatedAt: new Date().toISOString(),
+              };
+              setAssets((prev) => prev.map((a) => (a.id === updatedAsset.id ? updatedAsset : a)));
+              await saveEncryptedRecord('asset', updatedAsset, sessionKey);
+            }
+          }
+          if (sp.linkedLiabilityId && sp.amount > 0) {
+            const targetLiab = liabilities.find((l) => l.id === sp.linkedLiabilityId);
+            if (targetLiab) {
+              const updatedLiab: Liability = {
+                ...targetLiab,
+                outstandingBalance: round2(targetLiab.outstandingBalance + sp.amount),
+                updatedAt: new Date().toISOString(),
+              };
+              setLiabilities((prev) => prev.map((l) => (l.id === updatedLiab.id ? updatedLiab : l)));
+              await saveEncryptedRecord('liability', updatedLiab, sessionKey);
+            }
+          }
+        }
+      }
     }
 
     setTransactions((prev) => prev.filter((t) => t.id !== id));
@@ -683,16 +801,28 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setTransactions((prev) => [...newTxs, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
 
-    // Update balances including transfers
+    // Update balances including transfers (respecting account balanceAsOfDate baseline)
     const balanceDeltas: Record<string, number> = {};
     newTxs.forEach((tx) => {
-      if (tx.type === 'expense') {
-        balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) - tx.amount;
-      } else if (tx.type === 'income') {
-        balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) + tx.amount;
-      } else if (tx.type === 'transfer' && tx.toAccountId) {
-        balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) - tx.amount;
-        balanceDeltas[tx.toAccountId] = (balanceDeltas[tx.toAccountId] || 0) + tx.amount;
+      const sourceAcc = accounts.find((a) => a.id === tx.accountId);
+      const sourceAsOf = sourceAcc?.balanceAsOfDate || '1970-01-01';
+
+      if (tx.date > sourceAsOf) {
+        if (tx.type === 'expense') {
+          balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) - tx.amount;
+        } else if (tx.type === 'income') {
+          balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) + tx.amount;
+        } else if (tx.type === 'transfer') {
+          balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) - tx.amount;
+        }
+      }
+
+      if (tx.type === 'transfer' && tx.toAccountId) {
+        const destAcc = accounts.find((a) => a.id === tx.toAccountId);
+        const destAsOf = destAcc?.balanceAsOfDate || '1970-01-01';
+        if (tx.date > destAsOf) {
+          balanceDeltas[tx.toAccountId] = (balanceDeltas[tx.toAccountId] || 0) + tx.amount;
+        }
       }
     });
 
@@ -712,6 +842,88 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
 
     await bulkSaveEncryptedRecords('transaction', newTxs, sessionKey);
+  };
+
+  const undoImport = async (importBatchId: string): Promise<number> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const batchTxs = transactions.filter((t) => t.importBatchId === importBatchId);
+    if (batchTxs.length === 0) return 0;
+
+    // Calculate reverse balance deltas
+    const balanceDeltas: Record<string, number> = {};
+    for (const tx of batchTxs) {
+      const amt = tx.amount;
+      if (tx.type === 'expense') {
+        balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) + amt;
+      } else if (tx.type === 'income') {
+        balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) - amt;
+      } else if (tx.type === 'transfer' && tx.toAccountId) {
+        balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) + amt;
+        balanceDeltas[tx.toAccountId] = (balanceDeltas[tx.toAccountId] || 0) - amt;
+      }
+
+      // Revert any linked asset tranches
+      if (tx.linkedAssetId) {
+        const asset = assets.find((a) => a.id === tx.linkedAssetId);
+        if (asset && asset.tranches) {
+          const updatedTranches = asset.tranches.filter(
+            (tr) => tr.transactionId !== tx.id && tr.id !== tx.trancheId
+          );
+          const updatedAsset: Asset = {
+            ...asset,
+            tranches: updatedTranches,
+            currentValue: Math.max(0, round2(asset.currentValue - tx.amount)),
+            purchasePrice: Math.max(0, round2((asset.purchasePrice || 0) - tx.amount)),
+            updatedAt: new Date().toISOString(),
+          };
+          setAssets((prev) => prev.map((a) => (a.id === updatedAsset.id ? updatedAsset : a)));
+          await saveEncryptedRecord('asset', updatedAsset, sessionKey);
+        }
+      }
+
+      // Revert any linked liability reductions
+      if (tx.linkedLiabilityId) {
+        const liab = liabilities.find((l) => l.id === tx.linkedLiabilityId);
+        if (liab) {
+          const updatedLiab: Liability = {
+            ...liab,
+            outstandingBalance: round2(liab.outstandingBalance + tx.amount),
+            updatedAt: new Date().toISOString(),
+          };
+          setLiabilities((prev) => prev.map((l) => (l.id === updatedLiab.id ? updatedLiab : l)));
+          await saveEncryptedRecord('liability', updatedLiab, sessionKey);
+        }
+      }
+    }
+
+    // Apply account balance reversions
+    const changedAccIds = Object.keys(balanceDeltas);
+    if (changedAccIds.length > 0) {
+      setAccounts((prev) =>
+        prev.map((acc) => {
+          if (balanceDeltas[acc.id]) {
+            const updated = {
+              ...acc,
+              balance: round2(acc.balance + balanceDeltas[acc.id]),
+              updatedAt: new Date().toISOString(),
+            };
+            saveEncryptedRecord('account', updated, sessionKey);
+            return updated;
+          }
+          return acc;
+        })
+      );
+    }
+
+    // Remove transactions from state and IndexedDB
+    const batchTxIds = new Set(batchTxs.map((t) => t.id));
+    setTransactions((prev) => prev.filter((t) => !batchTxIds.has(t.id)));
+
+    for (const id of batchTxIds) {
+      await deleteRecord(id);
+    }
+
+    return batchTxs.length;
   };
 
   // Category Operations
@@ -758,19 +970,23 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setPeopleLedger((prev) => [newEntry, ...prev]);
     await saveEncryptedRecord('people', newEntry, sessionKey);
 
-    // If an account is linked to this debt / loan, adjust account balance
+    // If an account is linked to this debt / loan, adjust account balance (respecting baseline date)
     if (data.accountId) {
-      const delta = data.type === 'lent' ? -validAmount : validAmount;
-      setAccounts((prev) =>
-        prev.map((acc) => {
-          if (acc.id === data.accountId) {
-            const updated = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
-            saveEncryptedRecord('account', updated, sessionKey);
-            return updated;
-          }
-          return acc;
-        })
-      );
+      const acc = accounts.find((a) => a.id === data.accountId);
+      const asOf = acc?.balanceAsOfDate || '1970-01-01';
+      if (data.date > asOf) {
+        const delta = data.type === 'lent' ? -validAmount : validAmount;
+        setAccounts((prev) =>
+          prev.map((acc) => {
+            if (acc.id === data.accountId) {
+              const updated = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
+              saveEncryptedRecord('account', updated, sessionKey);
+              return updated;
+            }
+            return acc;
+          })
+        );
+      }
     }
 
     return newEntry;
@@ -815,10 +1031,11 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setPeopleLedger((prev) => prev.map((p) => (p.id === entryId ? updatedEntry : p)));
     await saveEncryptedRecord('people', updatedEntry, sessionKey);
 
-    // If account was linked, adjust account balance
+    // If account was linked, adjust account balance (respecting baseline date)
     if (settlement.accountId) {
       const acc = accounts.find((a) => a.id === settlement.accountId);
-      if (acc) {
+      const asOf = acc?.balanceAsOfDate || '1970-01-01';
+      if (acc && settlement.date > asOf) {
         // If lent money returned: +balance. If borrowed/held money paid back: -balance.
         const delta = target.type === 'lent' ? validSettlementAmt : -validSettlementAmt;
         const updatedAcc = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
@@ -1141,6 +1358,116 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await saveEncryptedRecord('asset', updatedAsset, sessionKey);
   };
 
+  const sellAsset = async (
+    assetId: string,
+    params: {
+      unitsSold: number;
+      salePricePerUnit?: number;
+      totalProceeds: number;
+      accountId: string;
+      date: string;
+      note?: string;
+    }
+  ): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const targetAsset = assets.find((a) => a.id === assetId);
+    if (!targetAsset) throw new Error('Asset not found');
+
+    const unitsSold = Number(params.unitsSold) || 0;
+    const totalProceeds = round2(Math.abs(Number(params.totalProceeds)));
+    const totalUnits = targetAsset.totalUnits || 0;
+    const currentCostBasis = targetAsset.purchasePrice || targetAsset.currentValue;
+
+    // Cost basis of sold units: proportional if units tracked, else total proceeds
+    const costBasis = totalUnits > 0 ? round2((unitsSold / totalUnits) * currentCostBasis) : totalProceeds;
+    const realizedGain = round2(totalProceeds - costBasis);
+
+    const remainingUnits = Math.max(0, totalUnits - unitsSold);
+    const remainingCost = Math.max(0, round2(currentCostBasis - costBasis));
+
+    let newCurrentVal = Math.max(0, round2(targetAsset.currentValue - totalProceeds));
+    if (targetAsset.currentUnitPrice && remainingUnits > 0) {
+      newCurrentVal = round2(remainingUnits * targetAsset.currentUnitPrice);
+    } else if (remainingUnits === 0 && totalUnits > 0) {
+      newCurrentVal = 0;
+    }
+
+    const sellTrancheId = generateUUID();
+    const sellTranche: AssetTranche = {
+      id: sellTrancheId,
+      date: params.date,
+      amount: totalProceeds,
+      units: unitsSold > 0 ? unitsSold : undefined,
+      unitPrice: params.salePricePerUnit,
+      type: 'sell',
+      realizedGain,
+      note: params.note || (unitsSold > 0 ? `Redeemed ${unitsSold} units` : 'Asset Sale / Redemption'),
+    };
+
+    const updatedAsset: Asset = {
+      ...targetAsset,
+      totalUnits: remainingUnits > 0 ? remainingUnits : undefined,
+      purchasePrice: remainingCost,
+      currentValue: newCurrentVal,
+      tranches: [...(targetAsset.tranches || []), sellTranche],
+      updatedAt: new Date().toISOString(),
+    };
+
+    setAssets((prev) => prev.map((a) => (a.id === updatedAsset.id ? updatedAsset : a)));
+    await saveEncryptedRecord('asset', updatedAsset, sessionKey);
+
+    // Credit selected bank/cash account with sale proceeds
+    await addTransaction({
+      date: params.date,
+      amount: totalProceeds,
+      type: 'income',
+      currency: targetAsset.currency || activeVault.currency || 'INR',
+      accountId: params.accountId,
+      note: `Asset Sale / Redemption: ${targetAsset.name}${params.note ? ` (${params.note})` : ''}`,
+      linkedAssetId: targetAsset.id,
+      subType: 'investment',
+      realizedGain,
+      tags: ['asset-sale', 'redemption'],
+    } as any);
+  };
+
+  const recordDividend = async (
+    assetId: string,
+    params: {
+      amount: number;
+      accountId: string;
+      date: string;
+      note?: string;
+    }
+  ): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const targetAsset = assets.find((a) => a.id === assetId);
+    if (!targetAsset) throw new Error('Asset not found');
+
+    const divAmount = round2(Math.abs(Number(params.amount)));
+    const updatedAsset: Asset = {
+      ...targetAsset,
+      totalDividends: round2((targetAsset.totalDividends || 0) + divAmount),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setAssets((prev) => prev.map((a) => (a.id === updatedAsset.id ? updatedAsset : a)));
+    await saveEncryptedRecord('asset', updatedAsset, sessionKey);
+
+    // Record pure income credited to user's chosen account
+    await addTransaction({
+      date: params.date,
+      amount: divAmount,
+      type: 'income',
+      currency: targetAsset.currency || activeVault.currency || 'INR',
+      accountId: params.accountId,
+      note: `Dividend Inflow: ${targetAsset.name}${params.note ? ` (${params.note})` : ''}`,
+      linkedAssetId: targetAsset.id,
+      subType: 'regular',
+      tags: ['dividend', 'investment-income'],
+    } as any);
+  };
+
   const addLiability = async (
     data: Omit<Liability, 'id' | 'vaultId' | 'updatedAt'>
   ): Promise<Liability> => {
@@ -1249,6 +1576,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateTransaction,
         deleteTransaction,
         bulkAddTransactions,
+        undoImport,
         addCategory,
         updateCategory,
         deleteCategory,
@@ -1273,6 +1601,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addAssetTranche,
         deleteAssetTranche,
         updateAssetUnitPrice,
+        sellAsset,
+        recordDividend,
         addLiability,
         updateLiability,
         deleteLiability,

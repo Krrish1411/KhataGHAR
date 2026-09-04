@@ -93,32 +93,32 @@ export const LockScreen: React.FC = () => {
   return (
     <div
       style={{ zoom: 1.25 }}
-      className="min-h-screen bg-navy-950 text-slate-100 flex flex-col items-center justify-center p-4 relative select-none"
+      className="min-h-screen bg-ground text-ink flex flex-col items-center justify-center p-4 relative select-none"
     >
-      <div className="w-full max-w-sm space-y-6">
+      <div className="w-full max-w-md space-y-6 my-auto">
         {/* Brand Header */}
         <div className="text-center space-y-1.5">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-amber-500 text-navy-950 shadow-button-primary mb-2">
-            <Lock className="w-6 h-6 stroke-[2.2]" />
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-pine-600 text-white shadow-button-primary mb-2">
+            <Lock className="w-7 h-7 stroke-[2.2]" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-white font-sans" translate="no">
-            Khata Ghar
+          <h1 className="text-2xl font-extrabold tracking-tight text-ink font-display" translate="no">
+            KhataGHAR
           </h1>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-ink/60">
             Encrypted On-Device Financial Enclave
           </p>
         </div>
 
         {/* Unlock Card */}
         <div
-          className={`bg-navy-900 border border-white/[0.08] rounded-2xl p-5 sm:p-6 shadow-card-dark transition-transform ${
+          className={`bg-card border border-line rounded-3xl p-6 sm:p-7 shadow-card transition-transform lift ${
             shake ? 'animate-shake' : ''
           }`}
         >
           {/* Vault Selector if multiple vaults */}
           {allVaults.length > 1 && (
             <div className="mb-4">
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">
+              <label className="block text-xs font-bold text-ink/60 uppercase tracking-wider mb-1.5">
                 Select Enclave Vault
               </label>
               <div className="grid grid-cols-1 gap-1.5">
@@ -135,20 +135,20 @@ export const LockScreen: React.FC = () => {
                       }}
                       className={`flex items-center justify-between p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
                         isSelected
-                          ? 'border-amber-500/50 bg-amber-500/10 text-white font-medium'
-                          : 'border-white/[0.06] bg-navy-850 hover:bg-navy-800 text-slate-300'
+                          ? 'border-pine-500/60 bg-pine-50 dark:bg-pine-950/40 text-pine-700 dark:text-pine-300 font-bold shadow-xs'
+                          : 'border-line bg-moss/70 hover:bg-moss text-ink/80'
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate">
-                        <Shield className={`w-3.5 h-3.5 flex-shrink-0 ${isSelected ? 'text-amber-400' : 'text-slate-500'}`} />
+                        <Shield className={`w-3.5 h-3.5 flex-shrink-0 ${isSelected ? 'text-pine-600 dark:text-pine-400' : 'text-ink/40'}`} />
                         <span className="text-xs font-semibold truncate">{vault.name}</span>
                         {vault.isPrimary && (
-                          <span className="text-[10px] bg-white/[0.06] text-slate-400 px-1.5 py-0.2 rounded font-normal">
+                          <span className="text-[10px] bg-card text-ink/60 px-1.5 py-0.2 rounded font-normal border border-line">
                             Primary
                           </span>
                         )}
                       </div>
-                      {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
+                      {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-pine-600 dark:text-pine-400 flex-shrink-0" />}
                     </button>
                   );
                 })}
@@ -185,17 +185,17 @@ export const LockScreen: React.FC = () => {
           </form>
 
           {/* Secondary Options */}
-          <div className="mt-5 pt-3.5 border-t border-white/[0.06] flex items-center justify-between text-xs text-slate-400">
+          <div className="mt-5 pt-3.5 border-t border-line flex items-center justify-between text-xs text-ink/60">
             <button
               onClick={() => setIsCreateOpen(true)}
-              className="flex items-center gap-1.5 hover:text-amber-400 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 hover:text-pine-600 font-medium transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>New Vault</span>
             </button>
             <button
               onClick={() => setIsRestoreOpen(true)}
-              className="flex items-center gap-1.5 hover:text-amber-400 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 hover:text-pine-600 font-medium transition-colors cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
               <span>Restore Backup</span>
@@ -203,11 +203,11 @@ export const LockScreen: React.FC = () => {
           </div>
 
           {/* Full Screen Feature Guide & Tour */}
-          <div className="mt-3.5 pt-3 border-t border-white/[0.06] text-center">
+          <div className="mt-3.5 pt-3 border-t border-line text-center">
             <button
               type="button"
               onClick={() => setShowWelcomeLanding(true)}
-              className="text-xs font-semibold text-amber-400 hover:text-amber-300 hover:underline inline-flex items-center gap-1.5 cursor-pointer"
+              className="text-xs font-bold text-pine-600 dark:text-pine-400 hover:underline inline-flex items-center gap-1.5 cursor-pointer"
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Explore Features & Simple Language Guide</span>
@@ -216,8 +216,8 @@ export const LockScreen: React.FC = () => {
         </div>
 
         {/* Security Info */}
-        <div className="text-center text-[11px] text-slate-500 flex items-center justify-center gap-1.5">
-          <Shield className="w-3.5 h-3.5 text-amber-500/70" />
+        <div className="text-center text-[11px] text-ink/45 flex items-center justify-center gap-1.5">
+          <Shield className="w-3.5 h-3.5 text-pine-600/70" />
           <span>AES-256-GCM Encrypted at Rest • Zero Server Telemetry</span>
         </div>
       </div>

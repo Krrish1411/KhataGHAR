@@ -31,7 +31,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   onClose,
   asset,
 }) => {
-  const { assets, addAssetTranche, deleteAssetTranche, updateAssetUnitPrice, activeVault } = useVault();
+  const { assets, accounts, addAssetTranche, deleteAssetTranche, updateAssetUnitPrice, sellAsset, recordDividend, activeVault } = useVault();
   const { isPrivacyMode } = usePrivacy();
 
   // Always use the live asset from context to ensure instant dynamic updates on save/delete
@@ -44,6 +44,22 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   const [trancheUnitPrice, setTrancheUnitPrice] = useState('');
   const [trancheNote, setTrancheNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Selling / Redemption State
+  const [isSelling, setIsSelling] = useState(false);
+  const [sellUnits, setSellUnits] = useState('');
+  const [sellUnitPrice, setSellUnitPrice] = useState(liveAsset.currentUnitPrice ? String(liveAsset.currentUnitPrice) : '');
+  const [sellTotalProceeds, setSellTotalProceeds] = useState('');
+  const [sellAccountId, setSellAccountId] = useState(accounts[0]?.id || '');
+  const [sellDate, setSellDate] = useState(new Date().toISOString().split('T')[0]);
+  const [sellNote, setSellNote] = useState('');
+
+  // Dividend Inflow State
+  const [isDividending, setIsDividending] = useState(false);
+  const [divAmount, setDivAmount] = useState('');
+  const [divAccountId, setDivAccountId] = useState(accounts[0]?.id || '');
+  const [divDate, setDivDate] = useState(new Date().toISOString().split('T')[0]);
+  const [divNote, setDivNote] = useState('');
 
   // Quick NAV update
   const [isEditingNav, setIsEditingNav] = useState(false);
@@ -113,6 +129,75 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     setIsEditingNav(false);
   };
 
+  const handleSellUnits = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const proceeds = parseFloat(sellTotalProceeds);
+    if (isNaN(proceeds) || proceeds <= 0) {
+      alert('Please enter a valid sale proceeds amount');
+      return;
+    }
+    const unitsSold = parseFloat(sellUnits) || 0;
+    const unitPrice = parseFloat(sellUnitPrice) || undefined;
+    const destAccId = sellAccountId || (accounts.length > 0 ? accounts[0].id : '');
+    if (!destAccId) {
+      alert('Please select a bank account to receive proceeds');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await sellAsset(liveAsset.id, {
+        unitsSold,
+        salePricePerUnit: unitPrice,
+        totalProceeds: proceeds,
+        accountId: destAccId,
+        date: sellDate,
+        note: sellNote.trim() || undefined,
+      });
+
+      setIsSelling(false);
+      setSellUnits('');
+      setSellTotalProceeds('');
+      setSellNote('');
+    } catch (err: any) {
+      alert(err?.message || 'Failed to process sale');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRecordDividend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseFloat(divAmount);
+    if (isNaN(amt) || amt <= 0) {
+      alert('Please enter a valid dividend amount');
+      return;
+    }
+    const destAccId = divAccountId || (accounts.length > 0 ? accounts[0].id : '');
+    if (!destAccId) {
+      alert('Please select an account to receive dividend income');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await recordDividend(liveAsset.id, {
+        amount: amt,
+        accountId: destAccId,
+        date: divDate,
+        note: divNote.trim() || undefined,
+      });
+
+      setIsDividending(false);
+      setDivAmount('');
+      setDivNote('');
+    } catch (err: any) {
+      alert(err?.message || 'Failed to record dividend');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleDeleteTranche = async (trancheId: string, amt: number) => {
     if (window.confirm(`Delete this SIP installment of ${baseCurrency} ${amt}?`)) {
       await deleteAssetTranche(liveAsset.id, trancheId);
@@ -146,8 +231,8 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
       maxWidth="3xl"
     >
       <div className="space-y-5">
-        {/* Performance Header Banner — 4 Separate Responsive Cards with Zero Text Overlap */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {/* Performance Header Banner — 5 Separate Responsive Cards with Zero Text Overlap */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {/* Current Valuation Card */}
           <div className="p-4 rounded-2xl bg-moss border border-line shadow-xs min-w-0">
             <span className="text-[10.5px] text-ink/50 font-bold uppercase tracking-wider block truncate">
@@ -289,16 +374,289 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
               </Badge>
             </h4>
 
-            {!isAddingTranche && (
-              <button
-                onClick={() => setIsAddingTranche(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Lot</span>
-              </button>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              {!isAddingTranche && !isSelling && !isDividending && (
+                <>
+                  <button
+                    onClick={() => {
+                      setIsDividending(true);
+                      setIsAddingTranche(false);
+                      setIsSelling(false);
+                    }}
+                    className="px-3 py-1.5 rounded-xl border border-line bg-card hover:bg-moss text-xs font-semibold text-ink flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <Coins className="w-3.5 h-3.5 text-pine-600" />
+                    <span>Record Dividend</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsSelling(true);
+                      setIsAddingTranche(false);
+                      setIsDividending(false);
+                      if (liveAsset.currentUnitPrice) {
+                        setSellUnitPrice(String(liveAsset.currentUnitPrice));
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl border border-line bg-card hover:bg-moss text-xs font-semibold text-ink flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <TrendingDown className="w-3.5 h-3.5 text-flare-600" />
+                    <span>Sell / Redeem</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsAddingTranche(true);
+                      setIsSelling(false);
+                      setIsDividending(false);
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Lot</span>
+                  </button>
+                </>
+              )}
+            </div>
           </div>
+
+          {/* Record Dividend Form */}
+          {isDividending && (
+            <form
+              onSubmit={handleRecordDividend}
+              className="p-4 sm:p-5 rounded-2xl border border-pine-200 dark:border-pine-800 bg-pine-50/40 dark:bg-pine-950/20 space-y-3.5 shadow-xs"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-pine-800 dark:text-pine-200 flex items-center gap-1.5">
+                  <Coins className="w-3.5 h-3.5 text-pine-600" />
+                  <span>Record Dividend / Payout Inflow (Income Only)</span>
+                </span>
+                <span className="text-[11px] text-ink/45">
+                  Credits your chosen bank account without changing asset units
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                    Dividend Amount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="e.g. 1250"
+                    value={divAmount}
+                    onChange={(e) => setDivAmount(e.target.value)}
+                    className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-mono font-bold text-ink outline-none focus:border-pine-500"
+                    required
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                    Destination Bank / Account
+                  </label>
+                  <select
+                    value={divAccountId}
+                    onChange={(e) => setDivAccountId(e.target.value)}
+                    className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-pine-500 cursor-pointer"
+                    required
+                  >
+                    {accounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name} ({acc.currency} {acc.balance.toFixed(2)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                    Date Received
+                  </label>
+                  <input
+                    type="date"
+                    value={divDate}
+                    onChange={(e) => setDivDate(e.target.value)}
+                    className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-mono text-ink outline-none focus:border-pine-500 cursor-pointer"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+                <input
+                  type="text"
+                  placeholder="Note (e.g. Q3 Interim Dividend, Annual Cash Yield...)"
+                  value={divNote}
+                  onChange={(e) => setDivNote(e.target.value)}
+                  className="w-full sm:flex-1 px-3.5 py-2 text-xs rounded-xl border border-line bg-card text-ink placeholder:text-ink/35 focus:outline-none focus:border-pine-600"
+                />
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsDividending(false)}
+                    className="px-3.5 py-2 rounded-xl border border-line bg-card hover:bg-moss text-xs font-semibold text-ink cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || !divAmount}
+                    className="px-4 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-95 text-white text-xs font-bold shadow-xs cursor-pointer disabled:opacity-40 transition-all flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{isSubmitting ? 'Recording…' : 'Save Dividend Inflow'}</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
+
+          {/* Sell / Redeem Units Form */}
+          {isSelling && (
+            <form
+              onSubmit={handleSellUnits}
+              className="p-4 sm:p-5 rounded-2xl border border-flare-200 dark:border-flare-800 bg-flare-50/40 dark:bg-flare-950/20 space-y-3.5 shadow-xs"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-flare-800 dark:text-flare-200 flex items-center gap-1.5">
+                  <TrendingDown className="w-3.5 h-3.5 text-flare-600" />
+                  <span>Sell Asset / Redeem Holdings</span>
+                </span>
+                <span className="text-[11px] text-ink/45">
+                  Reduces units & cost basis, credits bank account, and books realized capital gain
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                    Units to Sell
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder={`Max: ${totalUnits > 0 ? totalUnits.toFixed(3) : 'Any'}`}
+                    value={sellUnits}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSellUnits(val);
+                      const u = parseFloat(val);
+                      const p = parseFloat(sellUnitPrice);
+                      if (!isNaN(u) && !isNaN(p) && u > 0 && p > 0) {
+                        setSellTotalProceeds((u * p).toFixed(2));
+                      }
+                    }}
+                    className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-mono font-bold text-ink outline-none focus:border-flare-500"
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                    Sale Price / NAV (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="e.g. 155.20"
+                    value={sellUnitPrice}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSellUnitPrice(val);
+                      const p = parseFloat(val);
+                      const u = parseFloat(sellUnits);
+                      if (!isNaN(u) && !isNaN(p) && u > 0 && p > 0) {
+                        setSellTotalProceeds((u * p).toFixed(2));
+                      }
+                    }}
+                    className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-mono text-ink outline-none focus:border-flare-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                    Total Proceeds (₹)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="e.g. 25000"
+                    value={sellTotalProceeds}
+                    onChange={(e) => setSellTotalProceeds(e.target.value)}
+                    className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-mono font-bold text-ink outline-none focus:border-flare-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                    Credit to Account
+                  </label>
+                  <select
+                    value={sellAccountId}
+                    onChange={(e) => setSellAccountId(e.target.value)}
+                    className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-flare-500 cursor-pointer"
+                    required
+                  >
+                    {accounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name} ({acc.currency} {acc.balance.toFixed(2)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Real-time Profit / Loss calculation banner */}
+              {(() => {
+                const proceeds = parseFloat(sellTotalProceeds) || 0;
+                const soldU = parseFloat(sellUnits) || 0;
+                if (proceeds > 0) {
+                  const costBasis = totalUnits > 0 ? (soldU / totalUnits) * totalInvested : proceeds;
+                  const gain = proceeds - costBasis;
+                  return (
+                    <div className="p-2.5 rounded-xl bg-card border border-line flex items-center justify-between text-xs">
+                      <span className="text-ink/60">Estimated Cost Basis: <b>₹{costBasis.toFixed(2)}</b></span>
+                      <span className={`font-mono font-bold ${gain >= 0 ? 'text-pine-600' : 'text-flare-600'}`}>
+                        {gain >= 0 ? 'Realized Profit: +' : 'Realized Loss: '}₹{Math.abs(gain).toFixed(2)}
+                      </span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+                <input
+                  type="text"
+                  placeholder="Note (e.g. Booking profits, emergency redemption...)"
+                  value={sellNote}
+                  onChange={(e) => setSellNote(e.target.value)}
+                  className="w-full sm:flex-1 px-3.5 py-2 text-xs rounded-xl border border-line bg-card text-ink placeholder:text-ink/35 focus:outline-none focus:border-flare-600"
+                />
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsSelling(false)}
+                    className="px-3.5 py-2 rounded-xl border border-line bg-card hover:bg-moss text-xs font-semibold text-ink cursor-pointer transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || !sellTotalProceeds}
+                    className="px-4 py-2 rounded-xl bg-flare-700 hover:bg-flare-600 active:scale-95 text-white text-xs font-bold shadow-xs cursor-pointer disabled:opacity-40 transition-all flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{isSubmitting ? 'Processing…' : 'Confirm Sale'}</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
 
           {/* Add Tranche Form */}
           {isAddingTranche && (

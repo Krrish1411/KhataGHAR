@@ -28,6 +28,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       ? String(accountToEdit.type === 'credit_card' ? Math.abs(accountToEdit.balance) : accountToEdit.balance)
       : '0'
   );
+  const [balanceAsOfDate, setBalanceAsOfDate] = useState(
+    accountToEdit?.balanceAsOfDate || new Date().toISOString().split('T')[0]
+  );
   const [tag, setTag] = useState<AccountTag>(accountToEdit?.tag || 'personal');
   const [isVisibleOnDashboard, setIsVisibleOnDashboard] = useState(accountToEdit?.isVisibleOnDashboard ?? true);
   const [institutionName, setInstitutionName] = useState(accountToEdit?.institutionName || '');
@@ -65,6 +68,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           currency,
           balance: finalBalance,
           initialBalance: accountToEdit.initialBalance !== undefined ? accountToEdit.initialBalance : finalBalance,
+          balanceAsOfDate: balanceAsOfDate || undefined,
           tag,
           isVisibleOnDashboard,
           institutionName: institutionName.trim() || undefined,
@@ -78,6 +82,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           currency,
           balance: finalBalance,
           initialBalance: finalBalance,
+          balanceAsOfDate: balanceAsOfDate || undefined,
           tag,
           isVisibleOnDashboard,
           institutionName: institutionName.trim() || undefined,
@@ -99,27 +104,32 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       onClose={onClose}
       title={
         <div className="flex items-center gap-2">
-          <Landmark className="w-5 h-5 text-brand-500" />
-          <span>{accountToEdit ? 'Edit Account' : 'Add New Account'}</span>
+          <div className="w-8 h-8 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 grid place-items-center text-pine-600">
+            {type === 'bank' ? <Landmark className="w-4 h-4" /> : <Wallet className="w-4 h-4" />}
+          </div>
+          <span>{accountToEdit ? 'Edit Account Enclave' : 'Create New Account'}</span>
         </div>
       }
-      description="Track bank balances, cash, digital wallets, and credit cards"
-      maxWidth="md"
+      description={
+        accountToEdit
+          ? 'Update account details and baseline ledger parameters.'
+          : 'Add a new bank, wallet, cash reserve, or credit card to your encrypted ledger.'
+      }
+      maxWidth="lg"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
-          <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 text-xs rounded-xl">
+          <div className="p-3 bg-flare-50 dark:bg-flare-950/30 text-flare-700 dark:text-flare-300 rounded-xl text-xs border border-flare-200 dark:border-flare-800/40">
             {error}
           </div>
         )}
 
         <Input
           label="Account Name"
-          placeholder="e.g. HDFC Salary, Emergency Cash, SBI Savings"
+          placeholder="e.g. HDFC Salary, Emergency Cash, ICICI Amazon Pay Card"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-          autoFocus
         />
 
         <div className="grid grid-cols-2 gap-3">
@@ -153,17 +163,27 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           />
         </div>
 
-        <Input
-          type="number"
-          step="any"
-          label={type === 'credit_card' ? 'Current Outstanding Balance (Amount you owe)' : 'Current Balance'}
-          helperText={type === 'credit_card' ? 'Enter current debt as a positive amount. It will be tracked as an outstanding credit card liability.' : undefined}
-          placeholder="0.00"
-          value={balance}
-          onChange={(e) => setBalance(e.target.value)}
-          tabularNums
-          required
-        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Input
+            type="number"
+            step="any"
+            label={type === 'credit_card' ? 'Current Debt (Owed)' : 'Baseline / Current Balance'}
+            helperText={type === 'credit_card' ? 'Tracked as outstanding liability' : undefined}
+            placeholder="0.00"
+            value={balance}
+            onChange={(e) => setBalance(e.target.value)}
+            tabularNums
+            required
+          />
+
+          <Input
+            type="date"
+            label="Balance As Of Date"
+            helperText="Txns on or before this date won't alter this baseline"
+            value={balanceAsOfDate}
+            onChange={(e) => setBalanceAsOfDate(e.target.value)}
+          />
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <Input

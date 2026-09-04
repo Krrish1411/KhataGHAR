@@ -42,6 +42,7 @@ export interface Account {
   currency: CurrencyCode;
   balance: number;
   initialBalance?: number;
+  balanceAsOfDate?: string; // YYYY-MM-DD baseline date
   isVisibleOnDashboard: boolean;
   tag: AccountTag;
   institutionName?: string;
@@ -53,6 +54,15 @@ export interface Account {
 
 export type TransactionType = 'expense' | 'income' | 'transfer';
 export type RecurringFrequency = 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+
+export interface TransactionSplit {
+  id: string;
+  amount: number;
+  categoryId?: string;
+  linkedAssetId?: string;
+  linkedLiabilityId?: string;
+  note?: string;
+}
 
 export interface Transaction {
   id: string;
@@ -77,6 +87,12 @@ export interface Transaction {
   linkedLiabilityId?: string;
   trancheId?: string;
   subType?: 'investment' | 'debt_payment' | 'regular';
+  // Split Transaction Support
+  splits?: TransactionSplit[];
+  // Import Batch Rollback Tag
+  importBatchId?: string;
+  // Asset Realized Capital Gain/Loss
+  realizedGain?: number;
   updatedAt: string;
 }
 
@@ -194,6 +210,8 @@ export interface AssetTranche {
   unitPrice?: number; // NAV or price per unit at purchase
   transactionId?: string; // Linked bank ledger transaction ID
   note?: string;
+  type?: 'buy' | 'sell';
+  realizedGain?: number;
 }
 
 export interface Asset {
@@ -218,6 +236,7 @@ export interface Asset {
   isSip?: boolean;
   sipMonthlyAmount?: number;
   sipDayOfMonth?: number;
+  totalDividends?: number;
   updatedAt: string;
 }
 
@@ -238,13 +257,18 @@ export interface Liability {
   lender: string;
   principalAmount: number;
   outstandingBalance: number;
-  interestRate: number; // Annual %
+  interestRate: number; // Annual % (Effective APR)
   emiAmount: number;
   nextDueDate?: string; // YYYY-MM-DD
   tenureRemainingMonths?: number;
   currency: CurrencyCode;
   notes?: string;
   documentIds?: string[];
+  // Floating Rate Support
+  interestType?: 'fixed' | 'floating';
+  benchmarkName?: string; // e.g. 'RBI Repo Rate'
+  benchmarkRate?: number; // e.g. 6.50
+  spread?: number; // e.g. 2.05
   updatedAt: string;
 }
 

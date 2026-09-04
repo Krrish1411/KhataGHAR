@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../common/Modal';
 import { useVault } from '../../context/VaultContext';
 import { formatDateISO } from '../../utils/dates';
-import type { TransactionType, RecurringFrequency } from '../../types';
+import type { TransactionType, RecurringFrequency, TransactionSplit } from '../../types';
 import {
+  Users,
   ArrowDownLeft,
   ArrowUpRight,
   ArrowLeftRight,
@@ -15,9 +16,12 @@ import {
   Calendar,
   Wallet,
   Sparkles,
+  Split,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
-export type TransactionEntryMode = 'expense' | 'income' | 'transfer' | 'invest' | 'debt_payment';
+export type TransactionEntryMode = 'expense' | 'income' | 'transfer' | 'invest' | 'debt_payment' | 'people';
 
 interface QuickAddModalProps {
   isOpen: boolean;
@@ -30,7 +34,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   onClose,
   initialType = 'expense',
 }) => {
-  const { activeVault, accounts, categories, assets, liabilities, addTransaction } = useVault();
+  const { activeVault, accounts, categories, assets, liabilities, addTransaction, addPeopleEntry, peopleLedger } = useVault();
 
   const [entryMode, setEntryMode] = useState<TransactionEntryMode>(initialType);
   const [amount, setAmount] = useState('');
@@ -39,6 +43,9 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   const [categoryId, setCategoryId] = useState<string>('');
   const [selectedAssetId, setSelectedAssetId] = useState('');
   const [selectedLiabilityId, setSelectedLiabilityId] = useState('');
+  const [peopleType, setPeopleType] = useState<'lent' | 'borrowed' | 'holding'>('lent');
+  const [contactName, setContactName] = useState('');
+  const [dueDate, setDueDate] = useState('');
   const [units, setUnits] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
   const [date, setDate] = useState(formatDateISO(new Date()));
@@ -48,6 +55,19 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('monthly');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Split Transaction State
+  const [isSplitMode, setIsSplitMode] = useState(false);
+  const [splits, setSplits] = useState<
+    Array<{
+      id: string;
+      amount: string;
+      categoryId: string;
+      note: string;
+      linkedLiabilityId?: string;
+      linkedAssetId?: string;
+    }>
+  >([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -60,6 +80,11 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
     setError('');
     setUnits('');
     setUnitPrice('');
+    setContactName('');
+    setDueDate('');
+    setPeopleType('lent');
+    setIsSplitMode(false);
+    setSplits([]);
 
     if (accounts.length > 0) {
       setAccountId(accounts[0].id);
@@ -115,6 +140,66 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       ? parsedNum.toLocaleString('en-IN', { maximumFractionDigits: 2 })
       : null;
 
+  // Toggle Split Transaction Mode
+  const handleToggleSplit = () => {
+    if (!isSplitMode) {
+      const numTotal = parseSmartAmount(amount);
+      const half = !isNaN(numTotal) && numTotal > 0 ? (numTotal / 2).toFixed(2) : '';
+      const rem = !isNaN(numTotal) && numTotal > 0 ? (numTotal - parseFloat(half)).toFixed(2) : '';
+      setIsSplitMode(true);
+      setSplits([
+        {
+          id: 'sp_1',
+          amount: half,
+          categoryId: categoryId || (cats[0]?.id || ''),
+          note: 'Portion 1',
+        },
+        {
+          id: 'sp_2',
+          amount: rem,
+          categoryId: cats[1]?.id || (cats[0]?.id || ''),
+          note: 'Portion 2',
+        },
+      ]);
+    } else {
+      setIsSplitMode(false);
+    }
+  };
+
+  const handleAddSplitRow = () => {
+    const numTotal = parseSmartAmount(amount) || 0;
+    const currentSum = splits.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+    const rem = Math.max(0, Math.round((numTotal - currentSum) * 100) / 100);
+
+    setSplits((prev) => [
+      ...prev,
+      {
+        id: `sp_${Date.now()}`,
+        amount: rem > 0 ? String(rem) : '',
+        categoryId: cats[0]?.id || '',
+        note: `Split #${prev.length + 1}`,
+      },
+    ]);
+  };
+
+  const handleRemoveSplitRow = (id: string) => {
+    if (splits.length <= 2) {
+      alert('A split transaction requires at least 2 portions.');
+      return;
+    }
+    setSplits((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleUpdateSplit = (
+    id: string,
+    field: 'amount' | 'categoryId' | 'note' | 'linkedLiabilityId' | 'linkedAssetId',
+    val: string
+  ) => {
+    setSplits((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, [field]: val } : s))
+    );
+  };
+
   const handleQuickAddAmount = (addVal: number) => {
     const current = parseSmartAmount(amount);
     const nextVal = isNaN(current) || current <= 0 ? addVal : current + addVal;
@@ -134,6 +219,33 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       return;
     }
 
+    if (entryMode === 'people') {
+      if (!contactName.trim()) {
+        setError('Please enter contact / person name');
+        return;
+      }
+      setIsSubmitting(true);
+      setError('');
+      try {
+        await addPeopleEntry({
+          contactName: contactName.trim(),
+          type: peopleType,
+          amount: numAmount,
+          currency: activeVault?.currency || 'INR',
+          date,
+          accountId: accountId || undefined,
+          dueDate: dueDate || undefined,
+          notes: note.trim() || undefined,
+        });
+        onClose();
+        return;
+      } catch (err: any) {
+        setError(err?.message || 'Failed to record people entry');
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     if (entryMode === 'transfer' && (!toAccountId || toAccountId === accountId)) {
       setError('Please select a different destination account');
       return;
@@ -147,6 +259,23 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
     if (entryMode === 'debt_payment' && !selectedLiabilityId) {
       setError('Please select a loan/liability to pay down');
       return;
+    }
+
+    let parsedSplitsList: TransactionSplit[] | undefined = undefined;
+    if (isSplitMode) {
+      const splitSum = splits.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+      if (Math.abs(splitSum - numAmount) > 0.05) {
+        setError(`Split items sum (₹${splitSum.toLocaleString('en-IN')}) must equal the total amount (₹${numAmount.toLocaleString('en-IN')}). Difference: ₹${(numAmount - splitSum).toFixed(2)}`);
+        return;
+      }
+      parsedSplitsList = splits.map((s) => ({
+        id: s.id,
+        amount: Math.round((parseFloat(s.amount) || 0) * 100) / 100,
+        categoryId: s.categoryId || undefined,
+        linkedAssetId: s.linkedAssetId || undefined,
+        linkedLiabilityId: s.linkedLiabilityId || undefined,
+        note: s.note.trim() || undefined,
+      }));
     }
 
     setIsSubmitting(true);
@@ -190,6 +319,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
             : entryMode === 'debt_payment'
             ? 'debt_payment'
             : 'regular',
+        ...(parsedSplitsList && parsedSplitsList.length > 0 ? { splits: parsedSplitsList } : {}),
         ...(parsedUnits ? { units: parsedUnits } : {}),
         ...(parsedUnitPrice ? { unitPrice: parsedUnitPrice } : {}),
       } as any);
@@ -246,6 +376,14 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       btnBg: 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/20',
       btnText: 'Record Loan Payment',
     },
+    people: {
+      title: 'People Ledger (Udhar / Holding)',
+      desc: 'Track lent loans, borrowed funds, or custodial holdings',
+      icon: <Users className="w-4 h-4 text-violet-600" />,
+      activeTab: 'bg-violet-600 text-white shadow-sm shadow-violet-900/20',
+      btnBg: 'bg-violet-600 hover:bg-violet-500 shadow-violet-900/20',
+      btnText: 'Save People Entry',
+    },
   }[entryMode];
 
   return (
@@ -277,13 +415,14 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
         )}
 
         {/* 1. Mode Tabs */}
-        <div className="grid grid-cols-5 gap-1 p-1 bg-moss rounded-2xl border border-line">
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 p-1 bg-moss rounded-2xl border border-line">
           {[
             { id: 'expense', label: 'Spend', icon: <ArrowUpRight className="w-3.5 h-3.5" /> },
             { id: 'income', label: 'Income', icon: <ArrowDownLeft className="w-3.5 h-3.5" /> },
             { id: 'transfer', label: 'Transfer', icon: <ArrowLeftRight className="w-3.5 h-3.5" /> },
             { id: 'invest', label: 'Invest', icon: <TrendingUp className="w-3.5 h-3.5" /> },
             { id: 'debt_payment', label: 'Debt', icon: <Landmark className="w-3.5 h-3.5" /> },
+            { id: 'people', label: 'People', icon: <Users className="w-3.5 h-3.5" /> },
           ].map((tab) => {
             const isActive = entryMode === tab.id;
             return (
@@ -479,28 +618,156 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
             )}
           </div>
         ) : (
-          /* Category Selector for regular Expense / Income - naturally wrapping without vertical clipping */
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1.5">
-              Category
-            </label>
-            <div className="flex flex-wrap gap-2 py-1">
-              {cats.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setCategoryId(categoryId === c.id ? '' : c.id)}
-                  className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 cursor-pointer ${
-                    categoryId === c.id
-                      ? 'bg-pine-700 border-pine-700 text-white shadow-xs'
-                      : 'bg-card border-line text-ink/70 hover:border-pine-300 hover:text-ink hover:bg-moss'
-                  }`}
-                >
-                  {categoryId === c.id && <Check className="w-3 h-3" />}
-                  <span>{c.name}</span>
-                </button>
-              ))}
+          /* Category / Split Selector */
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50">
+                {isSplitMode ? 'Split Allocations' : 'Category'}
+              </label>
+
+              {/* Split Toggle */}
+              <button
+                type="button"
+                onClick={handleToggleSplit}
+                className={`text-[11.5px] font-semibold flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-all cursor-pointer ${
+                  isSplitMode
+                    ? 'bg-pine-100 dark:bg-pine-950/60 border-pine-300 dark:border-pine-800 text-pine-800 dark:text-pine-300'
+                    : 'bg-card border-line text-ink/60 hover:text-ink hover:bg-moss'
+                }`}
+              >
+                <Split className="w-3.5 h-3.5 text-pine-600" />
+                <span>{isSplitMode ? 'Cancel Split' : 'Split Transaction'}</span>
+              </button>
             </div>
+
+            {isSplitMode ? (
+              /* Split Rows Builder */
+              <div className="p-3.5 rounded-2xl bg-moss/60 border border-line space-y-3">
+                <div className="flex items-center justify-between text-xs pb-1 border-b border-line">
+                  <span className="font-semibold text-ink/70">
+                    Total: <b className="text-ink">₹{parseSmartAmount(amount) || 0}</b>
+                  </span>
+                  {(() => {
+                    const totalNum = parseSmartAmount(amount) || 0;
+                    const sum = splits.reduce((acc, s) => acc + (parseFloat(s.amount) || 0), 0);
+                    const diff = Math.round((totalNum - sum) * 100) / 100;
+                    return (
+                      <span className={`font-mono font-bold ${Math.abs(diff) < 0.01 ? 'text-pine-600' : 'text-flare-600'}`}>
+                        {Math.abs(diff) < 0.01 ? '✓ Balanced' : `Remaining: ₹${diff}`}
+                      </span>
+                    );
+                  })()}
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                  {splits.map((s, idx) => (
+                    <div key={s.id} className="p-2.5 rounded-xl bg-card border border-line flex flex-col sm:flex-row gap-2 items-center">
+                      <div className="w-full sm:w-28 shrink-0">
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder="Amount"
+                          value={s.amount}
+                          onChange={(e) => handleUpdateSplit(s.id, 'amount', e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-line bg-card text-xs font-mono font-bold text-ink outline-none focus:border-pine-500"
+                        />
+                      </div>
+
+                      <div className="w-full sm:w-44 shrink-0">
+                        <select
+                          value={s.categoryId}
+                          onChange={(e) => handleUpdateSplit(s.id, 'categoryId', e.target.value)}
+                          className="w-full px-2 py-1.5 rounded-lg border border-line bg-card text-xs font-medium text-ink outline-none focus:border-pine-500"
+                        >
+                          <option value="" disabled>Select Category...</option>
+                          {cats.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="w-full flex-1">
+                        <input
+                          type="text"
+                          placeholder="Note / Line Item"
+                          value={s.note}
+                          onChange={(e) => handleUpdateSplit(s.id, 'note', e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-line bg-card text-xs text-ink outline-none focus:border-pine-500"
+                        />
+                      </div>
+
+                      {splits.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSplitRow(s.id)}
+                          className="p-1 rounded-lg text-ink/40 hover:text-flare-600 hover:bg-flare-50 transition-colors shrink-0 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-between items-center pt-1">
+                  <button
+                    type="button"
+                    onClick={handleAddSplitRow}
+                    className="text-xs font-bold text-pine-700 dark:text-pine-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Another Line Item</span>
+                  </button>
+
+                  {(() => {
+                    const totalNum = parseSmartAmount(amount) || 0;
+                    const sum = splits.reduce((acc, s) => acc + (parseFloat(s.amount) || 0), 0);
+                    const diff = Math.round((totalNum - sum) * 100) / 100;
+                    if (diff > 0.01) {
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSplits((prev) => {
+                              const last = prev[prev.length - 1];
+                              const newLastAmt = ((parseFloat(last.amount) || 0) + diff).toFixed(2);
+                              return prev.map((item, i) =>
+                                i === prev.length - 1 ? { ...item, amount: newLastAmt } : item
+                              );
+                            });
+                          }}
+                          className="text-[11px] font-semibold text-ink/60 hover:text-pine-600 underline cursor-pointer"
+                        >
+                          Auto-fill remaining (₹{diff})
+                        </button>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+              </div>
+            ) : (
+              /* Regular Category Buttons */
+              <div className="flex flex-wrap gap-2 py-1">
+                {cats.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCategoryId(categoryId === c.id ? '' : c.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 cursor-pointer ${
+                      categoryId === c.id
+                        ? 'bg-pine-700 border-pine-700 text-white shadow-xs'
+                        : 'bg-card border-line text-ink/70 hover:border-pine-300 hover:text-ink hover:bg-moss'
+                    }`}
+                  >
+                    {categoryId === c.id && <Check className="w-3 h-3" />}
+                    <span>{c.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

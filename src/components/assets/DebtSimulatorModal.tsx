@@ -36,13 +36,18 @@ export const DebtSimulatorModal: React.FC<DebtSimulatorModalProps> = ({
   numberFormat,
 }) => {
   const [strategy, setStrategy] = useState<'avalanche' | 'snowball'>('avalanche');
+  const [selectedLoanScope, setSelectedLoanScope] = useState<string>('all');
+  const [customBal, setCustomBal] = useState<number>(1000000);
+  const [customRate, setCustomRate] = useState<number>(9.0);
+  const [customEmi, setCustomEmi] = useState<number>(12670);
+  const [customTenure, setCustomTenure] = useState<number>(120);
   const [extraMonthly, setExtraMonthly] = useState<number>(5000);
   const [annualBonus, setAnnualBonus] = useState<number>(0);
-  const [investmentCagr, setInvestmentCagr] = useState<number>(12); // 12% equity index CAGR
-  const [inflationRate, setInflationRate] = useState<number>(6); // 6% India CPI
+  const [investmentCagr, setInvestmentCagr] = useState<number>(12); // 0-25% equity index CAGR
+  const [inflationRate, setInflationRate] = useState<number>(6); // 0-15% India CPI
 
   // Fallback demo loans if user has 0 loans recorded
-  const activeDebts: Liability[] = useMemo(() => {
+  const allAvailableDebts: Liability[] = useMemo(() => {
     if (liabilities.length > 0) return liabilities.filter((l) => l.outstandingBalance > 0);
     return [
       {
@@ -89,6 +94,33 @@ export const DebtSimulatorModal: React.FC<DebtSimulatorModalProps> = ({
       },
     ];
   }, [liabilities]);
+
+  // Selected Scope Debts
+  const activeDebts: Liability[] = useMemo(() => {
+    if (selectedLoanScope === 'custom') {
+      return [
+        {
+          id: 'custom-loan',
+          vaultId: 'sim',
+          name: 'Custom Loan Scenario',
+          type: 'other',
+          lender: 'Custom Simulator',
+          principalAmount: customBal,
+          outstandingBalance: customBal,
+          interestRate: customRate,
+          tenureRemainingMonths: customTenure,
+          emiAmount: customEmi,
+          currency: baseCurrency,
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+    }
+    if (selectedLoanScope !== 'all') {
+      const found = allAvailableDebts.find((d) => d.id === selectedLoanScope);
+      if (found) return [found];
+    }
+    return allAvailableDebts;
+  }, [selectedLoanScope, allAvailableDebts, customBal, customRate, customTenure, customEmi, baseCurrency]);
 
   // Current Total Baseline
   const baselineStats = useMemo(() => {
@@ -305,14 +337,18 @@ export const DebtSimulatorModal: React.FC<DebtSimulatorModalProps> = ({
               </div>
               <input
                 type="range"
-                min={8}
-                max={16}
+                min={0}
+                max={25}
                 step={0.5}
                 value={investmentCagr}
                 onChange={(e) => setInvestmentCagr(Number(e.target.value))}
                 className="w-full accent-pine-600 cursor-pointer"
               />
-              <span className="text-[10.5px] text-ink/50 block mt-0.5">Assumed Nifty 50 / Index Fund return rate</span>
+              <div className="flex justify-between text-[10.5px] text-ink/50 mt-0.5">
+                <span>0% (Zero Opportunity Cost)</span>
+                <span>{investmentCagr === 0 ? '✓ Pure Debt Mode' : 'Assumed equity index CAGR'}</span>
+                <span>25%</span>
+              </div>
             </div>
 
             <div>
@@ -322,16 +358,33 @@ export const DebtSimulatorModal: React.FC<DebtSimulatorModalProps> = ({
               </div>
               <input
                 type="range"
-                min={4}
-                max={9}
+                min={0}
+                max={15}
                 step={0.5}
                 value={inflationRate}
                 onChange={(e) => setInflationRate(Number(e.target.value))}
                 className="w-full accent-flare-600 cursor-pointer"
               />
-              <span className="text-[10.5px] text-ink/50 block mt-0.5">Erodes future purchasing power of fixed EMIs</span>
+              <div className="flex justify-between text-[10.5px] text-ink/50 mt-0.5">
+                <span>0% (Zero Inflation)</span>
+                <span>{inflationRate === 0 ? '✓ Absolute nominal' : 'Erodes purchasing power'}</span>
+                <span>15%</span>
+              </div>
             </div>
           </div>
+
+          {(investmentCagr === 0 || inflationRate === 0) && (
+            <div className="p-2.5 rounded-xl bg-pine-100/60 dark:bg-pine-950/40 border border-pine-200 dark:border-pine-800 text-xs text-pine-900 dark:text-pine-200 flex items-center gap-2">
+              <Zap className="w-3.5 h-3.5 text-pine-600 shrink-0" />
+              <span>
+                {investmentCagr === 0 && inflationRate === 0
+                  ? 'Pure Debt Paydown Mode: 100% focused on guaranteed interest savings and accelerated freedom with zero equity risk or inflation erosion.'
+                  : investmentCagr === 0
+                  ? 'Zero Opportunity Cost Mode: Eliminates equity market comparison to evaluate pure loan interest savings.'
+                  : 'Zero Inflation Mode: Evaluates fixed EMI payments in constant nominal currency.'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Payoff Acceleration Summary Card */}

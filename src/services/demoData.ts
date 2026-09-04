@@ -286,6 +286,47 @@ export function generateDemoDataset(vaultId: string, baseCurrency: CurrencyCode 
         })
       );
     }
+
+    // Split Loan EMI Transaction (Principal + Interest Split)
+    if (!isCur || maxDay >= 5) {
+      transactions.push(
+        mkTx({
+          accountId: accHdfc.id,
+          amount: 39150,
+          type: 'expense',
+          date: d(5),
+          note: 'HDFC Home Loan Monthly EMI Auto-Debit',
+          splits: [
+            {
+              id: generateUUID(),
+              amount: 23500,
+              note: 'Principal Paydown',
+            },
+            {
+              id: generateUUID(),
+              amount: 15650,
+              categoryId: catUtilities.id,
+              note: 'Interest Charge (8.55% APR)',
+            },
+          ],
+        })
+      );
+    }
+
+    // Dividend Payout Inflow (Pure Income credited to Bank)
+    if (back === 1) {
+      transactions.push(
+        mkTx({
+          accountId: accHdfc.id,
+          amount: 3500,
+          type: 'income',
+          categoryId: catSalary.id,
+          date: d(18),
+          note: 'TCS Q3 Interim Dividend Payout (Zerodha Kite)',
+          tags: ['dividend', 'investment-income'],
+        })
+      );
+    }
   }
 
   // 4. People Ledger ("Not Your Money" / Custodial)
@@ -505,6 +546,34 @@ export function generateDemoDataset(vaultId: string, baseCurrency: CurrencyCode 
       currency: baseCurrency,
       purchaseDate: '2021-06-10',
       purchasePrice: 380000,
+      totalUnits: 7850.42,
+      currentUnitPrice: 75.15,
+      tranches: [
+        {
+          id: generateUUID(),
+          date: '2024-04-10',
+          amount: 50000,
+          units: 720.45,
+          unitPrice: 69.40,
+          note: 'Lump-sum market dip purchase',
+        },
+        {
+          id: generateUUID(),
+          date: '2024-10-10',
+          amount: 15000,
+          units: 205.18,
+          unitPrice: 73.10,
+          note: 'Monthly SIP Installment #12',
+        },
+        {
+          id: generateUUID(),
+          date: '2025-01-10',
+          amount: 15000,
+          units: 199.60,
+          unitPrice: 75.15,
+          note: 'Monthly SIP Installment #15',
+        },
+      ],
       valuationHistory: [
         { id: generateUUID(), date: '2021-06-10', value: 380000, note: 'Cost Basis' },
         { id: generateUUID(), date: '2025-08-15', value: 590000, note: 'CAMS Current NAV Valuation' },
@@ -521,6 +590,7 @@ export function generateDemoDataset(vaultId: string, baseCurrency: CurrencyCode 
       currency: baseCurrency,
       purchaseDate: '2020-04-10',
       purchasePrice: 550000,
+      totalDividends: 14500,
       valuationHistory: [
         { id: generateUUID(), date: '2020-04-10', value: 550000, note: 'Acquisition Basis' },
         { id: generateUUID(), date: '2025-08-20', value: 785000, note: 'Live CDSL holding valuation' },
@@ -663,7 +733,11 @@ export function generateDemoDataset(vaultId: string, baseCurrency: CurrencyCode 
       nextDueDate: addDays(5),
       tenureRemainingMonths: 156,
       currency: baseCurrency,
-      notes: 'Linked to Repo Benchmark. Floating rate. Part-prepayment allowed with 0 penalty.',
+      interestType: 'floating',
+      benchmarkName: 'RBI Repo Rate',
+      benchmarkRate: 6.50,
+      spread: 2.05,
+      notes: 'Linked to RBI Repo Benchmark Rate (6.50% + 2.05% Spread = 8.55% APR). Part-prepayment allowed with 0 penalty.',
       updatedAt: nowISO,
     },
     {

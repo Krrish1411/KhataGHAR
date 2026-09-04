@@ -17,7 +17,6 @@ import {
   Check,
   IndianRupee,
   HelpCircle,
-  Download,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -45,7 +44,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
   const [vaultDropdownOpen, setVaultDropdownOpen] = useState(false);
   const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
   const [isNewVaultModalOpen, setIsNewVaultModalOpen] = useState(false);
-  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-30 bg-moss/80 backdrop-blur-md border-b border-line px-4 sm:px-6 h-[60px] flex items-center transition-colors">
@@ -235,16 +233,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
             </button>
           )}
 
-          {/* Install Standalone Offline App */}
-          <button
-            onClick={() => setIsInstallModalOpen(true)}
-            title="Install Standalone Offline App (Android, iOS, Mac, Windows)"
-            className="p-2 rounded-xl bg-card border border-line text-ink/70 hover:text-pine-600 hover:border-pine-300 transition-colors cursor-pointer"
-            aria-label="Install Standalone Offline App"
-          >
-            <Download className="w-3.5 h-3.5 text-pine-600" />
-          </button>
-
           {/* Lock Session Button */}
           <button
             onClick={lockVault}
@@ -263,14 +251,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
           isOpen={isNewVaultModalOpen}
           onClose={() => setIsNewVaultModalOpen(false)}
           isInitialSetup={false}
-        />
-      )}
-
-      {/* PWA Install Modal */}
-      {isInstallModalOpen && (
-        <PWAInstallModal
-          isOpen={isInstallModalOpen}
-          onClose={() => setIsInstallModalOpen(false)}
         />
       )}
     </header>
