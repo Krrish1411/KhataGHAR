@@ -629,6 +629,17 @@ export const AssetsLiabilitiesView: React.FC = () => {
           asset={assets.find((a) => a.id === detailAsset.id) || detailAsset}
         />
       )}
+
+      {/* Amortization Schedule Modal */}
+      {selectedLoanForSchedule && (
+        <AmortizationScheduleModal
+          isOpen={Boolean(selectedLoanForSchedule)}
+          onClose={() => setSelectedLoanForSchedule(null)}
+          liability={selectedLoanForSchedule}
+          baseCurrency={baseCurrency}
+          numberFormat={numberFormat}
+        />
+      )}
     </div>
   );
 };

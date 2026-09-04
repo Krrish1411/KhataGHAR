@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
@@ -15,6 +15,7 @@ import {
   Landmark,
   Layers,
   ChevronDown,
+  RotateCcw,
 } from 'lucide-react';
 
 interface AmortizationScheduleModalProps {
@@ -46,9 +47,16 @@ export const AmortizationScheduleModal: React.FC<AmortizationScheduleModalProps>
   const [extraMonthly, setExtraMonthly] = useState<number>(0);
   const [lumpSumPrepayment, setLumpSumPrepayment] = useState<number>(0);
   const [viewMode, setViewMode] = useState<'monthly' | 'yearly'>('monthly');
+  const [simRate, setSimRate] = useState<number>(liability.interestRate || 8.5);
+
+  useEffect(() => {
+    setSimRate(liability.interestRate || 8.5);
+    setExtraMonthly(0);
+    setLumpSumPrepayment(0);
+  }, [liability.id, liability.interestRate]);
 
   const principal = liability.outstandingBalance > 0 ? liability.outstandingBalance : liability.principalAmount;
-  const apr = liability.interestRate || 8.5;
+  const apr = simRate;
   const monthlyRate = apr / 100 / 12;
 
   // Compute baseline tenure in months
@@ -56,17 +64,23 @@ export const AmortizationScheduleModal: React.FC<AmortizationScheduleModalProps>
     if (liability.tenureRemainingMonths && liability.tenureRemainingMonths > 0) {
       return liability.tenureRemainingMonths;
     }
-    if (liability.emiAmount && liability.emiAmount > principal * monthlyRate) {
+    const minInterestEmi = principal * monthlyRate;
+    if (liability.emiAmount && liability.emiAmount > minInterestEmi + 10) {
       // n = -log(1 - (P * r / EMI)) / log(1 + r)
       const n = -Math.log(1 - (principal * monthlyRate) / liability.emiAmount) / Math.log(1 + monthlyRate);
-      return Math.min(360, Math.max(1, Math.round(n)));
+      if (isFinite(n) && !isNaN(n) && n > 0) {
+        return Math.min(360, Math.max(1, Math.round(n)));
+      }
     }
     return 180; // 15 years default
-  }, [liability, principal, monthlyRate]);
+  }, [liability.tenureRemainingMonths, liability.emiAmount, principal, monthlyRate]);
 
   // Standard Reducing Balance EMI
   const standardEmi = useMemo(() => {
-    if (liability.emiAmount && liability.emiAmount > 0) return liability.emiAmount;
+    const minInterestEmi = principal * monthlyRate;
+    if (liability.emiAmount && liability.emiAmount > minInterestEmi) {
+      return liability.emiAmount;
+    }
     if (monthlyRate === 0) return principal / baselineMonths;
     return (principal * monthlyRate * Math.pow(1 + monthlyRate, baselineMonths)) / (Math.pow(1 + monthlyRate, baselineMonths) - 1);
   }, [liability.emiAmount, principal, monthlyRate, baselineMonths]);
@@ -259,6 +273,40 @@ export const AmortizationScheduleModal: React.FC<AmortizationScheduleModalProps>
             <span className="text-[10px] text-ink/40 block mt-0.5">
               Principal + Interest
             </span>
+          </div>
+        </div>
+
+        {/* Rate Adjustment / Sensitivity Testing */}
+        <div className="p-3 rounded-xl bg-card border border-line flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <Percent className="w-4 h-4 text-pine-600 shrink-0" />
+            <span className="font-semibold text-ink">
+              Simulated APR: <span className="font-mono font-bold text-pine-600">{simRate.toFixed(2)}% p.a.</span>
+            </span>
+            {simRate !== (liability.interestRate || 8.5) && (
+              <button
+                type="button"
+                onClick={() => setSimRate(liability.interestRate || 8.5)}
+                className="text-[10.5px] text-ink/50 hover:text-ink flex items-center gap-1 cursor-pointer underline ml-1"
+                title="Reset to actual loan interest rate"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Reset ({liability.interestRate || 8.5}%)
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-1 max-w-xs">
+            <span className="text-[10px] text-ink/40">4%</span>
+            <input
+              type="range"
+              min={4}
+              max={24}
+              step={0.1}
+              value={simRate}
+              onChange={(e) => setSimRate(Number(e.target.value))}
+              className="w-full accent-pine-600 cursor-pointer"
+            />
+            <span className="text-[10px] text-ink/40">24%</span>
           </div>
         </div>
 
