@@ -5,6 +5,7 @@ import { Button } from '../components/common/Button';
 import { Modal } from '../components/common/Modal';
 import { Select } from '../components/common/Select';
 import { Badge } from '../components/common/Badge';
+import { SearchableTargetPicker } from '../components/import/SearchableTargetPicker';
 import {
   parseCSV,
   guessColumnMappings,
@@ -176,6 +177,7 @@ export const ImportView: React.FC = () => {
       return {
         ...t,
         type: detectedType,
+        rawFlow: t.rawFlow || (detectedType === 'income' ? 'inflow' : 'outflow'),
         categoryId: catId,
         toAccountId: detectedToAccountId || defaultToAccount,
         linkedAssetId: detectedAssetId || (assets.length > 0 ? assets[0].id : undefined),
@@ -198,15 +200,41 @@ export const ImportView: React.FC = () => {
     setStagedTxs((prev) => prev.map((t) => ({ ...t, selected: selectAll })));
   };
 
+  // Toggle inflow/outflow manually for a transaction
+  const toggleStagedFlow = (id: string) => {
+    setStagedTxs((prev) =>
+      prev.map((t) => {
+        if (t.id !== id) return t;
+        const nextFlow: 'inflow' | 'outflow' = t.rawFlow === 'inflow' ? 'outflow' : 'inflow';
+        let nextType = t.type;
+        if (t.type === 'income' && nextFlow === 'outflow') nextType = 'expense';
+        else if (t.type === 'expense' && nextFlow === 'inflow') nextType = 'income';
+        else if (t.type === 'borrowed' && nextFlow === 'outflow') nextType = 'lent';
+        else if (t.type === 'lent' && nextFlow === 'inflow') nextType = 'borrowed';
+        return {
+          ...t,
+          rawFlow: nextFlow,
+          type: nextType,
+        };
+      })
+    );
+  };
+
   // Update staged transaction parameters
   const updateStagedType = (id: string, newType: StagedEntryType) => {
     setStagedTxs((prev) =>
       prev.map((t) => {
         if (t.id !== id) return t;
         const otherAccs = accounts.filter((a) => a.id !== selectedAccountId);
+        let nextFlow = t.rawFlow;
+        if (newType === 'income' || newType === 'borrowed') nextFlow = 'inflow';
+        else if (newType === 'expense' || newType === 'invest' || newType === 'debt_payment' || newType === 'lent') nextFlow = 'outflow';
+        // If transfer, keep previous nextFlow (so inflow stays incoming transfer, outflow stays outgoing transfer)
+
         return {
           ...t,
           type: newType,
+          rawFlow: nextFlow,
           toAccountId: newType === 'transfer' ? (t.toAccountId || (otherAccs.length > 0 ? otherAccs[0].id : undefined)) : undefined,
           linkedAssetId: newType === 'invest' ? (t.linkedAssetId || (assets.length > 0 ? assets[0].id : undefined)) : undefined,
           linkedLiabilityId: newType === 'debt_payment' ? (t.linkedLiabilityId || (liabilities.length > 0 ? liabilities[0].id : undefined)) : undefined,
@@ -248,9 +276,14 @@ export const ImportView: React.FC = () => {
     setStagedTxs((prev) =>
       prev.map((t) => {
         if (!t.selected) return t;
+        let nextFlow = t.rawFlow;
+        if (newType === 'income' || newType === 'borrowed') nextFlow = 'inflow';
+        else if (newType === 'expense' || newType === 'invest' || newType === 'debt_payment' || newType === 'lent') nextFlow = 'outflow';
+
         return {
           ...t,
           type: newType,
+          rawFlow: nextFlow,
           toAccountId: newType === 'transfer' ? (t.toAccountId || (otherAccs.length > 0 ? otherAccs[0].id : undefined)) : undefined,
           linkedAssetId: newType === 'invest' ? (t.linkedAssetId || (assets.length > 0 ? assets[0].id : undefined)) : undefined,
           linkedLiabilityId: newType === 'debt_payment' ? (t.linkedLiabilityId || (liabilities.length > 0 ? liabilities[0].id : undefined)) : undefined,
@@ -291,6 +324,7 @@ export const ImportView: React.FC = () => {
       id: `${splitTargetTx.id}_split1`,
       amount: num1,
       type: splitPart1Type,
+      rawFlow: splitTargetTx.rawFlow,
       categoryId: splitPart1CatId || undefined,
       description: `${splitTargetTx.description} (Part 1)`,
       selected: true,
@@ -301,6 +335,7 @@ export const ImportView: React.FC = () => {
       id: `${splitTargetTx.id}_split2`,
       amount: num2,
       type: splitPart2Type,
+      rawFlow: splitTargetTx.rawFlow,
       categoryId: splitPart2CatId || undefined,
       description: `${splitTargetTx.description} (Part 2)`,
       selected: true,
@@ -377,21 +412,30 @@ export const ImportView: React.FC = () => {
         await bulkAddTransactions(formatted);
       }
 
-      // 2. Self-Transfers
+      // 2. Self-Transfers (Bidirectional support)
       const transferTxs = toImport.filter((t) => t.type === 'transfer');
       for (const t of transferTxs) {
         const otherAccs = accounts.filter((a) => a.id !== selectedAccountId);
         const destination = t.toAccountId || (otherAccs.length > 0 ? otherAccs[0].id : undefined);
         if (destination) {
+          // If rawFlow === 'inflow', funds were received into selectedAccountId from destination (source = destination, target = selectedAccountId)
+          // If rawFlow === 'outflow', funds were sent from selectedAccountId to destination (source = selectedAccountId, target = destination)
+          const sourceAccount = t.rawFlow === 'inflow' ? destination : selectedAccountId;
+          const targetAccount = t.rawFlow === 'inflow' ? selectedAccountId : destination;
+
           await addTransaction({
-            accountId: selectedAccountId,
-            toAccountId: destination,
+            accountId: sourceAccount,
+            toAccountId: targetAccount,
             type: 'transfer',
             amount: t.amount,
             currency: t.currency || baseCurrency,
             date: t.date,
             note: t.description,
-            tags: ['statement-import', 'self-transfer'],
+            tags: [
+              'statement-import',
+              'self-transfer',
+              t.rawFlow === 'inflow' ? 'incoming-transfer' : 'outgoing-transfer',
+            ],
             isRecurring: false,
             importBatchId: batchId,
           });
@@ -850,26 +894,24 @@ export const ImportView: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
-                    {/* Batch Category */}
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-ink/60 font-semibold">Set Category:</span>
-                      <select
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            handleBatchSetCategory(e.target.value);
-                            e.target.value = '';
-                          }
-                        }}
-                        className="px-2 py-1 rounded-lg bg-card border border-line text-xs font-semibold text-ink shadow-xs outline-none focus:border-pine-500 cursor-pointer"
-                        defaultValue=""
-                      >
-                        <option value="" disabled>Choose Category...</option>
-                        {categories.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
+                    {/* Batch Category with Search */}
+                    <div className="flex items-center gap-1.5 min-w-[200px]">
+                      <span className="text-[11px] text-ink/60 font-semibold shrink-0">Set Category:</span>
+                      <SearchableTargetPicker
+                        type="expense"
+                        rawFlow="outflow"
+                        value=""
+                        onChange={(catId) => handleBatchSetCategory(catId)}
+                        categories={categories}
+                        accounts={accounts}
+                        currentAccountId={selectedAccountId}
+                        assets={assets}
+                        liabilities={liabilities}
+                        existingContacts={existingContacts}
+                        baseCurrency={baseCurrency}
+                        numberFormat={numberFormat}
+                        isPrivacyMode={isPrivacyMode}
+                      />
                     </div>
 
                     {/* Batch Type */}
@@ -942,9 +984,23 @@ export const ImportView: React.FC = () => {
                           {t.description}
                         </td>
                         <td className="py-2.5 px-3 text-right font-bold tabular-nums font-mono num whitespace-nowrap text-ink">
-                          <span className={t.type === 'income' ? 'text-pine-600' : 'text-flare-600'}>
-                            {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount, baseCurrency, numberFormat, isPrivacyMode)}
-                          </span>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span className={t.rawFlow === 'inflow' ? 'text-pine-600' : 'text-flare-600'}>
+                              {t.rawFlow === 'inflow' ? '+' : '-'}{formatCurrency(t.amount, baseCurrency, numberFormat, isPrivacyMode)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleStagedFlow(t.id)}
+                              className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase transition-all cursor-pointer ${
+                                t.rawFlow === 'inflow'
+                                  ? 'bg-pine-50 dark:bg-pine-950/60 text-pine-600 hover:bg-pine-100 dark:hover:bg-pine-900 border border-pine-200/60 dark:border-pine-800'
+                                  : 'bg-flare-50 dark:bg-flare-950/60 text-flare-600 hover:bg-flare-100 dark:hover:bg-flare-900 border border-flare-200/60 dark:border-flare-800'
+                              }`}
+                              title={`Currently: ${t.rawFlow === 'inflow' ? 'Inflow (Credit)' : 'Outflow (Debit)'}. Click to switch flow direction.`}
+                            >
+                              {t.rawFlow === 'inflow' ? 'In' : 'Out'}
+                            </button>
+                          </div>
                         </td>
                         <td className="py-2.5 px-3">
                           <select
@@ -954,7 +1010,9 @@ export const ImportView: React.FC = () => {
                           >
                             <option value="expense">🔴 Expense (Outflow)</option>
                             <option value="income">🟢 Income (Inflow)</option>
-                            <option value="transfer">🔄 Transfer (Self)</option>
+                            <option value="transfer">
+                              {t.rawFlow === 'inflow' ? '🔄 Transfer (Received From)' : '🔄 Transfer (Sent To)'}
+                            </option>
                             <option value="invest">📈 Invest in Asset / SIP</option>
                             <option value="debt_payment">🏛️ Loan EMI / Debt Paydown</option>
                             <option value="lent">🤝 Lent (Udhar Given)</option>
@@ -962,78 +1020,39 @@ export const ImportView: React.FC = () => {
                             <option value="holding">🛡️ Holding (Custodial)</option>
                           </select>
                         </td>
-                        <td className="py-2.5 px-3">
-                          {/* Contextual Selector based on Entry Type */}
-                          {t.type === 'transfer' ? (
-                            <select
-                              value={t.toAccountId || ''}
-                              onChange={(e) => updateStagedToAccount(t.id, e.target.value)}
-                              className="w-full px-2 py-1 rounded-lg bg-card border border-line text-xs text-ink font-medium shadow-xs outline-none focus:border-pine-500 cursor-pointer"
-                            >
-                              <option value="" disabled>Select Target Account...</option>
-                              {otherAccounts.map((acc) => (
-                                <option key={acc.id} value={acc.id}>
-                                  To: {acc.name} ({acc.currency})
-                                </option>
-                              ))}
-                            </select>
-                          ) : t.type === 'invest' ? (
-                            <select
-                              value={t.linkedAssetId || ''}
-                              onChange={(e) => updateStagedAsset(t.id, e.target.value)}
-                              className="w-full px-2 py-1 rounded-lg bg-card border border-line text-xs text-ink font-medium shadow-xs outline-none focus:border-pine-500 cursor-pointer"
-                            >
-                              {assets.length === 0 ? (
-                                <option value="" disabled>No assets found (Create in Assets)</option>
-                              ) : (
-                                assets.map((a) => (
-                                  <option key={a.id} value={a.id}>
-                                    Asset: {a.name} ({a.type})
-                                  </option>
-                                ))
-                              )}
-                            </select>
-                          ) : t.type === 'debt_payment' ? (
-                            <select
-                              value={t.linkedLiabilityId || ''}
-                              onChange={(e) => updateStagedLiability(t.id, e.target.value)}
-                              className="w-full px-2 py-1 rounded-lg bg-card border border-line text-xs text-ink font-medium shadow-xs outline-none focus:border-pine-500 cursor-pointer"
-                            >
-                              {liabilities.length === 0 ? (
-                                <option value="" disabled>No liabilities found (Create in Liabilities)</option>
-                              ) : (
-                                liabilities.map((l) => (
-                                  <option key={l.id} value={l.id}>
-                                    Loan: {l.name} (Bal: {formatCurrency(l.outstandingBalance, baseCurrency, numberFormat, isPrivacyMode)})
-                                  </option>
-                                ))
-                              )}
-                            </select>
-                          ) : ['lent', 'borrowed', 'holding'].includes(t.type) ? (
-                            <input
-                              type="text"
-                              list="existing-people-contacts"
-                              placeholder="Enter Person Name..."
-                              value={t.contactName || ''}
-                              onChange={(e) => updateStagedContact(t.id, e.target.value)}
-                              className="w-full px-2.5 py-1 rounded-lg bg-card border border-line text-xs text-ink font-medium shadow-xs outline-none focus:border-pine-500"
-                            />
-                          ) : (
-                            <select
-                              value={t.categoryId || ''}
-                              onChange={(e) => updateStagedCategory(t.id, e.target.value)}
-                              className="w-full px-2 py-1 rounded-lg bg-card border border-line text-xs text-ink font-medium shadow-xs outline-none focus:border-pine-500 cursor-pointer"
-                            >
-                              <option value="">Uncategorized</option>
-                              {categories
-                                .filter((c) => c.type === (t.type === 'income' ? 'income' : 'expense'))
-                                .map((c) => (
-                                  <option key={c.id} value={c.id}>
-                                    {c.name}
-                                  </option>
-                                ))}
-                            </select>
-                          )}
+                        <td className="py-2.5 px-3 min-w-[210px]">
+                          {/* Searchable Combobox Selector for Category / Destination / Person / Asset */}
+                          <SearchableTargetPicker
+                            type={t.type}
+                            rawFlow={t.rawFlow}
+                            value={
+                              t.type === 'transfer'
+                                ? (t.toAccountId || '')
+                                : t.type === 'invest'
+                                ? (t.linkedAssetId || '')
+                                : t.type === 'debt_payment'
+                                ? (t.linkedLiabilityId || '')
+                                : ['lent', 'borrowed', 'holding'].includes(t.type)
+                                ? (t.contactName || '')
+                                : (t.categoryId || '')
+                            }
+                            onChange={(newVal) => {
+                              if (t.type === 'transfer') updateStagedToAccount(t.id, newVal);
+                              else if (t.type === 'invest') updateStagedAsset(t.id, newVal);
+                              else if (t.type === 'debt_payment') updateStagedLiability(t.id, newVal);
+                              else if (['lent', 'borrowed', 'holding'].includes(t.type)) updateStagedContact(t.id, newVal);
+                              else updateStagedCategory(t.id, newVal);
+                            }}
+                            categories={categories}
+                            accounts={accounts}
+                            currentAccountId={selectedAccountId}
+                            assets={assets}
+                            liabilities={liabilities}
+                            existingContacts={existingContacts}
+                            baseCurrency={baseCurrency}
+                            numberFormat={numberFormat}
+                            isPrivacyMode={isPrivacyMode}
+                          />
                         </td>
                         <td className="py-2.5 px-3 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1.5">

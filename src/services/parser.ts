@@ -34,6 +34,7 @@ export interface StagedTransaction {
   description: string;
   amount: number;
   type: StagedEntryType;
+  rawFlow: 'inflow' | 'outflow'; // 'inflow' = credit/received into account, 'outflow' = debit/spent from account
   currency: CurrencyCode;
   categoryGuess?: string;
   categoryId?: string;
@@ -260,6 +261,7 @@ export function processStatementRows(
 
     let amount = 0;
     let type: StagedEntryType = 'expense';
+    let rawFlow: 'inflow' | 'outflow' = 'outflow';
 
     if (mapping.debitCol !== undefined && mapping.creditCol !== undefined) {
       const debitVal = parseCleanAmount(row[mapping.debitCol] || '');
@@ -268,17 +270,22 @@ export function processStatementRows(
       if (debitVal > 0) {
         amount = debitVal;
         type = 'expense';
+        rawFlow = 'outflow';
       } else if (creditVal > 0) {
         amount = creditVal;
         type = 'income';
+        rawFlow = 'inflow';
       }
     } else if (mapping.amountCol !== undefined) {
       const rawAmt = row[mapping.amountCol] || '';
       amount = parseCleanAmount(rawAmt);
-      if (rawAmt.includes('-') || (mapping.typeCol && (row[mapping.typeCol] || '').toLowerCase().includes('dr'))) {
+      const isDebit = rawAmt.includes('-') || (mapping.typeCol && (row[mapping.typeCol] || '').toLowerCase().includes('dr'));
+      if (isDebit) {
         type = 'expense';
-      } else if (mapping.typeCol && (row[mapping.typeCol] || '').toLowerCase().includes('cr')) {
+        rawFlow = 'outflow';
+      } else {
         type = 'income';
+        rawFlow = 'inflow';
       }
     }
 
@@ -306,6 +313,7 @@ export function processStatementRows(
       description,
       amount,
       type,
+      rawFlow,
       currency,
       categoryGuess: mapping.categoryCol ? row[mapping.categoryCol] : undefined,
       isDuplicate,
