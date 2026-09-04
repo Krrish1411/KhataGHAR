@@ -46,9 +46,10 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       return;
     }
 
-    const rawNum = parseFloat(balance);
+    const cleanBalance = (balance || '').trim();
+    const rawNum = cleanBalance === '' ? 0 : parseFloat(cleanBalance);
     if (isNaN(rawNum)) {
-      setError('Please provide a valid balance');
+      setError('Please provide a valid numeric balance or 0');
       return;
     }
 
@@ -173,7 +174,6 @@ export const AccountModal: React.FC<AccountModalProps> = ({
             value={balance}
             onChange={(e) => setBalance(e.target.value)}
             tabularNums
-            required
           />
 
           <Input

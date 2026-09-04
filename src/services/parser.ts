@@ -25,8 +25,11 @@ export type StagedEntryType =
   | 'invest'
   | 'debt_payment'
   | 'lent'
+  | 'lent_repaid'
   | 'borrowed'
-  | 'holding';
+  | 'borrowed_repaid'
+  | 'holding'
+  | 'holding_returned';
 
 export interface StagedTransaction {
   id: string;

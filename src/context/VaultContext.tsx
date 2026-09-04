@@ -320,11 +320,10 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Account Operations
   const addAccount = async (data: Omit<Account, 'id' | 'vaultId' | 'updatedAt'>): Promise<Account> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    if (activeVault.isDemo || activeVault.name.toLowerCase().includes('demo')) {
-      throw new Error('Demo Exploration Mode: Creating new accounts is disabled. In demo mode, you can inspect accounts and edit transactions!');
-    }
     const newAccount: Account = {
       ...data,
+      balance: typeof data.balance === 'number' && !isNaN(data.balance) ? data.balance : 0,
+      initialBalance: typeof data.initialBalance === 'number' && !isNaN(data.initialBalance) ? data.initialBalance : (data.balance || 0),
       id: generateUUID(),
       vaultId: activeVault.id,
       updatedAt: new Date().toISOString(),
@@ -342,9 +341,6 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteAccount = async (id: string): Promise<void> => {
-    if (activeVault?.isDemo || activeVault?.name.toLowerCase().includes('demo')) {
-      throw new Error('Demo Exploration Mode: Deleting accounts is disabled.');
-    }
     setAccounts((prev) => prev.filter((a) => a.id !== id));
     await deleteRecord(id);
   };
@@ -426,9 +422,6 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Transaction Operations
   const addTransaction = async (data: Omit<Transaction, 'id' | 'vaultId' | 'updatedAt'>): Promise<Transaction> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    if (activeVault.isDemo || activeVault.name.toLowerCase().includes('demo')) {
-      throw new Error('Demo Exploration Mode: Adding new transactions is disabled. You can edit any existing transaction to test live recalculations!');
-    }
     const validAmount = round2(Math.abs(Number(data.amount)));
     const newTx: Transaction = {
       ...data,
@@ -651,9 +644,6 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteTransaction = async (id: string): Promise<void> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    if (activeVault?.isDemo || activeVault?.name.toLowerCase().includes('demo')) {
-      throw new Error('Demo Exploration Mode: Deleting transactions is disabled in demo mode.');
-    }
     const txToDel = transactions.find((t) => t.id === id);
 
     if (txToDel) {
@@ -957,14 +947,14 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     data: Omit<PeopleLedgerEntry, 'id' | 'vaultId' | 'updatedAt' | 'settlements' | 'status'>
   ): Promise<PeopleLedgerEntry> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    const validAmount = round2(Math.abs(Number(data.amount)));
+    const validAmount = round2(Math.abs(Number(data.amount || 0)));
     const newEntry: PeopleLedgerEntry = {
       ...data,
       amount: validAmount,
       id: generateUUID(),
       vaultId: activeVault.id,
       settlements: [],
-      status: 'open',
+      status: validAmount === 0 ? 'closed' : 'open',
       updatedAt: new Date().toISOString(),
     };
     setPeopleLedger((prev) => [newEntry, ...prev]);
@@ -1212,9 +1202,6 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     data: Omit<Asset, 'id' | 'vaultId' | 'updatedAt' | 'valuationHistory'>
   ): Promise<Asset> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    if (activeVault.isDemo || activeVault.name.toLowerCase().includes('demo')) {
-      throw new Error('Demo Exploration Mode: Adding new assets is disabled. You can edit existing transactions to test!');
-    }
     const newAsset: Asset = {
       ...data,
       id: generateUUID(),
@@ -1260,9 +1247,6 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteAsset = async (id: string): Promise<void> => {
-    if (activeVault?.isDemo || activeVault?.name.toLowerCase().includes('demo')) {
-      throw new Error('Demo Exploration Mode: Deleting assets is disabled in demo mode.');
-    }
     setAssets((prev) => prev.filter((a) => a.id !== id));
     await deleteRecord(id);
   };
@@ -1472,9 +1456,6 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     data: Omit<Liability, 'id' | 'vaultId' | 'updatedAt'>
   ): Promise<Liability> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    if (activeVault.isDemo || activeVault.name.toLowerCase().includes('demo')) {
-      throw new Error('Demo Exploration Mode: Adding new liabilities is disabled.');
-    }
     const newLiability: Liability = {
       ...data,
       id: generateUUID(),
@@ -1494,9 +1475,6 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteLiability = async (id: string): Promise<void> => {
-    if (activeVault?.isDemo || activeVault?.name.toLowerCase().includes('demo')) {
-      throw new Error('Demo Exploration Mode: Deleting liabilities is disabled in demo mode.');
-    }
     setLiabilities((prev) => prev.filter((l) => l.id !== id));
     await deleteRecord(id);
   };

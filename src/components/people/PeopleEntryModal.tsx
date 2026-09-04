@@ -13,6 +13,7 @@ interface PeopleEntryModalProps {
   onClose: () => void;
   entryToEdit?: PeopleLedgerEntry;
   initialType?: PeopleEntryType;
+  initialContactName?: string;
 }
 
 export const PeopleEntryModal: React.FC<PeopleEntryModalProps> = ({
@@ -20,11 +21,12 @@ export const PeopleEntryModal: React.FC<PeopleEntryModalProps> = ({
   onClose,
   entryToEdit,
   initialType = 'lent',
+  initialContactName = '',
 }) => {
   const { addPeopleEntry, updatePeopleEntry, accounts, activeVault } = useVault();
 
   const [type, setType] = useState<PeopleEntryType>(entryToEdit?.type || initialType);
-  const [contactName, setContactName] = useState(entryToEdit?.contactName || '');
+  const [contactName, setContactName] = useState(entryToEdit?.contactName || initialContactName || '');
   const [contactPhone, setContactPhone] = useState(entryToEdit?.contactPhone || '');
   const [accountId, setAccountId] = useState(entryToEdit?.accountId || (accounts.length > 0 ? accounts[0].id : ''));
   const [amount, setAmount] = useState(entryToEdit?.amount ? String(entryToEdit.amount) : '');
@@ -36,6 +38,37 @@ export const PeopleEntryModal: React.FC<PeopleEntryModalProps> = ({
   const [notes, setNotes] = useState(entryToEdit?.notes || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  React.useEffect(() => {
+    if (isOpen) {
+      if (entryToEdit) {
+        setType(entryToEdit.type);
+        setContactName(entryToEdit.contactName);
+        setContactPhone(entryToEdit.contactPhone || '');
+        setAccountId(entryToEdit.accountId || (accounts.length > 0 ? accounts[0].id : ''));
+        setAmount(String(entryToEdit.amount));
+        setCurrency(entryToEdit.currency);
+        setDate(entryToEdit.date);
+        setDueDate(entryToEdit.dueDate || '');
+        setHasInterest(entryToEdit.hasInterest || false);
+        setInterestRate(entryToEdit.interestRate ? String(entryToEdit.interestRate) : '');
+        setNotes(entryToEdit.notes || '');
+      } else {
+        setType(initialType);
+        setContactName(initialContactName || '');
+        setContactPhone('');
+        setAccountId(accounts.length > 0 ? accounts[0].id : '');
+        setAmount('');
+        setCurrency(activeVault?.currency || 'INR');
+        setDate(formatDateISO(new Date()));
+        setDueDate('');
+        setHasInterest(false);
+        setInterestRate('');
+        setNotes('');
+      }
+      setError('');
+    }
+  }, [isOpen, entryToEdit, initialType, initialContactName, accounts, activeVault]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

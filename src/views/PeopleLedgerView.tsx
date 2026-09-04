@@ -6,6 +6,7 @@ import { Badge } from '../components/common/Badge';
 import { AnimatedNumber } from '../components/common/AnimatedNumber';
 import { PeopleEntryModal } from '../components/people/PeopleEntryModal';
 import { SettleModal } from '../components/people/SettleModal';
+import { ContactModal } from '../components/people/ContactModal';
 import { formatCurrency, formatPercent } from '../utils/formatters';
 import { formatReadableDate } from '../utils/dates';
 import type { PeopleLedgerEntry, PeopleEntryType } from '../types';
@@ -22,6 +23,7 @@ import {
   Trash2,
   Edit2,
   TrendingUp,
+  UserPlus,
 } from 'lucide-react';
 
 export const PeopleLedgerView: React.FC = () => {
@@ -32,7 +34,10 @@ export const PeopleLedgerView: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'lent' | 'borrowed' | 'holding' | 'contacts'>('lent');
   const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [entryToEdit, setEntryToEdit] = useState<PeopleLedgerEntry | undefined>(undefined);
+  const [initialContactName, setInitialContactName] = useState('');
+  const [initialEntryType, setInitialEntryType] = useState<PeopleEntryType>('lent');
   const [selectedEntryForSettlement, setSelectedEntryForSettlement] = useState<PeopleLedgerEntry | null>(null);
 
   const baseCurrency = activeVault?.currency || 'INR';
@@ -69,14 +74,36 @@ export const PeopleLedgerView: React.FC = () => {
 
   // Aggregate by contact for the Contacts tab
   const contactAggregates = useMemo(() => {
-    const map = new Map<string, { name: string; lent: number; borrowed: number; holding: number; entries: PeopleLedgerEntry[] }>();
+    const map = new Map<
+      string,
+      {
+        name: string;
+        phone?: string;
+        notes?: string;
+        lent: number;
+        borrowed: number;
+        holding: number;
+        entries: PeopleLedgerEntry[];
+      }
+    >();
 
     peopleLedger.forEach((entry) => {
       const settled = entry.settlements.reduce((sum, s) => sum + s.amount, 0);
       const remaining = Math.max(0, entry.amount - settled);
       const name = entry.contactName.trim();
 
-      const existing = map.get(name) || { name, lent: 0, borrowed: 0, holding: 0, entries: [] };
+      const existing = map.get(name) || {
+        name,
+        phone: entry.contactPhone,
+        notes: entry.notes,
+        lent: 0,
+        borrowed: 0,
+        holding: 0,
+        entries: [],
+      };
+      if (entry.contactPhone && !existing.phone) existing.phone = entry.contactPhone;
+      if (entry.notes && !existing.notes) existing.notes = entry.notes;
+
       if (entry.type === 'lent') existing.lent += remaining;
       if (entry.type === 'borrowed') existing.borrowed += remaining;
       if (entry.type === 'holding') existing.holding += remaining;
@@ -85,7 +112,13 @@ export const PeopleLedgerView: React.FC = () => {
       map.set(name, existing);
     });
 
-    return Array.from(map.values()).sort((a, b) => b.lent - a.lent);
+    return Array.from(map.values()).sort((a, b) => {
+      const aBal = a.lent + a.borrowed + a.holding;
+      const bBal = b.lent + b.borrowed + b.holding;
+      if (aBal > 0 && bBal === 0) return -1;
+      if (bBal > 0 && aBal === 0) return 1;
+      return a.name.localeCompare(b.name);
+    });
   }, [peopleLedger]);
 
   const handleDelete = async (id: string, name: string) => {
@@ -118,16 +151,28 @@ export const PeopleLedgerView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setEntryToEdit(undefined);
-            setIsEntryModalOpen(true);
-          }}
-          className="px-4 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-[0.97] text-white text-xs font-bold shadow-sm shadow-pine-900/20 flex items-center gap-1.5 cursor-pointer transition-all self-start sm:self-auto"
-        >
-          <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-          <span>New Entry</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={() => setIsContactModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-card hover:bg-moss text-ink border border-line text-xs font-bold shadow-2xs flex items-center gap-1.5 cursor-pointer transition-all"
+          >
+            <UserPlus className="w-3.5 h-3.5 text-pine-600" />
+            <span>Add Contact</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setEntryToEdit(undefined);
+              setInitialContactName('');
+              setInitialEntryType('lent');
+              setIsEntryModalOpen(true);
+            }}
+            className="px-4 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-[0.97] text-white text-xs font-bold shadow-sm shadow-pine-900/20 flex items-center gap-1.5 cursor-pointer transition-all"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>New Entry</span>
+          </button>
+        </div>
       </div>
 
       {/* Hero Summary Cards */}
@@ -456,45 +501,130 @@ export const PeopleLedgerView: React.FC = () => {
               {contactAggregates.map((contact) => (
                 <div
                   key={contact.name}
-                  className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-3.5 shadow-sm lift"
+                  className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-3 shadow-sm lift flex flex-col justify-between"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-pine-50 dark:bg-pine-950/40 text-pine-600 border border-pine-200/60 dark:border-pine-800/40 flex items-center justify-center font-bold text-sm">
-                      {getInitials(contact.name)}
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-pine-50 dark:bg-pine-950/40 text-pine-600 border border-pine-200/60 dark:border-pine-800/40 flex items-center justify-center font-bold text-sm shrink-0">
+                          {getInitials(contact.name)}
+                        </div>
+                        <div>
+                          <h3 className="font-display font-bold text-sm text-ink">{contact.name}</h3>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {contact.phone && (
+                              <span className="text-[11px] text-ink/50 font-mono">
+                                {contact.phone}
+                              </span>
+                            )}
+                            <span className="text-[10.5px] text-ink/40">
+                              {contact.entries.length === 1 && contact.entries[0].amount === 0
+                                ? 'Directory Profile'
+                                : `${contact.entries.length} records`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {contact.entries.length > 0 && contact.lent === 0 && contact.borrowed === 0 && contact.holding === 0 && (
+                        <button
+                          onClick={async () => {
+                            if (window.confirm(`Delete contact profile "${contact.name}"?`)) {
+                              for (const entry of contact.entries) {
+                                await deletePeopleEntry(entry.id);
+                              }
+                            }
+                          }}
+                          className="p-1 rounded-lg text-ink/30 hover:text-flare-600 hover:bg-flare-50 dark:hover:bg-flare-950/40 transition-colors cursor-pointer"
+                          title="Delete contact"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
-                    <div>
-                      <h3 className="font-display font-bold text-sm text-ink">{contact.name}</h3>
-                      <span className="text-[11px] text-ink/45 block">
-                        {contact.entries.length} active ledger records
-                      </span>
+
+                    {contact.notes && (
+                      <p className="text-[11px] text-ink/55 italic bg-moss/50 px-2.5 py-1.5 rounded-xl">
+                        {contact.notes}
+                      </p>
+                    )}
+
+                    <div className="space-y-1.5 pt-2 border-t border-line text-xs">
+                      {contact.lent > 0 && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-ink/60">Owed to you:</span>
+                          <span className="font-display font-extrabold text-pine-700 dark:text-pine-400 num">
+                            {formatCurrency(contact.lent, baseCurrency, numberFormat, isPrivacyMode)}
+                          </span>
+                        </div>
+                      )}
+                      {contact.borrowed > 0 && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-ink/60">You owe:</span>
+                          <span className="font-display font-extrabold text-flare-600 num">
+                            {formatCurrency(contact.borrowed, baseCurrency, numberFormat, isPrivacyMode)}
+                          </span>
+                        </div>
+                      )}
+                      {contact.holding > 0 && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-ink/60">Holding:</span>
+                          <span className="font-display font-extrabold text-ink num">
+                            {formatCurrency(contact.holding, baseCurrency, numberFormat, isPrivacyMode)}
+                          </span>
+                        </div>
+                      )}
+                      {contact.lent === 0 && contact.borrowed === 0 && contact.holding === 0 && (
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-[11px] text-ink/50">Ledger status</span>
+                          <Badge tone="pine" size="xs">
+                            ✨ All Clear / ₹0 Balance
+                          </Badge>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div className="space-y-1.5 pt-2 border-t border-line text-xs">
-                    {contact.lent > 0 && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-ink/60">Owed to you:</span>
-                        <span className="font-display font-extrabold text-pine-700 dark:text-pine-400 num">
-                          {formatCurrency(contact.lent, baseCurrency, numberFormat, isPrivacyMode)}
-                        </span>
-                      </div>
-                    )}
-                    {contact.borrowed > 0 && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-ink/60">You owe:</span>
-                        <span className="font-display font-extrabold text-flare-600 num">
-                          {formatCurrency(contact.borrowed, baseCurrency, numberFormat, isPrivacyMode)}
-                        </span>
-                      </div>
-                    )}
-                    {contact.holding > 0 && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-ink/60">Holding:</span>
-                        <span className="font-display font-extrabold text-ink num">
-                          {formatCurrency(contact.holding, baseCurrency, numberFormat, isPrivacyMode)}
-                        </span>
-                      </div>
-                    )}
+                  {/* Quick Actions Bar */}
+                  <div className="pt-2.5 border-t border-line flex items-center justify-between gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-ink/40">
+                      Quick Log:
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          setEntryToEdit(undefined);
+                          setInitialContactName(contact.name);
+                          setInitialEntryType('lent');
+                          setIsEntryModalOpen(true);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-pine-50 dark:bg-pine-950/40 text-pine-700 dark:text-pine-300 hover:bg-pine-100 dark:hover:bg-pine-900 text-[11px] font-bold border border-pine-200/60 dark:border-pine-800/40 cursor-pointer transition-colors"
+                      >
+                        + Lent
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEntryToEdit(undefined);
+                          setInitialContactName(contact.name);
+                          setInitialEntryType('borrowed');
+                          setIsEntryModalOpen(true);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-flare-50 dark:bg-flare-950/40 text-flare-700 dark:text-flare-300 hover:bg-flare-100 dark:hover:bg-flare-900 text-[11px] font-bold border border-flare-200/60 dark:border-flare-800/40 cursor-pointer transition-colors"
+                      >
+                        + Borrowed
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEntryToEdit(undefined);
+                          setInitialContactName(contact.name);
+                          setInitialEntryType('holding');
+                          setIsEntryModalOpen(true);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-moss hover:bg-card text-ink/75 hover:text-ink text-[11px] font-bold border border-line cursor-pointer transition-colors"
+                      >
+                        + Holding
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -509,6 +639,19 @@ export const PeopleLedgerView: React.FC = () => {
           isOpen={isEntryModalOpen}
           onClose={() => setIsEntryModalOpen(false)}
           entryToEdit={entryToEdit}
+          initialType={initialEntryType}
+          initialContactName={initialContactName}
+        />
+      )}
+
+      {/* Contact Profile Modal (0 Balance) */}
+      {isContactModalOpen && (
+        <ContactModal
+          isOpen={isContactModalOpen}
+          onClose={() => setIsContactModalOpen(false)}
+          onSuccess={(newName) => {
+            setActiveTab('contacts');
+          }}
         />
       )}
 

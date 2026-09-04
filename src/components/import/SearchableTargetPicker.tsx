@@ -38,6 +38,9 @@ interface DisplayItem {
   isCustom?: boolean;
 }
 
+export const isPeopleType = (t: StagedEntryType) =>
+  ['lent', 'lent_repaid', 'borrowed', 'borrowed_repaid', 'holding', 'holding_returned'].includes(t);
+
 export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
   type,
   rawFlow,
@@ -118,7 +121,7 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
       }));
     }
 
-    if (['lent', 'borrowed', 'holding'].includes(type)) {
+    if (isPeopleType(type)) {
       const list: DisplayItem[] = existingContacts.map((c) => ({
         id: c,
         label: c,
@@ -180,7 +183,7 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
   // Selected item display info
   const selectedItem = useMemo(() => {
     if (!value) return null;
-    return items.find((i) => i.id === value) || (['lent', 'borrowed', 'holding'].includes(type) ? { id: value, label: value } : null);
+    return items.find((i) => i.id === value) || (isPeopleType(type) ? { id: value, label: value } : null);
   }, [items, value, type]);
 
   // Placeholders based on type
@@ -188,7 +191,7 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
     if (type === 'transfer') return 'Search bank or wallet…';
     if (type === 'invest') return 'Search mutual fund, stock…';
     if (type === 'debt_payment') return 'Search loan, credit card…';
-    if (['lent', 'borrowed', 'holding'].includes(type)) return 'Search or type person name…';
+    if (isPeopleType(type)) return 'Search or type person name…';
     return 'Search categories…';
   }, [type]);
 
@@ -210,7 +213,7 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
       e.preventDefault();
       if (filteredItems[highlightedIndex]) {
         handleSelect(filteredItems[highlightedIndex].id);
-      } else if (['lent', 'borrowed', 'holding'].includes(type) && searchQuery.trim()) {
+      } else if (isPeopleType(type) && searchQuery.trim()) {
         handleSelect(searchQuery.trim());
       }
     } else if (e.key === 'Escape') {
@@ -236,6 +239,8 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
             />
           ) : selectedItem?.icon ? (
             selectedItem.icon
+          ) : isPeopleType(type) ? (
+            <User className="w-3.5 h-3.5 text-mari-600 shrink-0" />
           ) : (
             <span className="text-ink/40 text-[11px]">•</span>
           )}
@@ -249,7 +254,7 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
                   ? 'Select Asset…'
                   : type === 'debt_payment'
                   ? 'Select Loan…'
-                  : ['lent', 'borrowed', 'holding'].includes(type)
+                  : isPeopleType(type)
                   ? 'Enter Person Name…'
                   : 'Select Category…'}
               </span>

@@ -617,6 +617,75 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
               </select>
             )}
           </div>
+        ) : entryMode === 'people' ? (
+          /* People Ledger Section: Lent / Borrowed / Holding */
+          <div className="p-3.5 rounded-2xl bg-violet-50/40 dark:bg-violet-950/20 border border-violet-200/60 dark:border-violet-800/50 space-y-3">
+            {/* People Type Selector */}
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-violet-800 dark:text-violet-300 mb-1.5">
+                People Record Type
+              </label>
+              <div className="grid grid-cols-3 gap-1.5 p-1 bg-card rounded-xl border border-line">
+                {[
+                  { id: 'lent', label: '🤝 Lent' },
+                  { id: 'borrowed', label: '📥 Borrowed' },
+                  { id: 'holding', label: '🛡️ Holding' },
+                ].map((pt) => {
+                  const isSel = peopleType === pt.id;
+                  return (
+                    <button
+                      key={pt.id}
+                      type="button"
+                      onClick={() => setPeopleType(pt.id as any)}
+                      className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                        isSel
+                          ? 'bg-violet-600 text-white shadow-xs'
+                          : 'text-ink/60 hover:text-ink hover:bg-moss'
+                      }`}
+                    >
+                      <div>{pt.label}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Person Name with Autocomplete Datalist */}
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                Person / Contact Name
+              </label>
+              <input
+                type="text"
+                list="quickadd-people-contacts"
+                placeholder="Type or select contact name..."
+                value={contactName}
+                onChange={(e) => setContactName(e.target.value)}
+                className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-violet-500"
+                required
+              />
+              <datalist id="quickadd-people-contacts">
+                {Array.from(new Set(peopleLedger.map((p) => p.contactName.trim())))
+                  .filter(Boolean)
+                  .map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+              </datalist>
+            </div>
+
+            {/* Due Date (Optional) */}
+            <div>
+              <label className="block text-[10.5px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                Expected Due / Return Date (Optional)
+              </label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full rounded-xl border border-line bg-card px-3 py-1.5 text-xs text-ink outline-none focus:border-violet-500"
+              />
+            </div>
+          </div>
         ) : (
           /* Category / Split Selector */
           <div className="space-y-3">
@@ -776,7 +845,11 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1 flex items-center gap-1">
               <Wallet className="w-3 h-3 text-pine-600" />
-              <span>{entryMode === 'income' ? 'Deposited To' : 'Paid From Account'}</span>
+              <span>
+                {entryMode === 'income' || (entryMode === 'people' && (peopleType === 'borrowed' || peopleType === 'holding'))
+                  ? 'Received / Deposited Into'
+                  : 'Paid From Account'}
+              </span>
             </label>
             <select
               value={accountId}

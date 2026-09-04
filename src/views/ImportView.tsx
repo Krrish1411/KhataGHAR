@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { Button } from '../components/common/Button';
@@ -52,6 +52,7 @@ export const ImportView: React.FC = () => {
     liabilities,
     addTransaction,
     addPeopleEntry,
+    addSettlement,
     bulkAddTransactions,
     undoImport,
     activeVault,
@@ -133,6 +134,7 @@ export const ImportView: React.FC = () => {
     // Initialize default categories or transfer accounts
     const otherAccounts = accounts.filter((a) => a.id !== selectedAccountId);
     const defaultToAccount = otherAccounts.length > 0 ? otherAccounts[0].id : undefined;
+    const initialContacts = Array.from(new Set(peopleLedger.map((p) => p.contactName.trim()))).filter(Boolean);
 
     const initialized = staged.map((t) => {
       const descLower = t.description.toLowerCase();
@@ -168,8 +170,8 @@ export const ImportView: React.FC = () => {
         detectedToAccountId = matchedAcc?.id || defaultToAccount;
       }
       // 4. Smart People Ledger detection
-      else if (existingContacts.some((c) => descLower.includes(c.toLowerCase()))) {
-        const matchedContact = existingContacts.find((c) => descLower.includes(c.toLowerCase()));
+      else if (initialContacts.some((c) => descLower.includes(c.toLowerCase()))) {
+        const matchedContact = initialContacts.find((c) => descLower.includes(c.toLowerCase()));
         detectedType = t.type === 'income' ? 'borrowed' : 'lent';
         detectedContact = matchedContact;
       }
@@ -209,8 +211,12 @@ export const ImportView: React.FC = () => {
         let nextType = t.type;
         if (t.type === 'income' && nextFlow === 'outflow') nextType = 'expense';
         else if (t.type === 'expense' && nextFlow === 'inflow') nextType = 'income';
-        else if (t.type === 'borrowed' && nextFlow === 'outflow') nextType = 'lent';
-        else if (t.type === 'lent' && nextFlow === 'inflow') nextType = 'borrowed';
+        else if (t.type === 'borrowed' && nextFlow === 'outflow') nextType = 'borrowed_repaid';
+        else if (t.type === 'borrowed_repaid' && nextFlow === 'inflow') nextType = 'borrowed';
+        else if (t.type === 'lent' && nextFlow === 'inflow') nextType = 'lent_repaid';
+        else if (t.type === 'lent_repaid' && nextFlow === 'outflow') nextType = 'lent';
+        else if (t.type === 'holding' && nextFlow === 'outflow') nextType = 'holding_returned';
+        else if (t.type === 'holding_returned' && nextFlow === 'inflow') nextType = 'holding';
         return {
           ...t,
           rawFlow: nextFlow,
@@ -227,9 +233,11 @@ export const ImportView: React.FC = () => {
         if (t.id !== id) return t;
         const otherAccs = accounts.filter((a) => a.id !== selectedAccountId);
         let nextFlow = t.rawFlow;
-        if (newType === 'income' || newType === 'borrowed') nextFlow = 'inflow';
-        else if (newType === 'expense' || newType === 'invest' || newType === 'debt_payment' || newType === 'lent') nextFlow = 'outflow';
+        if (['income', 'borrowed', 'holding', 'lent_repaid'].includes(newType)) nextFlow = 'inflow';
+        else if (['expense', 'invest', 'debt_payment', 'lent', 'borrowed_repaid', 'holding_returned'].includes(newType)) nextFlow = 'outflow';
         // If transfer, keep previous nextFlow (so inflow stays incoming transfer, outflow stays outgoing transfer)
+
+        const isPeople = ['lent', 'lent_repaid', 'borrowed', 'borrowed_repaid', 'holding', 'holding_returned'].includes(newType);
 
         return {
           ...t,
@@ -238,7 +246,7 @@ export const ImportView: React.FC = () => {
           toAccountId: newType === 'transfer' ? (t.toAccountId || (otherAccs.length > 0 ? otherAccs[0].id : undefined)) : undefined,
           linkedAssetId: newType === 'invest' ? (t.linkedAssetId || (assets.length > 0 ? assets[0].id : undefined)) : undefined,
           linkedLiabilityId: newType === 'debt_payment' ? (t.linkedLiabilityId || (liabilities.length > 0 ? liabilities[0].id : undefined)) : undefined,
-          contactName: ['lent', 'borrowed', 'holding'].includes(newType) ? (t.contactName || t.description.slice(0, 30)) : undefined,
+          contactName: isPeople ? (t.contactName || t.description.slice(0, 30)) : undefined,
         };
       })
     );
@@ -277,8 +285,10 @@ export const ImportView: React.FC = () => {
       prev.map((t) => {
         if (!t.selected) return t;
         let nextFlow = t.rawFlow;
-        if (newType === 'income' || newType === 'borrowed') nextFlow = 'inflow';
-        else if (newType === 'expense' || newType === 'invest' || newType === 'debt_payment' || newType === 'lent') nextFlow = 'outflow';
+        if (['income', 'borrowed', 'holding', 'lent_repaid'].includes(newType)) nextFlow = 'inflow';
+        else if (['expense', 'invest', 'debt_payment', 'lent', 'borrowed_repaid', 'holding_returned'].includes(newType)) nextFlow = 'outflow';
+
+        const isPeople = ['lent', 'lent_repaid', 'borrowed', 'borrowed_repaid', 'holding', 'holding_returned'].includes(newType);
 
         return {
           ...t,
@@ -287,7 +297,7 @@ export const ImportView: React.FC = () => {
           toAccountId: newType === 'transfer' ? (t.toAccountId || (otherAccs.length > 0 ? otherAccs[0].id : undefined)) : undefined,
           linkedAssetId: newType === 'invest' ? (t.linkedAssetId || (assets.length > 0 ? assets[0].id : undefined)) : undefined,
           linkedLiabilityId: newType === 'debt_payment' ? (t.linkedLiabilityId || (liabilities.length > 0 ? liabilities[0].id : undefined)) : undefined,
-          contactName: ['lent', 'borrowed', 'holding'].includes(newType) ? (t.contactName || t.description.slice(0, 30)) : undefined,
+          contactName: isPeople ? (t.contactName || t.description.slice(0, 30)) : undefined,
         };
       })
     );
@@ -476,11 +486,14 @@ export const ImportView: React.FC = () => {
         });
       }
 
-      // 5. People Ledger Entries (Lent, Borrowed, Custodial Holding)
-      const peopleTxs = toImport.filter((t) => ['lent', 'borrowed', 'holding'].includes(t.type));
-      for (const t of peopleTxs) {
-        await addPeopleEntry({
-          contactName: t.contactName?.trim() || t.description.slice(0, 30),
+      // 5. People Ledger Entries (New Lent, Borrowed, Custodial Holding)
+      const peopleNewTxs = toImport.filter((t) => ['lent', 'borrowed', 'holding'].includes(t.type));
+      const newlyCreatedPeopleEntries: any[] = [];
+
+      for (const t of peopleNewTxs) {
+        const cName = t.contactName?.trim() || t.description.slice(0, 30);
+        const created = await addPeopleEntry({
+          contactName: cName,
           type: t.type as 'lent' | 'borrowed' | 'holding',
           amount: t.amount,
           currency: t.currency || baseCurrency,
@@ -488,6 +501,57 @@ export const ImportView: React.FC = () => {
           accountId: selectedAccountId,
           notes: `Imported from statement: ${t.description}`,
         });
+        newlyCreatedPeopleEntries.push(created);
+      }
+
+      // 6. People Settlements & Returns (Lent Repaid, Borrowed Repaid, Holding Returned)
+      const peopleSettlementTxs = toImport.filter((t) =>
+        ['lent_repaid', 'borrowed_repaid', 'holding_returned'].includes(t.type)
+      );
+
+      for (const t of peopleSettlementTxs) {
+        const cName = t.contactName?.trim() || t.description.slice(0, 30);
+        const cNameLower = cName.toLowerCase();
+        const targetType =
+          t.type === 'lent_repaid' ? 'lent' : t.type === 'borrowed_repaid' ? 'borrowed' : 'holding';
+
+        // Check if there is an open entry to settle (in this batch or in existing peopleLedger)
+        let matchedEntry = newlyCreatedPeopleEntries.find(
+          (e) => e.type === targetType && e.contactName.trim().toLowerCase() === cNameLower && e.status !== 'closed'
+        );
+
+        if (!matchedEntry) {
+          matchedEntry = peopleLedger.find(
+            (e) => e.type === targetType && e.contactName.trim().toLowerCase() === cNameLower && e.status !== 'closed'
+          );
+        }
+
+        if (matchedEntry) {
+          await addSettlement(matchedEntry.id, {
+            amount: t.amount,
+            date: t.date,
+            accountId: selectedAccountId,
+            note: `Statement settlement: ${t.description}`,
+          });
+        } else {
+          // No open record exists to settle: create a closed record with this transaction
+          // accountId is omitted from entry creation so account balance isn't modified initially,
+          // then addSettlement applies the accurate delta (+amount for lent, -amount for borrowed/holding).
+          const created = await addPeopleEntry({
+            contactName: cName,
+            type: targetType,
+            amount: t.amount,
+            currency: t.currency || baseCurrency,
+            date: t.date,
+            notes: `Settled on import: ${t.description}`,
+          });
+          await addSettlement(created.id, {
+            amount: t.amount,
+            date: t.date,
+            accountId: selectedAccountId,
+            note: `Statement settlement: ${t.description}`,
+          });
+        }
       }
 
       const summaryParts: string[] = [];
@@ -495,7 +559,8 @@ export const ImportView: React.FC = () => {
       if (transferTxs.length > 0) summaryParts.push(`${transferTxs.length} self-transfers`);
       if (investTxs.length > 0) summaryParts.push(`${investTxs.length} SIP/Asset tranches`);
       if (debtTxs.length > 0) summaryParts.push(`${debtTxs.length} loan EMIs`);
-      if (peopleTxs.length > 0) summaryParts.push(`${peopleTxs.length} people ledger entries`);
+      if (peopleNewTxs.length > 0) summaryParts.push(`${peopleNewTxs.length} people loans/holdings`);
+      if (peopleSettlementTxs.length > 0) summaryParts.push(`${peopleSettlementTxs.length} people repayments/returns`);
 
       const targetAcc = accounts.find((a) => a.id === selectedAccountId);
       const batchRecord = {
@@ -569,7 +634,18 @@ export const ImportView: React.FC = () => {
   };
 
   const otherAccounts = accounts.filter((a) => a.id !== selectedAccountId);
-  const existingContacts = Array.from(new Set(peopleLedger.map((p) => p.contactName))).filter(Boolean);
+
+  // Dynamically aggregate contacts from existing ledger AND any contacts typed in staged transactions
+  const allAvailableContacts = useMemo(() => {
+    const set = new Set<string>();
+    peopleLedger.forEach((p) => {
+      if (p.contactName?.trim()) set.add(p.contactName.trim());
+    });
+    stagedTxs.forEach((t) => {
+      if (t.contactName?.trim()) set.add(t.contactName.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [peopleLedger, stagedTxs]);
 
   return (
     <div className="space-y-6 w-full max-w-[1600px] mx-auto px-1 sm:px-2 pb-16 anim-fade">
@@ -907,7 +983,7 @@ export const ImportView: React.FC = () => {
                         currentAccountId={selectedAccountId}
                         assets={assets}
                         liabilities={liabilities}
-                        existingContacts={existingContacts}
+                        existingContacts={allAvailableContacts}
                         baseCurrency={baseCurrency}
                         numberFormat={numberFormat}
                         isPrivacyMode={isPrivacyMode}
@@ -928,13 +1004,19 @@ export const ImportView: React.FC = () => {
                         defaultValue=""
                       >
                         <option value="" disabled>Choose Entry Type...</option>
-                        <option value="expense">🔴 Expense</option>
-                        <option value="income">🟢 Income</option>
+                        <option value="expense">🔴 Expense (Outflow)</option>
+                        <option value="income">🟢 Income (Inflow)</option>
                         <option value="transfer">🔄 Self-Transfer</option>
                         <option value="invest">📈 Invest in Asset / SIP</option>
                         <option value="debt_payment">🏛️ Loan EMI / Debt</option>
-                        <option value="lent">🤝 Lent (Udhar)</option>
-                        <option value="borrowed">📥 Borrowed</option>
+                        <optgroup label="People & Custody">
+                          <option value="lent">🤝 Lent (Given Out)</option>
+                          <option value="lent_repaid">📥 Lent Repaid (Recovery)</option>
+                          <option value="borrowed">📥 Borrowed (Loan Taken)</option>
+                          <option value="borrowed_repaid">📤 Borrowed Repaid (Paid Back)</option>
+                          <option value="holding">🛡️ Holding (Custodial Deposit)</option>
+                          <option value="holding_returned">📤 Holding Returned (Paid Out)</option>
+                        </optgroup>
                       </select>
                     </div>
                   </div>
@@ -943,7 +1025,7 @@ export const ImportView: React.FC = () => {
 
               {/* Datalist for existing people contacts */}
               <datalist id="existing-people-contacts">
-                {existingContacts.map((contact) => (
+                {allAvailableContacts.map((contact: string) => (
                   <option key={contact} value={contact} />
                 ))}
               </datalist>
@@ -1015,9 +1097,14 @@ export const ImportView: React.FC = () => {
                             </option>
                             <option value="invest">📈 Invest in Asset / SIP</option>
                             <option value="debt_payment">🏛️ Loan EMI / Debt Paydown</option>
-                            <option value="lent">🤝 Lent (Udhar Given)</option>
-                            <option value="borrowed">📥 Borrowed (Udhar Taken)</option>
-                            <option value="holding">🛡️ Holding (Custodial)</option>
+                            <optgroup label="People & Custody">
+                              <option value="lent">🤝 Lent (Udhar Given - Outflow)</option>
+                              <option value="lent_repaid">📥 Lent Repaid (Recovery - Inflow)</option>
+                              <option value="borrowed">📥 Borrowed (Loan Taken - Inflow)</option>
+                              <option value="borrowed_repaid">📤 Borrowed Repaid (Paid Back - Outflow)</option>
+                              <option value="holding">🛡️ Holding (Custodial Inflow)</option>
+                              <option value="holding_returned">📤 Holding Returned (Paid Out - Outflow)</option>
+                            </optgroup>
                           </select>
                         </td>
                         <td className="py-2.5 px-3 min-w-[210px]">
@@ -1032,7 +1119,7 @@ export const ImportView: React.FC = () => {
                                 ? (t.linkedAssetId || '')
                                 : t.type === 'debt_payment'
                                 ? (t.linkedLiabilityId || '')
-                                : ['lent', 'borrowed', 'holding'].includes(t.type)
+                                : ['lent', 'lent_repaid', 'borrowed', 'borrowed_repaid', 'holding', 'holding_returned'].includes(t.type)
                                 ? (t.contactName || '')
                                 : (t.categoryId || '')
                             }
@@ -1040,7 +1127,7 @@ export const ImportView: React.FC = () => {
                               if (t.type === 'transfer') updateStagedToAccount(t.id, newVal);
                               else if (t.type === 'invest') updateStagedAsset(t.id, newVal);
                               else if (t.type === 'debt_payment') updateStagedLiability(t.id, newVal);
-                              else if (['lent', 'borrowed', 'holding'].includes(t.type)) updateStagedContact(t.id, newVal);
+                              else if (['lent', 'lent_repaid', 'borrowed', 'borrowed_repaid', 'holding', 'holding_returned'].includes(t.type)) updateStagedContact(t.id, newVal);
                               else updateStagedCategory(t.id, newVal);
                             }}
                             categories={categories}
@@ -1048,7 +1135,7 @@ export const ImportView: React.FC = () => {
                             currentAccountId={selectedAccountId}
                             assets={assets}
                             liabilities={liabilities}
-                            existingContacts={existingContacts}
+                            existingContacts={allAvailableContacts}
                             baseCurrency={baseCurrency}
                             numberFormat={numberFormat}
                             isPrivacyMode={isPrivacyMode}

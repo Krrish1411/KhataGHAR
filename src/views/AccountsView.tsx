@@ -122,6 +122,13 @@ export const AccountsView: React.FC = () => {
     setIsAccountModalOpen(true);
   };
 
+  const handleOpenAddAccount = () => {
+    setSelectedTypeFilter('all');
+    setSelectedTagFilter('all');
+    setAccountToEdit(undefined);
+    setIsAccountModalOpen(true);
+  };
+
   const handleToggleVisibility = async (account: Account) => {
     await updateAccount({
       ...account,
@@ -213,10 +220,7 @@ export const AccountsView: React.FC = () => {
           </Button>
 
           <Button
-            onClick={() => {
-              setAccountToEdit(undefined);
-              setIsAccountModalOpen(true);
-            }}
+            onClick={handleOpenAddAccount}
             variant="primary"
             size="sm"
           >
@@ -351,10 +355,7 @@ export const AccountsView: React.FC = () => {
               <span>Load Demo Accounts</span>
             </Button>
             <Button
-              onClick={() => {
-                setAccountToEdit(undefined);
-                setIsAccountModalOpen(true);
-              }}
+              onClick={handleOpenAddAccount}
               variant="primary"
               size="sm"
             >

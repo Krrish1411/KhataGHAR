@@ -37,9 +37,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isInitialStartup) {
         // Automatically delete ephemeral demo vaults on browser refresh/startup
         const allVaultsInDb = await db.vaults.toArray();
-        const demoVaults = allVaultsInDb.filter(
-          (v) => v.isDemo || v.name.toLowerCase().includes('demo')
-        );
+        const demoVaults = allVaultsInDb.filter((v) => Boolean(v.isDemo));
         for (const dv of demoVaults) {
           await db.records.where('vaultId').equals(dv.id).delete();
           await db.vaults.delete(dv.id);
@@ -70,9 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const exitDemoVault = useCallback(async () => {
     try {
       const allVaultsInDb = await db.vaults.toArray();
-      const demoVaults = allVaultsInDb.filter(
-        (v) => v.isDemo || v.name.toLowerCase().includes('demo')
-      );
+      const demoVaults = allVaultsInDb.filter((v) => Boolean(v.isDemo));
       for (const dv of demoVaults) {
         await db.records.where('vaultId').equals(dv.id).delete();
         await db.vaults.delete(dv.id);
