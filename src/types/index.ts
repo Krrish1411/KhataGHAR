@@ -118,6 +118,7 @@ export interface SettlementRecord {
   amount: number;
   note?: string;
   accountId?: string; // Connected account for auto transaction logging
+  importBatchId?: string; // Import batch tracking for clean rollback
 }
 
 export interface PeopleLedgerEntry {
@@ -136,6 +137,7 @@ export interface PeopleLedgerEntry {
   status: PeopleEntryStatus;
   notes?: string;
   settlements: SettlementRecord[];
+  importBatchId?: string; // Import batch tracking for clean rollback
   updatedAt: string;
 }
 
@@ -237,6 +239,7 @@ export interface Asset {
   sipMonthlyAmount?: number;
   sipDayOfMonth?: number;
   totalDividends?: number;
+  importBatchId?: string; // Import batch tracking for clean rollback
   updatedAt: string;
 }
 

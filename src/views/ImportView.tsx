@@ -472,6 +472,7 @@ export const ImportView: React.FC = () => {
               purchasePrice: 0,
               currency: t.currency || baseCurrency,
               notes: `Auto-created from statement import: ${t.description}`,
+              importBatchId: batchId,
             });
             finalAssetId = createdAsset.id;
           }
@@ -489,6 +490,7 @@ export const ImportView: React.FC = () => {
               purchasePrice: 0,
               currency: t.currency || baseCurrency,
               notes: `Auto-created from statement import: ${t.description}`,
+              importBatchId: batchId,
             });
             finalAssetId = createdAsset.id;
           }
@@ -539,6 +541,7 @@ export const ImportView: React.FC = () => {
           date: t.date,
           accountId: selectedAccountId,
           notes: `Imported from statement: ${t.description}`,
+          importBatchId: batchId,
         });
         newlyCreatedPeopleEntries.push(created);
       }
@@ -577,10 +580,11 @@ export const ImportView: React.FC = () => {
             date: t.date,
             accountId: selectedAccountId,
             note: `Statement settlement: ${t.description}`,
+            importBatchId: batchId,
           });
           matchedEntry.settlements = [
             ...(matchedEntry.settlements || []),
-            { id: 'import-settle', amount: t.amount, date: t.date },
+            { id: 'import-settle', amount: t.amount, date: t.date, importBatchId: batchId },
           ];
           const totalSettled = matchedEntry.settlements.reduce((s, x) => s + x.amount, 0);
           if (totalSettled >= matchedEntry.amount) {
@@ -595,12 +599,14 @@ export const ImportView: React.FC = () => {
             currency: t.currency || baseCurrency,
             date: t.date,
             notes: `Settled on import: ${t.description}`,
+            importBatchId: batchId,
           });
           await addSettlement(created.id, {
             amount: t.amount,
             date: t.date,
             accountId: selectedAccountId,
             note: `Statement settlement: ${t.description}`,
+            importBatchId: batchId,
           });
         }
       }

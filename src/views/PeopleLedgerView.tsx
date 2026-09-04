@@ -24,6 +24,7 @@ import {
   Edit2,
   TrendingUp,
   UserPlus,
+  AlertCircle,
 } from 'lucide-react';
 
 export const PeopleLedgerView: React.FC = () => {
@@ -69,6 +70,16 @@ export const PeopleLedgerView: React.FC = () => {
       totalHolding,
       netReceivable: totalLent - totalBorrowed,
     };
+  }, [peopleLedger]);
+
+  // Detect entries imported from statements for easy 1-click cleanup if previously undone
+  const statementEntries = useMemo(() => {
+    return peopleLedger.filter(
+      (p) =>
+        Boolean(p.importBatchId) ||
+        Boolean(p.notes?.includes('Imported from statement:')) ||
+        Boolean(p.notes?.includes('Settled on import:'))
+    );
   }, [peopleLedger]);
 
   // Filter entries for active tab
@@ -182,6 +193,37 @@ export const PeopleLedgerView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Statement Import Cleanup Banner */}
+      {statementEntries.length > 0 && (
+        <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5 text-amber-800 dark:text-amber-300">
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <span className="font-bold">Detected {statementEntries.length} statement-imported people record(s).</span>
+              <span className="text-ink/60 block sm:inline sm:ml-1">
+                If you recently undid an import, you can roll back and remove these leftover entries and restore linked account balances with 1 click.
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              if (
+                window.confirm(
+                  `Clean up all ${statementEntries.length} statement import record(s)? This will delete them and restore account balances.`
+                )
+              ) {
+                for (const entry of statementEntries) {
+                  await deletePeopleEntry(entry.id);
+                }
+              }
+            }}
+            className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shrink-0 shadow-xs transition-colors cursor-pointer"
+          >
+            Clean Up Statement Entries
+          </button>
+        </div>
+      )}
 
       {/* Hero Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -550,17 +592,21 @@ export const PeopleLedgerView: React.FC = () => {
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
 
-                        {contact.entries.length > 0 && contact.lent === 0 && contact.borrowed === 0 && contact.holding === 0 && (
+                        {contact.entries.length > 0 && (
                           <button
                             onClick={async () => {
-                              if (window.confirm(`Delete contact profile "${contact.name}"?`)) {
+                              const hasActiveBal = contact.lent > 0 || contact.borrowed > 0 || contact.holding > 0;
+                              const confirmMsg = hasActiveBal
+                                ? `Delete contact "${contact.name}" and all ${contact.entries.length} associated record(s)? Linked account balances will be restored.`
+                                : `Delete contact profile "${contact.name}"?`;
+                              if (window.confirm(confirmMsg)) {
                                 for (const entry of contact.entries) {
                                   await deletePeopleEntry(entry.id);
                                 }
                               }
                             }}
                             className="p-1.5 rounded-lg text-ink/30 hover:text-flare-600 hover:bg-flare-50 dark:hover:bg-flare-950/40 transition-colors cursor-pointer"
-                            title="Delete contact"
+                            title="Delete contact and records"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

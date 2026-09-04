@@ -854,10 +854,17 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const undoImport = async (importBatchId: string): Promise<number> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    const batchTxs = transactions.filter((t) => t.importBatchId === importBatchId);
-    if (batchTxs.length === 0) return 0;
+    const batchTxs = transactionsRef.current.filter((t) => t.importBatchId === importBatchId);
+    const batchPeople = peopleLedgerRef.current.filter(
+      (p) =>
+        p.importBatchId === importBatchId ||
+        (batchTxs.length === 0 && (p.notes?.includes('Imported from statement:') || p.notes?.includes('Settled on import:')))
+    );
+    const batchAssets = assetsRef.current.filter((a) => a.importBatchId === importBatchId);
 
-    // Calculate reverse balance deltas
+    if (batchTxs.length === 0 && batchPeople.length === 0 && batchAssets.length === 0) return 0;
+
+    // Calculate reverse balance deltas from transactions
     const balanceDeltas: Record<string, number> = {};
     for (const tx of batchTxs) {
       const amt = tx.amount;
@@ -872,7 +879,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       // Revert any linked asset tranches
       if (tx.linkedAssetId) {
-        const asset = assets.find((a) => a.id === tx.linkedAssetId);
+        const asset = assetsRef.current.find((a) => a.id === tx.linkedAssetId);
         if (asset && asset.tranches) {
           const updatedTranches = asset.tranches.filter(
             (tr) => tr.transactionId !== tx.id && tr.id !== tx.trancheId
@@ -884,54 +891,121 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             purchasePrice: Math.max(0, round2((asset.purchasePrice || 0) - tx.amount)),
             updatedAt: new Date().toISOString(),
           };
-          setAssets((prev) => prev.map((a) => (a.id === updatedAsset.id ? updatedAsset : a)));
+          assetsRef.current = assetsRef.current.map((a) => (a.id === updatedAsset.id ? updatedAsset : a));
+          setAssets(assetsRef.current);
           await saveEncryptedRecord('asset', updatedAsset, sessionKey);
         }
       }
 
       // Revert any linked liability reductions
       if (tx.linkedLiabilityId) {
-        const liab = liabilities.find((l) => l.id === tx.linkedLiabilityId);
+        const liab = liabilitiesRef.current.find((l) => l.id === tx.linkedLiabilityId);
         if (liab) {
           const updatedLiab: Liability = {
             ...liab,
             outstandingBalance: round2(liab.outstandingBalance + tx.amount),
             updatedAt: new Date().toISOString(),
           };
-          setLiabilities((prev) => prev.map((l) => (l.id === updatedLiab.id ? updatedLiab : l)));
+          liabilitiesRef.current = liabilitiesRef.current.map((l) => (l.id === updatedLiab.id ? updatedLiab : l));
+          setLiabilities(liabilitiesRef.current);
           await saveEncryptedRecord('liability', updatedLiab, sessionKey);
         }
       }
     }
 
-    // Apply account balance reversions
+    // Calculate reverse balance deltas from people entries
+    for (const p of batchPeople) {
+      if (p.accountId) {
+        const revDelta = p.type === 'lent' ? p.amount : -p.amount;
+        balanceDeltas[p.accountId] = (balanceDeltas[p.accountId] || 0) + revDelta;
+      }
+      (p.settlements || []).forEach((s) => {
+        if (s.accountId) {
+          const sRevDelta = p.type === 'lent' ? -s.amount : s.amount;
+          balanceDeltas[s.accountId] = (balanceDeltas[s.accountId] || 0) + sRevDelta;
+        }
+      });
+    }
+
+    // Also check any other people entries that received settlements from this batch
+    for (const p of peopleLedgerRef.current) {
+      if (batchPeople.some((bp) => bp.id === p.id)) continue;
+      const matchingSettles = (p.settlements || []).filter(
+        (s) => s.importBatchId === importBatchId
+      );
+      if (matchingSettles.length > 0) {
+        for (const s of matchingSettles) {
+          if (s.accountId) {
+            const sRevDelta = p.type === 'lent' ? -s.amount : s.amount;
+            balanceDeltas[s.accountId] = (balanceDeltas[s.accountId] || 0) + sRevDelta;
+          }
+        }
+        const remainingSettles = p.settlements.filter((s) => s.importBatchId !== importBatchId);
+        const totalSettled = round2(remainingSettles.reduce((sum, s) => sum + s.amount, 0));
+        let newStatus: PeopleLedgerEntry['status'] = 'open';
+        if (totalSettled >= p.amount) newStatus = 'closed';
+        else if (totalSettled > 0) newStatus = 'partially_settled';
+
+        const updatedP: PeopleLedgerEntry = {
+          ...p,
+          settlements: remainingSettles,
+          status: newStatus,
+          updatedAt: new Date().toISOString(),
+        };
+        peopleLedgerRef.current = peopleLedgerRef.current.map((x) => (x.id === p.id ? updatedP : x));
+        await saveEncryptedRecord('people', updatedP, sessionKey);
+      }
+    }
+
+    // Apply combined account balance reversions
     const changedAccIds = Object.keys(balanceDeltas);
     if (changedAccIds.length > 0) {
-      setAccounts((prev) =>
-        prev.map((acc) => {
-          if (balanceDeltas[acc.id]) {
-            const updated = {
-              ...acc,
-              balance: round2(acc.balance + balanceDeltas[acc.id]),
-              updatedAt: new Date().toISOString(),
-            };
-            saveEncryptedRecord('account', updated, sessionKey);
-            return updated;
-          }
-          return acc;
-        })
-      );
+      accountsRef.current = accountsRef.current.map((acc) => {
+        if (balanceDeltas[acc.id]) {
+          const updated = {
+            ...acc,
+            balance: round2(acc.balance + balanceDeltas[acc.id]),
+            updatedAt: new Date().toISOString(),
+          };
+          saveEncryptedRecord('account', updated, sessionKey);
+          return updated;
+        }
+        return acc;
+      });
+      setAccounts(accountsRef.current);
     }
 
-    // Remove transactions from state and IndexedDB
-    const batchTxIds = new Set(batchTxs.map((t) => t.id));
-    setTransactions((prev) => prev.filter((t) => !batchTxIds.has(t.id)));
-
-    for (const id of batchTxIds) {
-      await deleteRecord(id);
+    // Delete batch transactions
+    if (batchTxs.length > 0) {
+      const batchTxIds = new Set(batchTxs.map((t) => t.id));
+      transactionsRef.current = transactionsRef.current.filter((t) => !batchTxIds.has(t.id));
+      setTransactions(transactionsRef.current);
+      for (const id of batchTxIds) {
+        await deleteRecord(id);
+      }
     }
 
-    return batchTxs.length;
+    // Delete batch people entries
+    if (batchPeople.length > 0) {
+      const batchPeopleIds = new Set(batchPeople.map((p) => p.id));
+      peopleLedgerRef.current = peopleLedgerRef.current.filter((p) => !batchPeopleIds.has(p.id));
+      setPeopleLedger(peopleLedgerRef.current);
+      for (const id of batchPeopleIds) {
+        await deleteRecord(id);
+      }
+    }
+
+    // Delete batch assets (if created from this batch and has no other manual transactions)
+    if (batchAssets.length > 0) {
+      const assetIds = new Set(batchAssets.map((a) => a.id));
+      assetsRef.current = assetsRef.current.filter((a) => !assetIds.has(a.id));
+      setAssets(assetsRef.current);
+      for (const id of assetIds) {
+        await deleteRecord(id);
+      }
+    }
+
+    return batchTxs.length + batchPeople.length;
   };
 
   // Category Operations
