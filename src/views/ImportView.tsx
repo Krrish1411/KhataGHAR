@@ -19,7 +19,7 @@ import {
 } from '../services/parser';
 import { formatCurrency } from '../utils/formatters';
 import { formatReadableDate } from '../utils/dates';
-import type { Account } from '../types';
+import type { Account, PeopleLedgerEntry } from '../types';
 import {
   TrendingUp,
   Landmark,
@@ -53,6 +53,7 @@ export const ImportView: React.FC = () => {
     addTransaction,
     addPeopleEntry,
     addSettlement,
+    addAsset,
     bulkAddTransactions,
     undoImport,
     activeVault,
@@ -455,6 +456,44 @@ export const ImportView: React.FC = () => {
       // 3. Asset & SIP Purchases
       const investTxs = toImport.filter((t) => t.type === 'invest');
       for (const t of investTxs) {
+        let finalAssetId = t.linkedAssetId;
+
+        // If user picked "+ Create Asset: ..." or typed a new asset name
+        if (finalAssetId && finalAssetId.startsWith('new-asset:')) {
+          const rawName = finalAssetId.replace('new-asset:', '').trim();
+          const existing = assets.find((a) => a.name.toLowerCase() === rawName.toLowerCase());
+          if (existing) {
+            finalAssetId = existing.id;
+          } else {
+            const createdAsset = await addAsset({
+              name: rawName,
+              type: 'mutual_fund',
+              currentValue: 0,
+              purchasePrice: 0,
+              currency: t.currency || baseCurrency,
+              notes: `Auto-created from statement import: ${t.description}`,
+            });
+            finalAssetId = createdAsset.id;
+          }
+        } else if (!finalAssetId) {
+          // If no asset was picked, auto-create one based on description
+          const autoName = t.description.slice(0, 30).trim() || 'Imported Investment Asset';
+          const existing = assets.find((a) => a.name.toLowerCase() === autoName.toLowerCase());
+          if (existing) {
+            finalAssetId = existing.id;
+          } else {
+            const createdAsset = await addAsset({
+              name: autoName,
+              type: 'mutual_fund',
+              currentValue: 0,
+              purchasePrice: 0,
+              currency: t.currency || baseCurrency,
+              notes: `Auto-created from statement import: ${t.description}`,
+            });
+            finalAssetId = createdAsset.id;
+          }
+        }
+
         await addTransaction({
           accountId: selectedAccountId,
           type: 'expense',
@@ -462,7 +501,7 @@ export const ImportView: React.FC = () => {
           currency: t.currency || baseCurrency,
           date: t.date,
           note: t.description,
-          linkedAssetId: t.linkedAssetId || (assets.length > 0 ? assets[0].id : undefined),
+          linkedAssetId: finalAssetId,
           tags: ['statement-import', 'sip-investment'],
           isRecurring: false,
           importBatchId: batchId,
@@ -488,7 +527,7 @@ export const ImportView: React.FC = () => {
 
       // 5. People Ledger Entries (New Lent, Borrowed, Custodial Holding)
       const peopleNewTxs = toImport.filter((t) => ['lent', 'borrowed', 'holding'].includes(t.type));
-      const newlyCreatedPeopleEntries: any[] = [];
+      const newlyCreatedPeopleEntries: PeopleLedgerEntry[] = [];
 
       for (const t of peopleNewTxs) {
         const cName = t.contactName?.trim() || t.description.slice(0, 30);
@@ -517,12 +556,18 @@ export const ImportView: React.FC = () => {
 
         // Check if there is an open entry to settle (in this batch or in existing peopleLedger)
         let matchedEntry = newlyCreatedPeopleEntries.find(
-          (e) => e.type === targetType && e.contactName.trim().toLowerCase() === cNameLower && e.status !== 'closed'
+          (e) =>
+            (e.type === targetType || (targetType === 'holding' && e.type === 'lent') || (targetType === 'lent' && e.type === 'holding')) &&
+            e.contactName.trim().toLowerCase() === cNameLower &&
+            e.status !== 'closed'
         );
 
         if (!matchedEntry) {
           matchedEntry = peopleLedger.find(
-            (e) => e.type === targetType && e.contactName.trim().toLowerCase() === cNameLower && e.status !== 'closed'
+            (e) =>
+              (e.type === targetType || (targetType === 'holding' && e.type === 'lent') || (targetType === 'lent' && e.type === 'holding')) &&
+              e.contactName.trim().toLowerCase() === cNameLower &&
+              e.status !== 'closed'
           );
         }
 
@@ -533,10 +578,16 @@ export const ImportView: React.FC = () => {
             accountId: selectedAccountId,
             note: `Statement settlement: ${t.description}`,
           });
+          matchedEntry.settlements = [
+            ...(matchedEntry.settlements || []),
+            { id: 'import-settle', amount: t.amount, date: t.date },
+          ];
+          const totalSettled = matchedEntry.settlements.reduce((s, x) => s + x.amount, 0);
+          if (totalSettled >= matchedEntry.amount) {
+            matchedEntry.status = 'closed';
+          }
         } else {
           // No open record exists to settle: create a closed record with this transaction
-          // accountId is omitted from entry creation so account balance isn't modified initially,
-          // then addSettlement applies the accurate delta (+amount for lent, -amount for borrowed/holding).
           const created = await addPeopleEntry({
             contactName: cName,
             type: targetType,

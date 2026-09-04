@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import type {
   Account,
   Transaction,
@@ -67,6 +67,10 @@ interface VaultContextType {
   // People Ledger Operations
   addPeopleEntry: (entry: Omit<PeopleLedgerEntry, 'id' | 'vaultId' | 'updatedAt' | 'settlements' | 'status'>) => Promise<PeopleLedgerEntry>;
   updatePeopleEntry: (entry: PeopleLedgerEntry) => Promise<void>;
+  updateContactProfile: (
+    oldName: string,
+    newDetails: { name: string; phone?: string; notes?: string }
+  ) => Promise<void>;
   addSettlement: (entryId: string, settlement: Omit<SettlementRecord, 'id'>) => Promise<void>;
   deletePeopleEntry: (id: string) => Promise<void>;
 
@@ -136,6 +140,18 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [plannedExpenses, setPlannedExpenses] = useState<PlannedExpense[]>([]);
   const [isDecrypting, setIsDecrypting] = useState<boolean>(false);
+
+  // Synchronous refs to prevent stale closure bugs during multi-step batch / import loops
+  const accountsRef = useRef<Account[]>(accounts);
+  accountsRef.current = accounts;
+  const transactionsRef = useRef<Transaction[]>(transactions);
+  transactionsRef.current = transactions;
+  const peopleLedgerRef = useRef<PeopleLedgerEntry[]>(peopleLedger);
+  peopleLedgerRef.current = peopleLedger;
+  const assetsRef = useRef<Asset[]>(assets);
+  assetsRef.current = assets;
+  const liabilitiesRef = useRef<Liability[]>(liabilities);
+  liabilitiesRef.current = liabilities;
 
   // Load and decrypt records whenever activeVault and sessionKey change
   const loadVaultData = useCallback(async () => {
@@ -485,7 +501,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // If linked to an Asset (Investment / SIP / Asset purchase)
     if (newTx.linkedAssetId) {
-      const targetAsset = assets.find((a) => a.id === newTx.linkedAssetId);
+      const targetAsset = assetsRef.current.find((a) => a.id === newTx.linkedAssetId);
       if (targetAsset) {
         const trancheId = generateUUID();
         newTx.trancheId = trancheId;
@@ -518,14 +534,15 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           updatedAt: new Date().toISOString(),
         };
 
-        setAssets((prev) => prev.map((a) => (a.id === updatedAsset.id ? updatedAsset : a)));
+        assetsRef.current = assetsRef.current.map((a) => (a.id === updatedAsset.id ? updatedAsset : a));
+        setAssets(assetsRef.current);
         await saveEncryptedRecord('asset', updatedAsset, sessionKey);
       }
     }
 
     // If linked to a Liability (Debt payment / EMI / Prepayment)
     if (newTx.linkedLiabilityId) {
-      const targetLiab = liabilities.find((l) => l.id === newTx.linkedLiabilityId);
+      const targetLiab = liabilitiesRef.current.find((l) => l.id === newTx.linkedLiabilityId);
       if (targetLiab) {
         const newOutstanding = Math.max(0, round2(targetLiab.outstandingBalance - newTx.amount));
         const updatedLiab: Liability = {
@@ -534,7 +551,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           updatedAt: new Date().toISOString(),
         };
 
-        setLiabilities((prev) => prev.map((l) => (l.id === updatedLiab.id ? updatedLiab : l)));
+        liabilitiesRef.current = liabilitiesRef.current.map((l) => (l.id === updatedLiab.id ? updatedLiab : l));
+        setLiabilities(liabilitiesRef.current);
         await saveEncryptedRecord('liability', updatedLiab, sessionKey);
       }
     }
@@ -957,25 +975,21 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       status: validAmount === 0 ? 'closed' : 'open',
       updatedAt: new Date().toISOString(),
     };
-    setPeopleLedger((prev) => [newEntry, ...prev]);
+
+    peopleLedgerRef.current = [newEntry, ...peopleLedgerRef.current];
+    setPeopleLedger(peopleLedgerRef.current);
     await saveEncryptedRecord('people', newEntry, sessionKey);
 
     // If an account is linked to this debt / loan, adjust account balance (respecting baseline date)
     if (data.accountId) {
-      const acc = accounts.find((a) => a.id === data.accountId);
+      const acc = accountsRef.current.find((a) => a.id === data.accountId);
       const asOf = acc?.balanceAsOfDate || '1970-01-01';
-      if (data.date > asOf) {
+      if (acc && data.date > asOf) {
         const delta = data.type === 'lent' ? -validAmount : validAmount;
-        setAccounts((prev) =>
-          prev.map((acc) => {
-            if (acc.id === data.accountId) {
-              const updated = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
-              saveEncryptedRecord('account', updated, sessionKey);
-              return updated;
-            }
-            return acc;
-          })
-        );
+        const updatedAcc = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
+        accountsRef.current = accountsRef.current.map((a) => (a.id === updatedAcc.id ? updatedAcc : a));
+        setAccounts(accountsRef.current);
+        await saveEncryptedRecord('account', updatedAcc, sessionKey);
       }
     }
 
@@ -985,13 +999,63 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updatePeopleEntry = async (entry: PeopleLedgerEntry): Promise<void> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
     const updated = { ...entry, amount: round2(Math.abs(Number(entry.amount))), updatedAt: new Date().toISOString() };
-    setPeopleLedger((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    peopleLedgerRef.current = peopleLedgerRef.current.map((p) => (p.id === updated.id ? updated : p));
+    setPeopleLedger(peopleLedgerRef.current);
     await saveEncryptedRecord('people', updated, sessionKey);
+  };
+
+  const updateContactProfile = async (
+    oldName: string,
+    newDetails: { name: string; phone?: string; notes?: string }
+  ): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const trimmedOld = oldName.trim().toLowerCase();
+    const trimmedNew = newDetails.name.trim();
+
+    const affected = peopleLedgerRef.current.filter(
+      (e) => e.contactName.trim().toLowerCase() === trimmedOld
+    );
+
+    if (affected.length === 0) {
+      // Create a directory profile if no entries exist
+      await addPeopleEntry({
+        contactName: trimmedNew,
+        contactPhone: newDetails.phone?.trim() || undefined,
+        notes: newDetails.notes?.trim() || undefined,
+        amount: 0,
+        type: 'holding',
+        currency: activeVault.currency || 'INR',
+        date: new Date().toISOString().split('T')[0],
+      });
+      return;
+    }
+
+    const updated = peopleLedgerRef.current.map((e) => {
+      if (e.contactName.trim().toLowerCase() === trimmedOld) {
+        return {
+          ...e,
+          contactName: trimmedNew,
+          contactPhone: newDetails.phone !== undefined ? newDetails.phone.trim() || undefined : e.contactPhone,
+          notes: newDetails.notes !== undefined ? newDetails.notes.trim() || undefined : e.notes,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      return e;
+    });
+
+    peopleLedgerRef.current = updated;
+    setPeopleLedger(updated);
+
+    for (const entry of updated) {
+      if (entry.contactName.trim().toLowerCase() === trimmedNew.toLowerCase()) {
+        await saveEncryptedRecord('people', entry, sessionKey);
+      }
+    }
   };
 
   const addSettlement = async (entryId: string, settlement: Omit<SettlementRecord, 'id'>): Promise<void> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    const target = peopleLedger.find((p) => p.id === entryId);
+    const target = peopleLedgerRef.current.find((p) => p.id === entryId);
     if (!target) return;
 
     const validSettlementAmt = round2(Math.abs(Number(settlement.amount)));
@@ -1018,18 +1082,20 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updatedAt: new Date().toISOString(),
     };
 
-    setPeopleLedger((prev) => prev.map((p) => (p.id === entryId ? updatedEntry : p)));
+    peopleLedgerRef.current = peopleLedgerRef.current.map((p) => (p.id === entryId ? updatedEntry : p));
+    setPeopleLedger(peopleLedgerRef.current);
     await saveEncryptedRecord('people', updatedEntry, sessionKey);
 
     // If account was linked, adjust account balance (respecting baseline date)
     if (settlement.accountId) {
-      const acc = accounts.find((a) => a.id === settlement.accountId);
+      const acc = accountsRef.current.find((a) => a.id === settlement.accountId);
       const asOf = acc?.balanceAsOfDate || '1970-01-01';
       if (acc && settlement.date > asOf) {
         // If lent money returned: +balance. If borrowed/held money paid back: -balance.
         const delta = target.type === 'lent' ? validSettlementAmt : -validSettlementAmt;
         const updatedAcc = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
-        setAccounts((prev) => prev.map((a) => (a.id === updatedAcc.id ? updatedAcc : a)));
+        accountsRef.current = accountsRef.current.map((a) => (a.id === updatedAcc.id ? updatedAcc : a));
+        setAccounts(accountsRef.current);
         await saveEncryptedRecord('account', updatedAcc, sessionKey);
       }
     }
@@ -1037,7 +1103,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deletePeopleEntry = async (id: string): Promise<void> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    const target = peopleLedger.find((p) => p.id === id);
+    const target = peopleLedgerRef.current.find((p) => p.id === id);
 
     if (target) {
       const balanceDeltas: Record<string, number> = {};
@@ -1059,24 +1125,24 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Apply deltas to accounts
       const changedIds = Object.keys(balanceDeltas).filter((aId) => Math.abs(balanceDeltas[aId]) > 0.0001);
       if (changedIds.length > 0) {
-        setAccounts((prev) =>
-          prev.map((acc) => {
-            if (balanceDeltas[acc.id]) {
-              const updatedAcc = {
-                ...acc,
-                balance: round2(acc.balance + balanceDeltas[acc.id]),
-                updatedAt: new Date().toISOString(),
-              };
-              saveEncryptedRecord('account', updatedAcc, sessionKey);
-              return updatedAcc;
-            }
-            return acc;
-          })
-        );
+        accountsRef.current = accountsRef.current.map((acc) => {
+          if (balanceDeltas[acc.id]) {
+            const updatedAcc = {
+              ...acc,
+              balance: round2(acc.balance + balanceDeltas[acc.id]),
+              updatedAt: new Date().toISOString(),
+            };
+            saveEncryptedRecord('account', updatedAcc, sessionKey);
+            return updatedAcc;
+          }
+          return acc;
+        });
+        setAccounts(accountsRef.current);
       }
     }
 
-    setPeopleLedger((prev) => prev.filter((p) => p.id !== id));
+    peopleLedgerRef.current = peopleLedgerRef.current.filter((p) => p.id !== id);
+    setPeopleLedger(peopleLedgerRef.current);
     await deleteRecord(id);
   };
 
@@ -1216,7 +1282,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ],
       updatedAt: new Date().toISOString(),
     };
-    setAssets((prev) => [...prev, newAsset]);
+    assetsRef.current = [...assetsRef.current, newAsset];
+    setAssets(assetsRef.current);
     await saveEncryptedRecord('asset', newAsset, sessionKey);
     return newAsset;
   };
@@ -1560,6 +1627,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteCategory,
         addPeopleEntry,
         updatePeopleEntry,
+        updateContactProfile,
         addSettlement,
         deletePeopleEntry,
         addBudget,

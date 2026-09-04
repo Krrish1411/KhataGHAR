@@ -1,19 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '../common/Modal';
 import { Input } from '../common/Input';
 import { Select } from '../common/Select';
 import { Button } from '../common/Button';
 import { useVault } from '../../context/VaultContext';
-import { UserPlus } from 'lucide-react';
+import { UserPlus, Pencil } from 'lucide-react';
 
-interface ContactModalProps {
+export interface ContactModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: (contactName: string) => void;
+  contactToEdit?: {
+    name: string;
+    phone?: string;
+    notes?: string;
+  } | null;
 }
 
-export const ContactModal: React.FC<ContactModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const { addPeopleEntry, activeVault } = useVault();
+export const ContactModal: React.FC<ContactModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  contactToEdit,
+}) => {
+  const { addPeopleEntry, updateContactProfile, activeVault } = useVault();
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -21,6 +31,30 @@ export const ContactModal: React.FC<ContactModalProps> = ({ isOpen, onClose, onS
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      if (contactToEdit) {
+        setName(contactToEdit.name || '');
+        setPhone(contactToEdit.phone || '');
+        // Extract tag from notes if enclosed in [...]
+        const matchTag = contactToEdit.notes?.match(/^\[(.*?)\]/);
+        if (matchTag && matchTag[1]) {
+          setTag(matchTag[1]);
+          setNotes(contactToEdit.notes?.replace(/^\[.*?\]\s*/, '') || '');
+        } else {
+          setTag('Friend');
+          setNotes(contactToEdit.notes || '');
+        }
+      } else {
+        setName('');
+        setPhone('');
+        setTag('Friend');
+        setNotes('');
+      }
+      setError('');
+    }
+  }, [isOpen, contactToEdit]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,20 +70,26 @@ export const ContactModal: React.FC<ContactModalProps> = ({ isOpen, onClose, onS
     try {
       const combinedNote = [tag ? `[${tag}]` : '', notes.trim()].filter(Boolean).join(' ') || undefined;
 
-      await addPeopleEntry({
-        contactName: trimmedName,
-        contactPhone: phone.trim() || undefined,
-        notes: combinedNote,
-        amount: 0,
-        type: 'holding',
-        currency: activeVault?.currency || 'INR',
-        date: new Date().toISOString().split('T')[0],
-      });
+      if (contactToEdit) {
+        // Edit existing contact profile across all ledger records
+        await updateContactProfile(contactToEdit.name, {
+          name: trimmedName,
+          phone: phone.trim() || undefined,
+          notes: combinedNote,
+        });
+      } else {
+        // Create new directory profile
+        await addPeopleEntry({
+          contactName: trimmedName,
+          contactPhone: phone.trim() || undefined,
+          notes: combinedNote,
+          amount: 0,
+          type: 'holding',
+          currency: activeVault?.currency || 'INR',
+          date: new Date().toISOString().split('T')[0],
+        });
+      }
 
-      setName('');
-      setPhone('');
-      setNotes('');
-      setTag('Friend');
       onSuccess?.(trimmedName);
       onClose();
     } catch (err: any) {
@@ -59,6 +99,8 @@ export const ContactModal: React.FC<ContactModalProps> = ({ isOpen, onClose, onS
     }
   };
 
+  const isEditing = Boolean(contactToEdit);
+
   return (
     <Modal
       isOpen={isOpen}
@@ -66,12 +108,16 @@ export const ContactModal: React.FC<ContactModalProps> = ({ isOpen, onClose, onS
       title={
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 grid place-items-center text-pine-600">
-            <UserPlus className="w-4 h-4" />
+            {isEditing ? <Pencil className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
           </div>
-          <span>Add New Contact Profile</span>
+          <span>{isEditing ? 'Edit Contact Profile' : 'Add New Contact Profile'}</span>
         </div>
       }
-      description="Register a person or business contact in your directory with ₹0 balance without creating an active loan or debt."
+      description={
+        isEditing
+          ? 'Update contact name, phone number, and relationship details across all ledger records.'
+          : 'Register a person or business contact in your directory with ₹0 balance without creating an active loan or debt.'
+      }
       maxWidth="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -131,7 +177,7 @@ export const ContactModal: React.FC<ContactModalProps> = ({ isOpen, onClose, onS
             Cancel
           </Button>
           <Button variant="primary" size="sm" type="submit" isLoading={isSubmitting}>
-            Save Contact
+            {isEditing ? 'Save Changes' : 'Save Contact'}
           </Button>
         </div>
       </form>

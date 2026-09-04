@@ -104,12 +104,26 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
     }
 
     if (type === 'invest') {
-      return assets.map((a) => ({
+      const list: DisplayItem[] = assets.map((a) => ({
         id: a.id,
         label: a.name,
         subLabel: `${a.type.replace('_', ' ')} • ${formatCurrency(a.currentValue, a.currency, numberFormat, isPrivacyMode)}`,
         icon: <TrendingUp className="w-3.5 h-3.5 text-pine-600 shrink-0" />,
       }));
+
+      // Allow creating a new asset on the fly
+      const q = searchQuery.trim();
+      if (q && !assets.some((a) => a.name.toLowerCase() === q.toLowerCase())) {
+        list.unshift({
+          id: `new-asset:${q}`,
+          label: `+ Create Asset: "${q}"`,
+          subLabel: 'New Investment Asset (Click to create)',
+          icon: <Plus className="w-3.5 h-3.5 text-pine-600 shrink-0" />,
+          isCustom: true,
+        });
+      }
+
+      return list;
     }
 
     if (type === 'debt_payment') {
@@ -181,9 +195,21 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
   }, [items, searchQuery]);
 
   // Selected item display info
-  const selectedItem = useMemo(() => {
+  const selectedItem = useMemo<DisplayItem | null>(() => {
     if (!value) return null;
-    return items.find((i) => i.id === value) || (isPeopleType(type) ? { id: value, label: value } : null);
+    const found = items.find((i) => i.id === value);
+    if (found) return found;
+    if (value.startsWith('new-asset:')) {
+      const name = value.replace('new-asset:', '');
+      return {
+        id: value,
+        label: `+ Create "${name}"`,
+        subLabel: 'New Portfolio Asset',
+        icon: <Plus className="w-3.5 h-3.5 text-pine-600 shrink-0" />,
+      };
+    }
+    if (isPeopleType(type)) return { id: value, label: value };
+    return null;
   }, [items, value, type]);
 
   // Placeholders based on type

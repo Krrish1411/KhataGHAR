@@ -35,6 +35,11 @@ export const PeopleLedgerView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'lent' | 'borrowed' | 'holding' | 'contacts'>('lent');
   const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [contactToEdit, setContactToEdit] = useState<{
+    name: string;
+    phone?: string;
+    notes?: string;
+  } | null>(null);
   const [entryToEdit, setEntryToEdit] = useState<PeopleLedgerEntry | undefined>(undefined);
   const [initialContactName, setInitialContactName] = useState('');
   const [initialEntryType, setInitialEntryType] = useState<PeopleEntryType>('lent');
@@ -153,7 +158,10 @@ export const PeopleLedgerView: React.FC = () => {
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
-            onClick={() => setIsContactModalOpen(true)}
+            onClick={() => {
+              setContactToEdit(null);
+              setIsContactModalOpen(true);
+            }}
             className="px-3.5 py-2 rounded-xl bg-card hover:bg-moss text-ink border border-line text-xs font-bold shadow-2xs flex items-center gap-1.5 cursor-pointer transition-all"
           >
             <UserPlus className="w-3.5 h-3.5 text-pine-600" />
@@ -526,21 +534,38 @@ export const PeopleLedgerView: React.FC = () => {
                         </div>
                       </div>
 
-                      {contact.entries.length > 0 && contact.lent === 0 && contact.borrowed === 0 && contact.holding === 0 && (
+                      <div className="flex items-center gap-1">
                         <button
-                          onClick={async () => {
-                            if (window.confirm(`Delete contact profile "${contact.name}"?`)) {
-                              for (const entry of contact.entries) {
-                                await deletePeopleEntry(entry.id);
-                              }
-                            }
+                          onClick={() => {
+                            setContactToEdit({
+                              name: contact.name,
+                              phone: contact.phone,
+                              notes: contact.notes,
+                            });
+                            setIsContactModalOpen(true);
                           }}
-                          className="p-1 rounded-lg text-ink/30 hover:text-flare-600 hover:bg-flare-50 dark:hover:bg-flare-950/40 transition-colors cursor-pointer"
-                          title="Delete contact"
+                          className="p-1.5 rounded-lg text-ink/40 hover:text-ink hover:bg-moss transition-colors cursor-pointer"
+                          title="Edit contact profile (name, phone, notes)"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                      )}
+
+                        {contact.entries.length > 0 && contact.lent === 0 && contact.borrowed === 0 && contact.holding === 0 && (
+                          <button
+                            onClick={async () => {
+                              if (window.confirm(`Delete contact profile "${contact.name}"?`)) {
+                                for (const entry of contact.entries) {
+                                  await deletePeopleEntry(entry.id);
+                                }
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-ink/30 hover:text-flare-600 hover:bg-flare-50 dark:hover:bg-flare-950/40 transition-colors cursor-pointer"
+                            title="Delete contact"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {contact.notes && (
@@ -644,13 +669,18 @@ export const PeopleLedgerView: React.FC = () => {
         />
       )}
 
-      {/* Contact Profile Modal (0 Balance) */}
+      {/* Contact Profile Modal (0 Balance or Edit) */}
       {isContactModalOpen && (
         <ContactModal
           isOpen={isContactModalOpen}
-          onClose={() => setIsContactModalOpen(false)}
+          onClose={() => {
+            setIsContactModalOpen(false);
+            setContactToEdit(null);
+          }}
+          contactToEdit={contactToEdit}
           onSuccess={(newName) => {
             setActiveTab('contacts');
+            setContactToEdit(null);
           }}
         />
       )}
