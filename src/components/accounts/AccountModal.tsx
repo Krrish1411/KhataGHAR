@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Modal } from '../common/Modal';
 import { Input } from '../common/Input';
 import { Select } from '../common/Select';
 import { Button } from '../common/Button';
 import { useVault } from '../../context/VaultContext';
+import { formatCurrency } from '../../utils/formatters';
+import { isTxAfterBaseline } from '../../utils/dates';
 import type { Account, AccountType, AccountTag, CurrencyCode } from '../../types';
-import { Landmark, Wallet } from 'lucide-react';
+import { Landmark, Wallet, ShieldCheck } from 'lucide-react';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -18,15 +20,17 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   onClose,
   accountToEdit,
 }) => {
-  const { addAccount, updateAccount, activeVault } = useVault();
+  const { addAccount, updateAccount, transactions, peopleLedger } = useVault();
 
   const [name, setName] = useState(accountToEdit?.name || '');
   const [type, setType] = useState<AccountType>(accountToEdit?.type || 'bank');
   const [currency, setCurrency] = useState<CurrencyCode>(accountToEdit?.currency || 'INR');
-  const [balance, setBalance] = useState(
-    accountToEdit?.balance !== undefined
-      ? String(accountToEdit.type === 'credit_card' ? Math.abs(accountToEdit.balance) : accountToEdit.balance)
-      : '0'
+  const [initialBalance, setInitialBalance] = useState(
+    accountToEdit?.initialBalance !== undefined
+      ? String(accountToEdit.type === 'credit_card' ? Math.abs(accountToEdit.initialBalance) : accountToEdit.initialBalance)
+      : (accountToEdit?.balance !== undefined
+          ? String(accountToEdit.type === 'credit_card' ? Math.abs(accountToEdit.balance) : accountToEdit.balance)
+          : '0')
   );
   const [balanceAsOfDate, setBalanceAsOfDate] = useState(
     accountToEdit?.balanceAsOfDate || new Date().toISOString().split('T')[0]
@@ -39,6 +43,34 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // Calculate activity since baseline date
+  const ledgerActivity = useMemo(() => {
+    if (!accountToEdit) return 0;
+    let net = 0;
+    transactions.forEach((tx) => {
+      if (isTxAfterBaseline(tx.date, balanceAsOfDate)) {
+        const amt = Math.abs(Number(tx.amount)) || 0;
+        if (tx.accountId === accountToEdit.id && tx.type === 'expense') net -= amt;
+        if (tx.accountId === accountToEdit.id && tx.type === 'income') net += amt;
+        if (tx.accountId === accountToEdit.id && tx.type === 'transfer') net -= amt;
+        if (tx.toAccountId === accountToEdit.id && tx.type === 'transfer') net += amt;
+      }
+    });
+    peopleLedger.forEach((entry) => {
+      if (entry.accountId === accountToEdit.id && isTxAfterBaseline(entry.date, balanceAsOfDate)) {
+        const delta = entry.type === 'lent' ? -entry.amount : entry.amount;
+        net += delta;
+      }
+      (entry.settlements || []).forEach((s) => {
+        if (s.accountId === accountToEdit.id && isTxAfterBaseline(s.date, balanceAsOfDate)) {
+          const sDelta = entry.type === 'lent' ? s.amount : -s.amount;
+          net += sDelta;
+        }
+      });
+    });
+    return Math.round((net + Number.EPSILON) * 100) / 100;
+  }, [accountToEdit, transactions, peopleLedger, balanceAsOfDate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -46,30 +78,34 @@ export const AccountModal: React.FC<AccountModalProps> = ({
       return;
     }
 
-    const cleanBalance = (balance || '').trim();
+    const cleanBalance = (initialBalance || '').trim();
     const rawNum = cleanBalance === '' ? 0 : parseFloat(cleanBalance);
     if (isNaN(rawNum)) {
-      setError('Please provide a valid numeric balance or 0');
+      setError('Please provide a valid numeric opening balance or 0');
       return;
     }
 
     const parsed = Math.round((rawNum + Number.EPSILON) * 100) / 100;
     // Credit card outstanding balance is stored as a negative liability balance
-    const finalBalance = type === 'credit_card' ? -Math.abs(parsed) : parsed;
+    const finalInitial = type === 'credit_card' ? -Math.abs(parsed) : parsed;
 
     setIsSubmitting(true);
     setError('');
 
     try {
+      const finalDate = balanceAsOfDate || new Date().toISOString().split('T')[0];
       if (accountToEdit) {
+        // Recompute current balance = new fixed initial balance + ledger activity post-baseline
+        const finalCurrentBalance = Math.round((finalInitial + ledgerActivity + Number.EPSILON) * 100) / 100;
+
         await updateAccount({
           ...accountToEdit,
           name: name.trim(),
           type,
           currency,
-          balance: finalBalance,
-          initialBalance: accountToEdit.initialBalance !== undefined ? accountToEdit.initialBalance : finalBalance,
-          balanceAsOfDate: balanceAsOfDate || undefined,
+          initialBalance: finalInitial,
+          balance: finalCurrentBalance,
+          balanceAsOfDate: finalDate,
           tag,
           isVisibleOnDashboard,
           institutionName: institutionName.trim() || undefined,
@@ -81,9 +117,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           name: name.trim(),
           type,
           currency,
-          balance: finalBalance,
-          initialBalance: finalBalance,
-          balanceAsOfDate: balanceAsOfDate || undefined,
+          initialBalance: finalInitial,
+          balance: finalInitial,
+          balanceAsOfDate: finalDate,
           tag,
           isVisibleOnDashboard,
           institutionName: institutionName.trim() || undefined,
@@ -168,22 +204,52 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           <Input
             type="number"
             step="any"
-            label={type === 'credit_card' ? 'Current Debt (Owed)' : 'Baseline / Current Balance'}
-            helperText={type === 'credit_card' ? 'Tracked as outstanding liability' : undefined}
+            label={type === 'credit_card' ? 'Opening Debt (as of date)' : 'Opening / Initial Balance'}
+            helperText="Fixed baseline balance on opening date. Remains unchanged unless you edit it."
             placeholder="0.00"
-            value={balance}
-            onChange={(e) => setBalance(e.target.value)}
+            value={initialBalance}
+            onChange={(e) => setInitialBalance(e.target.value)}
             tabularNums
           />
 
           <Input
             type="date"
-            label="Balance As Of Date"
-            helperText="Txns on or before this date won't alter this baseline"
+            label="Opening Date (Balance As Of)"
+            helperText="Txns on or before this date won't alter your baseline"
             value={balanceAsOfDate}
             onChange={(e) => setBalanceAsOfDate(e.target.value)}
           />
         </div>
+
+        {accountToEdit && (
+          <div className="p-3.5 rounded-xl bg-moss/70 border border-line text-xs space-y-1.5">
+            <div className="flex items-center gap-1.5 text-pine-700 dark:text-pine-400 font-bold text-[11px] mb-1">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Baseline Protection Active</span>
+            </div>
+            <div className="flex justify-between items-center text-ink/70">
+              <span>Opening / Initial Balance (Fixed):</span>
+              <span className="font-mono font-bold text-ink">
+                {formatCurrency(parseFloat(initialBalance || '0') || 0, currency)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-ink/70">
+              <span>Ledger Activity (Post-{balanceAsOfDate}):</span>
+              <span className={`font-mono font-bold ${ledgerActivity >= 0 ? 'text-pine-700 dark:text-pine-400' : 'text-flare-600'}`}>
+                {ledgerActivity >= 0 ? '+' : ''}{formatCurrency(ledgerActivity, currency)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-ink pt-1.5 border-t border-line font-bold">
+              <span>Calculated Running Balance:</span>
+              <span className="font-mono font-extrabold text-sm">
+                {formatCurrency(
+                  (type === 'credit_card' ? -1 : 1) * ((parseFloat(initialBalance || '0') || 0) + ledgerActivity),
+                  currency
+                )}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Input

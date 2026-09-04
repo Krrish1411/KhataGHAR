@@ -8,6 +8,8 @@ import { AnimatedNumber } from '../components/common/AnimatedNumber';
 import { Sparkline } from '../components/charts/Sparkline';
 import { AccountModal } from '../components/accounts/AccountModal';
 import { QuickAddModal } from '../components/transactions/QuickAddModal';
+import { formatCurrency } from '../utils/formatters';
+import { formatReadableDate } from '../utils/dates';
 import type { Account, AccountType } from '../types';
 import {
   Wallet,
@@ -192,7 +194,7 @@ export const AccountsView: React.FC = () => {
 
           <Button
             onClick={async () => {
-              if (window.confirm('Recalculate and reconcile all account balances based on your complete transaction ledger?')) {
+              if (window.confirm('Recalculate and reconcile all account balances based on your ledger? Fixed opening balances will be preserved, and only transactions after each account\'s opening date will apply.')) {
                 setIsReconciling(true);
                 try {
                   await reconcileAccounts();
@@ -449,6 +451,17 @@ export const AccountsView: React.FC = () => {
                           numberFormat={numberFormat}
                           isPrivacyMode={isPrivacyMode}
                         />
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10.5px] text-ink/45 mt-1">
+                        <span>Opening:</span>
+                        <span className="font-mono font-semibold text-ink/70">
+                          {formatCurrency(account.initialBalance ?? 0, account.currency, numberFormat, isPrivacyMode)}
+                        </span>
+                        {account.balanceAsOfDate && (
+                          <span className="text-[10px] text-ink/40">
+                            • as of {formatReadableDate(account.balanceAsOfDate)}
+                          </span>
+                        )}
                       </div>
                     </div>
 

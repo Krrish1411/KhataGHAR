@@ -25,6 +25,7 @@ import {
 } from '../services/storage';
 import { decryptData } from '../services/crypto';
 import { generateDemoDataset } from '../services/demoData';
+import { isTxAfterBaseline } from '../utils/dates';
 
 interface VaultContextType {
   // Active Vault Meta
@@ -336,28 +337,48 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Account Operations
   const addAccount = async (data: Omit<Account, 'id' | 'vaultId' | 'updatedAt'>): Promise<Account> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const validBal = typeof data.balance === 'number' && !isNaN(data.balance) ? round2(data.balance) : 0;
+    const validInitial = typeof data.initialBalance === 'number' && !isNaN(data.initialBalance)
+      ? round2(data.initialBalance)
+      : validBal;
+    const baseDate = data.balanceAsOfDate || new Date().toISOString().split('T')[0];
+
     const newAccount: Account = {
       ...data,
-      balance: typeof data.balance === 'number' && !isNaN(data.balance) ? data.balance : 0,
-      initialBalance: typeof data.initialBalance === 'number' && !isNaN(data.initialBalance) ? data.initialBalance : (data.balance || 0),
+      balance: validBal,
+      initialBalance: validInitial,
+      balanceAsOfDate: baseDate,
       id: generateUUID(),
       vaultId: activeVault.id,
       updatedAt: new Date().toISOString(),
     };
-    setAccounts((prev) => [...prev, newAccount]);
+    accountsRef.current = [...accountsRef.current, newAccount];
+    setAccounts(accountsRef.current);
     await saveEncryptedRecord('account', newAccount, sessionKey);
     return newAccount;
   };
 
   const updateAccount = async (account: Account): Promise<void> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    const updated = { ...account, updatedAt: new Date().toISOString() };
-    setAccounts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    const validBal = typeof account.balance === 'number' && !isNaN(account.balance) ? round2(account.balance) : 0;
+    const validInitial = typeof account.initialBalance === 'number' && !isNaN(account.initialBalance)
+      ? round2(account.initialBalance)
+      : validBal;
+    const updated = {
+      ...account,
+      balance: validBal,
+      initialBalance: validInitial,
+      balanceAsOfDate: account.balanceAsOfDate || new Date().toISOString().split('T')[0],
+      updatedAt: new Date().toISOString(),
+    };
+    accountsRef.current = accountsRef.current.map((a) => (a.id === updated.id ? updated : a));
+    setAccounts(accountsRef.current);
     await saveEncryptedRecord('account', updated, sessionKey);
   };
 
   const deleteAccount = async (id: string): Promise<void> => {
-    setAccounts((prev) => prev.filter((a) => a.id !== id));
+    accountsRef.current = accountsRef.current.filter((a) => a.id !== id);
+    setAccounts(accountsRef.current);
     await deleteRecord(id);
   };
 
@@ -368,15 +389,14 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const reconcileAccounts = async (): Promise<void> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
 
-    // 1. Calculate ledger deltas for each account
+    // 1. Calculate ledger deltas for each account (strictly for activity after account's opening baseline date)
     const calculatedDeltas: Record<string, number> = {};
 
-    transactions.forEach((tx) => {
+    transactionsRef.current.forEach((tx) => {
       const amt = round2(Math.abs(Number(tx.amount))) || 0;
-      const sourceAcc = accounts.find((a) => a.id === tx.accountId);
-      const sourceAsOf = sourceAcc?.balanceAsOfDate || '1970-01-01';
+      const sourceAcc = accountsRef.current.find((a) => a.id === tx.accountId);
 
-      if (tx.date > sourceAsOf) {
+      if (sourceAcc && isTxAfterBaseline(tx.date, sourceAcc.balanceAsOfDate)) {
         if (tx.type === 'expense') {
           calculatedDeltas[tx.accountId] = (calculatedDeltas[tx.accountId] || 0) - amt;
         } else if (tx.type === 'income') {
@@ -387,28 +407,25 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       if (tx.type === 'transfer' && tx.toAccountId) {
-        const destAcc = accounts.find((a) => a.id === tx.toAccountId);
-        const destAsOf = destAcc?.balanceAsOfDate || '1970-01-01';
-        if (tx.date > destAsOf) {
+        const destAcc = accountsRef.current.find((a) => a.id === tx.toAccountId);
+        if (destAcc && isTxAfterBaseline(tx.date, destAcc.balanceAsOfDate)) {
           calculatedDeltas[tx.toAccountId] = (calculatedDeltas[tx.toAccountId] || 0) + amt;
         }
       }
     });
 
-    peopleLedger.forEach((entry) => {
+    peopleLedgerRef.current.forEach((entry) => {
       if (entry.accountId) {
-        const acc = accounts.find((a) => a.id === entry.accountId);
-        const asOf = acc?.balanceAsOfDate || '1970-01-01';
-        if (entry.date > asOf) {
+        const acc = accountsRef.current.find((a) => a.id === entry.accountId);
+        if (acc && isTxAfterBaseline(entry.date, acc.balanceAsOfDate)) {
           const delta = entry.type === 'lent' ? -entry.amount : entry.amount;
           calculatedDeltas[entry.accountId] = (calculatedDeltas[entry.accountId] || 0) + delta;
         }
       }
       (entry.settlements || []).forEach((s) => {
         if (s.accountId) {
-          const acc = accounts.find((a) => a.id === s.accountId);
-          const asOf = acc?.balanceAsOfDate || '1970-01-01';
-          if (s.date > asOf) {
+          const acc = accountsRef.current.find((a) => a.id === s.accountId);
+          if (acc && isTxAfterBaseline(s.date, acc.balanceAsOfDate)) {
             const sDelta = entry.type === 'lent' ? s.amount : -s.amount;
             calculatedDeltas[s.accountId] = (calculatedDeltas[s.accountId] || 0) + sDelta;
           }
@@ -416,10 +433,10 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
     });
 
-    // 2. Recompute each account's balance from its baseline initialBalance
-    const updatedAccs = accounts.map((acc) => {
+    // 2. Recompute each account's balance strictly from its fixed baseline initialBalance
+    const updatedAccs = accountsRef.current.map((acc) => {
       const delta = calculatedDeltas[acc.id] || 0;
-      const initial = acc.initialBalance !== undefined ? acc.initialBalance : round2(acc.balance - delta);
+      const initial = acc.initialBalance !== undefined ? acc.initialBalance : (acc.balance - delta);
       const newBal = round2(initial + delta);
       return {
         ...acc,
@@ -429,6 +446,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
     });
 
+    accountsRef.current = updatedAccs;
     setAccounts(updatedAccs);
     for (const a of updatedAccs) {
       await saveEncryptedRecord('account', a, sessionKey);
@@ -448,55 +466,49 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     // Update in-memory state & sort
-    setTransactions((prev) => [newTx, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+    transactionsRef.current = [newTx, ...transactionsRef.current].sort((a, b) => b.date.localeCompare(a.date));
+    setTransactions(transactionsRef.current);
 
-    // Update connected account balances with precise 2-decimal rounding
+    // Update connected account balances with precise 2-decimal rounding (strictly after baseline opening date)
     if (newTx.type === 'expense') {
-      setAccounts((prev) =>
-        prev.map((acc) => {
-          if (acc.id === newTx.accountId) {
-            const asOf = acc.balanceAsOfDate || '1970-01-01';
-            if (newTx.date <= asOf) return acc;
-            const updated = { ...acc, balance: round2(acc.balance - newTx.amount), updatedAt: new Date().toISOString() };
-            saveEncryptedRecord('account', updated, sessionKey);
-            return updated;
-          }
-          return acc;
-        })
-      );
+      accountsRef.current = accountsRef.current.map((acc) => {
+        if (acc.id === newTx.accountId) {
+          if (!isTxAfterBaseline(newTx.date, acc.balanceAsOfDate)) return acc;
+          const updated = { ...acc, balance: round2(acc.balance - newTx.amount), updatedAt: new Date().toISOString() };
+          saveEncryptedRecord('account', updated, sessionKey);
+          return updated;
+        }
+        return acc;
+      });
+      setAccounts(accountsRef.current);
     } else if (newTx.type === 'income') {
-      setAccounts((prev) =>
-        prev.map((acc) => {
-          if (acc.id === newTx.accountId) {
-            const asOf = acc.balanceAsOfDate || '1970-01-01';
-            if (newTx.date <= asOf) return acc;
-            const updated = { ...acc, balance: round2(acc.balance + newTx.amount), updatedAt: new Date().toISOString() };
-            saveEncryptedRecord('account', updated, sessionKey);
-            return updated;
-          }
-          return acc;
-        })
-      );
+      accountsRef.current = accountsRef.current.map((acc) => {
+        if (acc.id === newTx.accountId) {
+          if (!isTxAfterBaseline(newTx.date, acc.balanceAsOfDate)) return acc;
+          const updated = { ...acc, balance: round2(acc.balance + newTx.amount), updatedAt: new Date().toISOString() };
+          saveEncryptedRecord('account', updated, sessionKey);
+          return updated;
+        }
+        return acc;
+      });
+      setAccounts(accountsRef.current);
     } else if (newTx.type === 'transfer' && newTx.toAccountId) {
-      setAccounts((prev) =>
-        prev.map((acc) => {
-          if (acc.id === newTx.accountId) {
-            const asOf = acc.balanceAsOfDate || '1970-01-01';
-            if (newTx.date <= asOf) return acc;
-            const updated = { ...acc, balance: round2(acc.balance - newTx.amount), updatedAt: new Date().toISOString() };
-            saveEncryptedRecord('account', updated, sessionKey);
-            return updated;
-          }
-          if (acc.id === newTx.toAccountId) {
-            const asOf = acc.balanceAsOfDate || '1970-01-01';
-            if (newTx.date <= asOf) return acc;
-            const updated = { ...acc, balance: round2(acc.balance + newTx.amount), updatedAt: new Date().toISOString() };
-            saveEncryptedRecord('account', updated, sessionKey);
-            return updated;
-          }
-          return acc;
-        })
-      );
+      accountsRef.current = accountsRef.current.map((acc) => {
+        if (acc.id === newTx.accountId) {
+          if (!isTxAfterBaseline(newTx.date, acc.balanceAsOfDate)) return acc;
+          const updated = { ...acc, balance: round2(acc.balance - newTx.amount), updatedAt: new Date().toISOString() };
+          saveEncryptedRecord('account', updated, sessionKey);
+          return updated;
+        }
+        if (acc.id === newTx.toAccountId) {
+          if (!isTxAfterBaseline(newTx.date, acc.balanceAsOfDate)) return acc;
+          const updated = { ...acc, balance: round2(acc.balance + newTx.amount), updatedAt: new Date().toISOString() };
+          saveEncryptedRecord('account', updated, sessionKey);
+          return updated;
+        }
+        return acc;
+      });
+      setAccounts(accountsRef.current);
     }
 
     // If linked to an Asset (Investment / SIP / Asset purchase)
@@ -612,101 +624,112 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updatedAt: new Date().toISOString(),
     };
 
-    const oldTx = transactions.find((t) => t.id === tx.id);
+    const oldTx = transactionsRef.current.find((t) => t.id === tx.id);
     if (oldTx) {
       const balanceDeltas: Record<string, number> = {};
 
-      // 1. Reverse old transaction's financial effect
-      if (oldTx.type === 'expense') {
-        balanceDeltas[oldTx.accountId] = (balanceDeltas[oldTx.accountId] || 0) + oldTx.amount;
-      } else if (oldTx.type === 'income') {
-        balanceDeltas[oldTx.accountId] = (balanceDeltas[oldTx.accountId] || 0) - oldTx.amount;
-      } else if (oldTx.type === 'transfer' && oldTx.toAccountId) {
-        balanceDeltas[oldTx.accountId] = (balanceDeltas[oldTx.accountId] || 0) + oldTx.amount;
-        balanceDeltas[oldTx.toAccountId] = (balanceDeltas[oldTx.toAccountId] || 0) - oldTx.amount;
+      // 1. Reverse old transaction's financial effect (strictly if after baseline)
+      const oldSourceAcc = accountsRef.current.find((a) => a.id === oldTx.accountId);
+      if (oldSourceAcc && isTxAfterBaseline(oldTx.date, oldSourceAcc.balanceAsOfDate)) {
+        if (oldTx.type === 'expense') {
+          balanceDeltas[oldTx.accountId] = (balanceDeltas[oldTx.accountId] || 0) + oldTx.amount;
+        } else if (oldTx.type === 'income') {
+          balanceDeltas[oldTx.accountId] = (balanceDeltas[oldTx.accountId] || 0) - oldTx.amount;
+        } else if (oldTx.type === 'transfer') {
+          balanceDeltas[oldTx.accountId] = (balanceDeltas[oldTx.accountId] || 0) + oldTx.amount;
+        }
+      }
+      if (oldTx.type === 'transfer' && oldTx.toAccountId) {
+        const oldDestAcc = accountsRef.current.find((a) => a.id === oldTx.toAccountId);
+        if (oldDestAcc && isTxAfterBaseline(oldTx.date, oldDestAcc.balanceAsOfDate)) {
+          balanceDeltas[oldTx.toAccountId] = (balanceDeltas[oldTx.toAccountId] || 0) - oldTx.amount;
+        }
       }
 
-      // 2. Apply updated transaction's financial effect
-      if (updated.type === 'expense') {
-        balanceDeltas[updated.accountId] = (balanceDeltas[updated.accountId] || 0) - updated.amount;
-      } else if (updated.type === 'income') {
-        balanceDeltas[updated.accountId] = (balanceDeltas[updated.accountId] || 0) + updated.amount;
-      } else if (updated.type === 'transfer' && updated.toAccountId) {
-        balanceDeltas[updated.accountId] = (balanceDeltas[updated.accountId] || 0) - updated.amount;
-        balanceDeltas[updated.toAccountId] = (balanceDeltas[updated.toAccountId] || 0) + updated.amount;
+      // 2. Apply updated transaction's financial effect (strictly if after baseline)
+      const newSourceAcc = accountsRef.current.find((a) => a.id === updated.accountId);
+      if (newSourceAcc && isTxAfterBaseline(updated.date, newSourceAcc.balanceAsOfDate)) {
+        if (updated.type === 'expense') {
+          balanceDeltas[updated.accountId] = (balanceDeltas[updated.accountId] || 0) - updated.amount;
+        } else if (updated.type === 'income') {
+          balanceDeltas[updated.accountId] = (balanceDeltas[updated.accountId] || 0) + updated.amount;
+        } else if (updated.type === 'transfer') {
+          balanceDeltas[updated.accountId] = (balanceDeltas[updated.accountId] || 0) - updated.amount;
+        }
+      }
+      if (updated.type === 'transfer' && updated.toAccountId) {
+        const newDestAcc = accountsRef.current.find((a) => a.id === updated.toAccountId);
+        if (newDestAcc && isTxAfterBaseline(updated.date, newDestAcc.balanceAsOfDate)) {
+          balanceDeltas[updated.toAccountId] = (balanceDeltas[updated.toAccountId] || 0) + updated.amount;
+        }
       }
 
       // 3. Apply net non-zero balance changes to accounts
       const changedIds = Object.keys(balanceDeltas).filter((accId) => Math.abs(balanceDeltas[accId]) > 0.0001);
       if (changedIds.length > 0) {
-        setAccounts((prev) =>
-          prev.map((acc) => {
-            if (balanceDeltas[acc.id]) {
-              const updatedAcc = {
-                ...acc,
-                balance: round2(acc.balance + balanceDeltas[acc.id]),
-                updatedAt: new Date().toISOString(),
-              };
-              saveEncryptedRecord('account', updatedAcc, sessionKey);
-              return updatedAcc;
-            }
-            return acc;
-          })
-        );
+        accountsRef.current = accountsRef.current.map((acc) => {
+          if (balanceDeltas[acc.id]) {
+            const updatedAcc = {
+              ...acc,
+              balance: round2(acc.balance + balanceDeltas[acc.id]),
+              updatedAt: new Date().toISOString(),
+            };
+            saveEncryptedRecord('account', updatedAcc, sessionKey);
+            return updatedAcc;
+          }
+          return acc;
+        });
+        setAccounts(accountsRef.current);
       }
     }
 
-    setTransactions((prev) => prev.map((t) => (t.id === updated.id ? updated : t)).sort((a, b) => b.date.localeCompare(a.date)));
+    transactionsRef.current = transactionsRef.current
+      .map((t) => (t.id === updated.id ? updated : t))
+      .sort((a, b) => b.date.localeCompare(a.date));
+    setTransactions(transactionsRef.current);
     await saveEncryptedRecord('transaction', updated, sessionKey);
   };
 
   const deleteTransaction = async (id: string): Promise<void> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    const txToDel = transactions.find((t) => t.id === id);
+    const txToDel = transactionsRef.current.find((t) => t.id === id);
 
     if (txToDel) {
-      // Mathematically reverse the transaction's effect on connected account(s)
-      if (txToDel.type === 'expense') {
-        // Deleting expense refunds money back to account
-        setAccounts((prev) =>
-          prev.map((acc) => {
-            if (acc.id === txToDel.accountId) {
-              const updated = { ...acc, balance: round2(acc.balance + txToDel.amount), updatedAt: new Date().toISOString() };
-              saveEncryptedRecord('account', updated, sessionKey);
-              return updated;
-            }
-            return acc;
-          })
-        );
-      } else if (txToDel.type === 'income') {
-        // Deleting income deducts money from account
-        setAccounts((prev) =>
-          prev.map((acc) => {
-            if (acc.id === txToDel.accountId) {
-              const updated = { ...acc, balance: round2(acc.balance - txToDel.amount), updatedAt: new Date().toISOString() };
-              saveEncryptedRecord('account', updated, sessionKey);
-              return updated;
-            }
-            return acc;
-          })
-        );
-      } else if (txToDel.type === 'transfer' && txToDel.toAccountId) {
-        // Deleting transfer refunds accountId and deducts toAccountId
-        setAccounts((prev) =>
-          prev.map((acc) => {
-            if (acc.id === txToDel.accountId) {
-              const updated = { ...acc, balance: round2(acc.balance + txToDel.amount), updatedAt: new Date().toISOString() };
-              saveEncryptedRecord('account', updated, sessionKey);
-              return updated;
-            }
-            if (acc.id === txToDel.toAccountId) {
-              const updated = { ...acc, balance: round2(acc.balance - txToDel.amount), updatedAt: new Date().toISOString() };
-              saveEncryptedRecord('account', updated, sessionKey);
-              return updated;
-            }
-            return acc;
-          })
-        );
+      const balanceDeltas: Record<string, number> = {};
+      const sourceAcc = accountsRef.current.find((a) => a.id === txToDel.accountId);
+
+      if (sourceAcc && isTxAfterBaseline(txToDel.date, sourceAcc.balanceAsOfDate)) {
+        if (txToDel.type === 'expense') {
+          balanceDeltas[txToDel.accountId] = (balanceDeltas[txToDel.accountId] || 0) + txToDel.amount;
+        } else if (txToDel.type === 'income') {
+          balanceDeltas[txToDel.accountId] = (balanceDeltas[txToDel.accountId] || 0) - txToDel.amount;
+        } else if (txToDel.type === 'transfer') {
+          balanceDeltas[txToDel.accountId] = (balanceDeltas[txToDel.accountId] || 0) + txToDel.amount;
+        }
+      }
+
+      if (txToDel.type === 'transfer' && txToDel.toAccountId) {
+        const destAcc = accountsRef.current.find((a) => a.id === txToDel.toAccountId);
+        if (destAcc && isTxAfterBaseline(txToDel.date, destAcc.balanceAsOfDate)) {
+          balanceDeltas[txToDel.toAccountId] = (balanceDeltas[txToDel.toAccountId] || 0) - txToDel.amount;
+        }
+      }
+
+      const changedAccIds = Object.keys(balanceDeltas);
+      if (changedAccIds.length > 0) {
+        accountsRef.current = accountsRef.current.map((acc) => {
+          if (balanceDeltas[acc.id]) {
+            const updated = {
+              ...acc,
+              balance: round2(acc.balance + balanceDeltas[acc.id]),
+              updatedAt: new Date().toISOString(),
+            };
+            saveEncryptedRecord('account', updated, sessionKey);
+            return updated;
+          }
+          return acc;
+        });
+        setAccounts(accountsRef.current);
       }
 
       // If linked to an Asset, remove the tranche and adjust valuation/units
@@ -807,15 +830,15 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updatedAt: new Date().toISOString(),
     }));
 
-    setTransactions((prev) => [...newTxs, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+    transactionsRef.current = [...newTxs, ...transactionsRef.current].sort((a, b) => b.date.localeCompare(a.date));
+    setTransactions(transactionsRef.current);
 
-    // Update balances including transfers (respecting account balanceAsOfDate baseline)
+    // Update balances including transfers (strictly respecting account balanceAsOfDate baseline)
     const balanceDeltas: Record<string, number> = {};
     newTxs.forEach((tx) => {
-      const sourceAcc = accounts.find((a) => a.id === tx.accountId);
-      const sourceAsOf = sourceAcc?.balanceAsOfDate || '1970-01-01';
+      const sourceAcc = accountsRef.current.find((a) => a.id === tx.accountId);
 
-      if (tx.date > sourceAsOf) {
+      if (sourceAcc && isTxAfterBaseline(tx.date, sourceAcc.balanceAsOfDate)) {
         if (tx.type === 'expense') {
           balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) - tx.amount;
         } else if (tx.type === 'income') {
@@ -826,16 +849,16 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       if (tx.type === 'transfer' && tx.toAccountId) {
-        const destAcc = accounts.find((a) => a.id === tx.toAccountId);
-        const destAsOf = destAcc?.balanceAsOfDate || '1970-01-01';
-        if (tx.date > destAsOf) {
+        const destAcc = accountsRef.current.find((a) => a.id === tx.toAccountId);
+        if (destAcc && isTxAfterBaseline(tx.date, destAcc.balanceAsOfDate)) {
           balanceDeltas[tx.toAccountId] = (balanceDeltas[tx.toAccountId] || 0) + tx.amount;
         }
       }
     });
 
-    setAccounts((prev) =>
-      prev.map((acc) => {
+    const changedAccIds = Object.keys(balanceDeltas);
+    if (changedAccIds.length > 0) {
+      accountsRef.current = accountsRef.current.map((acc) => {
         if (balanceDeltas[acc.id]) {
           const updated = {
             ...acc,
@@ -846,8 +869,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return updated;
         }
         return acc;
-      })
-    );
+      });
+      setAccounts(accountsRef.current);
+    }
 
     await bulkSaveEncryptedRecords('transaction', newTxs, sessionKey);
   };
@@ -864,17 +888,25 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (batchTxs.length === 0 && batchPeople.length === 0 && batchAssets.length === 0) return 0;
 
-    // Calculate reverse balance deltas from transactions
+    // Calculate reverse balance deltas from transactions (strictly if after baseline)
     const balanceDeltas: Record<string, number> = {};
     for (const tx of batchTxs) {
       const amt = tx.amount;
-      if (tx.type === 'expense') {
-        balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) + amt;
-      } else if (tx.type === 'income') {
-        balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) - amt;
-      } else if (tx.type === 'transfer' && tx.toAccountId) {
-        balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) + amt;
-        balanceDeltas[tx.toAccountId] = (balanceDeltas[tx.toAccountId] || 0) - amt;
+      const sourceAcc = accountsRef.current.find((a) => a.id === tx.accountId);
+      if (sourceAcc && isTxAfterBaseline(tx.date, sourceAcc.balanceAsOfDate)) {
+        if (tx.type === 'expense') {
+          balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) + amt;
+        } else if (tx.type === 'income') {
+          balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) - amt;
+        } else if (tx.type === 'transfer') {
+          balanceDeltas[tx.accountId] = (balanceDeltas[tx.accountId] || 0) + amt;
+        }
+      }
+      if (tx.type === 'transfer' && tx.toAccountId) {
+        const destAcc = accountsRef.current.find((a) => a.id === tx.toAccountId);
+        if (destAcc && isTxAfterBaseline(tx.date, destAcc.balanceAsOfDate)) {
+          balanceDeltas[tx.toAccountId] = (balanceDeltas[tx.toAccountId] || 0) - amt;
+        }
       }
 
       // Revert any linked asset tranches
@@ -913,16 +945,22 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
 
-    // Calculate reverse balance deltas from people entries
+    // Calculate reverse balance deltas from people entries (strictly if after baseline)
     for (const p of batchPeople) {
       if (p.accountId) {
-        const revDelta = p.type === 'lent' ? p.amount : -p.amount;
-        balanceDeltas[p.accountId] = (balanceDeltas[p.accountId] || 0) + revDelta;
+        const acc = accountsRef.current.find((a) => a.id === p.accountId);
+        if (acc && isTxAfterBaseline(p.date, acc.balanceAsOfDate)) {
+          const revDelta = p.type === 'lent' ? p.amount : -p.amount;
+          balanceDeltas[p.accountId] = (balanceDeltas[p.accountId] || 0) + revDelta;
+        }
       }
       (p.settlements || []).forEach((s) => {
         if (s.accountId) {
-          const sRevDelta = p.type === 'lent' ? -s.amount : s.amount;
-          balanceDeltas[s.accountId] = (balanceDeltas[s.accountId] || 0) + sRevDelta;
+          const acc = accountsRef.current.find((a) => a.id === s.accountId);
+          if (acc && isTxAfterBaseline(s.date, acc.balanceAsOfDate)) {
+            const sRevDelta = p.type === 'lent' ? -s.amount : s.amount;
+            balanceDeltas[s.accountId] = (balanceDeltas[s.accountId] || 0) + sRevDelta;
+          }
         }
       });
     }
@@ -936,8 +974,11 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (matchingSettles.length > 0) {
         for (const s of matchingSettles) {
           if (s.accountId) {
-            const sRevDelta = p.type === 'lent' ? -s.amount : s.amount;
-            balanceDeltas[s.accountId] = (balanceDeltas[s.accountId] || 0) + sRevDelta;
+            const acc = accountsRef.current.find((a) => a.id === s.accountId);
+            if (acc && isTxAfterBaseline(s.date, acc.balanceAsOfDate)) {
+              const sRevDelta = p.type === 'lent' ? -s.amount : s.amount;
+              balanceDeltas[s.accountId] = (balanceDeltas[s.accountId] || 0) + sRevDelta;
+            }
           }
         }
         const remainingSettles = p.settlements.filter((s) => s.importBatchId !== importBatchId);
@@ -1054,11 +1095,10 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setPeopleLedger(peopleLedgerRef.current);
     await saveEncryptedRecord('people', newEntry, sessionKey);
 
-    // If an account is linked to this debt / loan, adjust account balance (respecting baseline date)
+    // If an account is linked to this debt / loan, adjust account balance (strictly after baseline opening date)
     if (data.accountId) {
       const acc = accountsRef.current.find((a) => a.id === data.accountId);
-      const asOf = acc?.balanceAsOfDate || '1970-01-01';
-      if (acc && data.date > asOf) {
+      if (acc && isTxAfterBaseline(data.date, acc.balanceAsOfDate)) {
         const delta = data.type === 'lent' ? -validAmount : validAmount;
         const updatedAcc = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
         accountsRef.current = accountsRef.current.map((a) => (a.id === updatedAcc.id ? updatedAcc : a));
@@ -1160,11 +1200,10 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setPeopleLedger(peopleLedgerRef.current);
     await saveEncryptedRecord('people', updatedEntry, sessionKey);
 
-    // If account was linked, adjust account balance (respecting baseline date)
+    // If account was linked, adjust account balance (strictly after baseline opening date)
     if (settlement.accountId) {
       const acc = accountsRef.current.find((a) => a.id === settlement.accountId);
-      const asOf = acc?.balanceAsOfDate || '1970-01-01';
-      if (acc && settlement.date > asOf) {
+      if (acc && isTxAfterBaseline(settlement.date, acc.balanceAsOfDate)) {
         // If lent money returned: +balance. If borrowed/held money paid back: -balance.
         const delta = target.type === 'lent' ? validSettlementAmt : -validSettlementAmt;
         const updatedAcc = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
@@ -1182,17 +1221,23 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (target) {
       const balanceDeltas: Record<string, number> = {};
 
-      // 1. Reverse initial principal if linked to an account
+      // 1. Reverse initial principal if linked to an account (and after baseline)
       if (target.accountId) {
-        const revDelta = target.type === 'lent' ? target.amount : -target.amount;
-        balanceDeltas[target.accountId] = (balanceDeltas[target.accountId] || 0) + revDelta;
+        const acc = accountsRef.current.find((a) => a.id === target.accountId);
+        if (acc && isTxAfterBaseline(target.date, acc.balanceAsOfDate)) {
+          const revDelta = target.type === 'lent' ? target.amount : -target.amount;
+          balanceDeltas[target.accountId] = (balanceDeltas[target.accountId] || 0) + revDelta;
+        }
       }
 
-      // 2. Reverse each settlement
+      // 2. Reverse each settlement (if after baseline)
       (target.settlements || []).forEach((s) => {
         if (s.accountId) {
-          const sRevDelta = target.type === 'lent' ? -s.amount : s.amount;
-          balanceDeltas[s.accountId] = (balanceDeltas[s.accountId] || 0) + sRevDelta;
+          const acc = accountsRef.current.find((a) => a.id === s.accountId);
+          if (acc && isTxAfterBaseline(s.date, acc.balanceAsOfDate)) {
+            const sRevDelta = target.type === 'lent' ? -s.amount : s.amount;
+            balanceDeltas[s.accountId] = (balanceDeltas[s.accountId] || 0) + sRevDelta;
+          }
         }
       });
 

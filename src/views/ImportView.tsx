@@ -18,7 +18,7 @@ import {
   type ParsedSMSResult,
 } from '../services/parser';
 import { formatCurrency } from '../utils/formatters';
-import { formatReadableDate } from '../utils/dates';
+import { formatReadableDate, isTxAfterBaseline } from '../utils/dates';
 import type { Account, PeopleLedgerEntry } from '../types';
 import {
   TrendingUp,
@@ -691,6 +691,12 @@ export const ImportView: React.FC = () => {
   };
 
   const otherAccounts = accounts.filter((a) => a.id !== selectedAccountId);
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+
+  const preBaselineTxs = useMemo(() => {
+    if (!selectedAccount?.balanceAsOfDate) return [];
+    return stagedTxs.filter((t) => t.selected && !isTxAfterBaseline(t.date, selectedAccount.balanceAsOfDate));
+  }, [stagedTxs, selectedAccount?.balanceAsOfDate]);
 
   // Dynamically aggregate contacts from existing ledger AND any contacts typed in staged transactions
   const allAvailableContacts = useMemo(() => {
@@ -952,9 +958,17 @@ export const ImportView: React.FC = () => {
                   onChange={(e: any) => setSelectedAccountId(e.target.value)}
                   options={accounts.map((a: Account) => ({
                     value: a.id,
-                    label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})${a.balanceAsOfDate ? ` [Baseline: ${a.balanceAsOfDate}]` : ''}`,
+                    label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})${a.balanceAsOfDate ? ` [Baseline: ${a.balanceAsOfDate}, Opening: ₹${a.initialBalance ?? 0}]` : ''}`,
                   }))}
                 />
+                {selectedAccount && (
+                  <p className="text-[11px] text-ink/60 mt-2 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-pine-600 shrink-0" />
+                    <span>
+                      Fixed Opening Balance: <strong className="text-ink">{formatCurrency(selectedAccount.initialBalance ?? 0, selectedAccount.currency, numberFormat)}</strong> as of <strong className="text-ink">{selectedAccount.balanceAsOfDate ? formatReadableDate(selectedAccount.balanceAsOfDate) : 'Creation'}</strong>. Transactions on or before this date will not alter this baseline balance.
+                    </span>
+                  </p>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-line">
@@ -1017,6 +1031,20 @@ export const ImportView: React.FC = () => {
                   </Button>
                 </div>
               </div>
+
+              {/* Baseline Date Protection Banner */}
+              {preBaselineTxs.length > 0 && selectedAccount?.balanceAsOfDate && (
+                <div className="px-4 py-2.5 bg-amber-50/80 dark:bg-amber-950/30 border-b border-amber-200/70 dark:border-amber-800/50 flex items-center gap-2.5 text-xs text-amber-900 dark:text-amber-200">
+                  <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                  <div className="flex-1">
+                    <span className="font-semibold">Baseline Date Protection Active: </span>
+                    <span>
+                      {preBaselineTxs.length} selected transaction(s) are dated on or before {selectedAccount.name}&apos;s opening date ({formatReadableDate(selectedAccount.balanceAsOfDate)}).
+                      They will be added to your ledger history for records, but will <strong>NOT</strong> modify your fixed opening balance ({formatCurrency(selectedAccount.initialBalance ?? 0, selectedAccount.currency, numberFormat)}).
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Batch Selection Action Bar */}
               {stagedTxs.filter((t) => t.selected).length > 0 && (

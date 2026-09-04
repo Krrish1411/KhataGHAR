@@ -164,3 +164,17 @@ export function getPreviousPeriodRange(start: string, end: string): DateRange {
     label: 'Prior Period',
   };
 }
+
+/**
+ * Checks whether a transaction date is strictly after an account's baseline date.
+ * Strips any ISO timestamps/timezones and performs clean YYYY-MM-DD string comparison.
+ * If baselineDate is not set, returns true (all transactions count).
+ */
+export function isTxAfterBaseline(txDate?: string, baselineDate?: string): boolean {
+  if (!baselineDate) return true;
+  if (!txDate) return false;
+  const dTx = txDate.split('T')[0].trim();
+  const dBase = baselineDate.split('T')[0].trim();
+  return dTx > dBase;
+}
+
