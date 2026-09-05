@@ -75,6 +75,11 @@ interface VaultContextType {
     newDetails: { name: string; phone?: string; notes?: string }
   ) => Promise<void>;
   addSettlement: (entryId: string, settlement: Omit<SettlementRecord, 'id'>) => Promise<void>;
+  updateSettlement: (
+    entryId: string,
+    settlementId: string,
+    updates: { amount: number; date: string; accountId?: string; note?: string }
+  ) => Promise<void>;
   deleteSettlement: (entryId: string, settlementId: string) => Promise<void>;
   deletePeopleEntry: (id: string) => Promise<void>;
 
@@ -1341,7 +1346,62 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updatePeopleEntry = async (entry: PeopleLedgerEntry): Promise<void> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    const updated = { ...entry, amount: round2(Math.abs(Number(entry.amount))), updatedAt: new Date().toISOString() };
+    const oldEntry = peopleLedgerRef.current.find((p) => p.id === entry.id);
+    const validAmount = round2(Math.abs(Number(entry.amount)));
+
+    // Recalculate status based on settlements and updated principal
+    const totalSettled = round2((entry.settlements || []).reduce((sum, s) => sum + s.amount, 0));
+    let newStatus: PeopleLedgerEntry['status'] = 'open';
+    if (validAmount === 0 || totalSettled >= validAmount) {
+      newStatus = 'closed';
+    } else if (totalSettled > 0) {
+      newStatus = 'partially_settled';
+    }
+
+    // Reconcile linked account balances if account, amount, or type changed
+    const balanceDeltas: Record<string, number> = {};
+
+    // 1. Reverse old entry's financial delta if linked to an account
+    if (oldEntry && oldEntry.accountId) {
+      const oldAcc = accountsRef.current.find((a) => a.id === oldEntry.accountId);
+      if (oldAcc && isTxAfterBaseline(oldEntry.date, oldAcc.balanceAsOfDate)) {
+        const revDelta = oldEntry.type === 'lent' ? oldEntry.amount : -oldEntry.amount;
+        balanceDeltas[oldEntry.accountId] = (balanceDeltas[oldEntry.accountId] || 0) + revDelta;
+      }
+    }
+
+    // 2. Apply new entry's financial delta
+    if (entry.accountId) {
+      const newAcc = accountsRef.current.find((a) => a.id === entry.accountId);
+      if (newAcc && isTxAfterBaseline(entry.date, newAcc.balanceAsOfDate)) {
+        const newDelta = entry.type === 'lent' ? -validAmount : validAmount;
+        balanceDeltas[entry.accountId] = (balanceDeltas[entry.accountId] || 0) + newDelta;
+      }
+    }
+
+    // Apply account updates if any delta is non-zero
+    let accountsChanged = false;
+    for (const [accId, delta] of Object.entries(balanceDeltas)) {
+      if (Math.abs(delta) > 0.0001) {
+        const acc = accountsRef.current.find((a) => a.id === accId);
+        if (acc) {
+          const updatedAcc = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
+          accountsRef.current = accountsRef.current.map((a) => (a.id === updatedAcc.id ? updatedAcc : a));
+          await saveEncryptedRecord('account', updatedAcc, sessionKey);
+          accountsChanged = true;
+        }
+      }
+    }
+    if (accountsChanged) {
+      setAccounts(accountsRef.current);
+    }
+
+    const updated: PeopleLedgerEntry = {
+      ...entry,
+      amount: validAmount,
+      status: newStatus,
+      updatedAt: new Date().toISOString(),
+    };
     peopleLedgerRef.current = peopleLedgerRef.current.map((p) => (p.id === updated.id ? updated : p));
     setPeopleLedger(peopleLedgerRef.current);
     await saveEncryptedRecord('people', updated, sessionKey);
@@ -1505,6 +1565,87 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         await saveEncryptedRecord('account', updatedAcc, sessionKey);
       }
     }
+  const updateSettlement = async (
+    entryId: string,
+    settlementId: string,
+    updates: { amount: number; date: string; accountId?: string; note?: string }
+  ): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const target = peopleLedgerRef.current.find((p) => p.id === entryId);
+    if (!target) return;
+
+    const oldSettlement = (target.settlements || []).find((s) => s.id === settlementId);
+    if (!oldSettlement) return;
+
+    const validAmount = round2(Math.abs(Number(updates.amount)));
+    const balanceDeltas: Record<string, number> = {};
+
+    // 1. Reverse old settlement effect from old account
+    if (oldSettlement.accountId) {
+      const oldAcc = accountsRef.current.find((a) => a.id === oldSettlement.accountId);
+      if (oldAcc && isTxAfterBaseline(oldSettlement.date, oldAcc.balanceAsOfDate)) {
+        const revDelta = target.type === 'lent' ? -oldSettlement.amount : oldSettlement.amount;
+        balanceDeltas[oldSettlement.accountId] = (balanceDeltas[oldSettlement.accountId] || 0) + revDelta;
+      }
+    }
+
+    // 2. Apply new settlement effect on new account
+    if (updates.accountId) {
+      const newAcc = accountsRef.current.find((a) => a.id === updates.accountId);
+      if (newAcc && isTxAfterBaseline(updates.date, newAcc.balanceAsOfDate)) {
+        const newDelta = target.type === 'lent' ? validAmount : -validAmount;
+        balanceDeltas[updates.accountId] = (balanceDeltas[updates.accountId] || 0) + newDelta;
+      }
+    }
+
+    // Apply account updates if any delta is non-zero
+    let accountsChanged = false;
+    for (const [accId, delta] of Object.entries(balanceDeltas)) {
+      if (Math.abs(delta) > 0.0001) {
+        const acc = accountsRef.current.find((a) => a.id === accId);
+        if (acc) {
+          const updatedAcc = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
+          accountsRef.current = accountsRef.current.map((a) => (a.id === updatedAcc.id ? updatedAcc : a));
+          await saveEncryptedRecord('account', updatedAcc, sessionKey);
+          accountsChanged = true;
+        }
+      }
+    }
+    if (accountsChanged) {
+      setAccounts(accountsRef.current);
+    }
+
+    // 3. Update settlement in target entry and recalculate status
+    const updatedSettlements = (target.settlements || []).map((s) =>
+      s.id === settlementId
+        ? {
+            ...s,
+            amount: validAmount,
+            date: updates.date,
+            accountId: updates.accountId || undefined,
+            note: updates.note !== undefined ? updates.note.trim() || undefined : s.note,
+          }
+        : s
+    );
+
+    const totalSettled = round2(updatedSettlements.reduce((sum, s) => sum + s.amount, 0));
+    let newStatus: PeopleLedgerEntry['status'] = 'open';
+    if (target.amount === 0 || totalSettled >= target.amount) {
+      newStatus = 'closed';
+    } else if (totalSettled > 0) {
+      newStatus = 'partially_settled';
+    }
+
+    const updatedTarget: PeopleLedgerEntry = {
+      ...target,
+      settlements: updatedSettlements,
+      status: newStatus,
+      updatedAt: new Date().toISOString(),
+    };
+
+    peopleLedgerRef.current = peopleLedgerRef.current.map((p) => (p.id === entryId ? updatedTarget : p));
+    setPeopleLedger(peopleLedgerRef.current);
+    await saveEncryptedRecord('people', updatedTarget, sessionKey);
   };
 
   const deleteSettlement = async (entryId: string, settlementId: string): Promise<void> => {
@@ -2087,6 +2228,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updatePeopleEntry,
         updateContactProfile,
         addSettlement,
+        updateSettlement,
         deleteSettlement,
         deletePeopleEntry,
         addBudget,

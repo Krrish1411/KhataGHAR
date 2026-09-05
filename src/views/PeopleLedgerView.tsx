@@ -7,6 +7,7 @@ import { AnimatedNumber } from '../components/common/AnimatedNumber';
 import { PeopleEntryModal } from '../components/people/PeopleEntryModal';
 import { SettleModal } from '../components/people/SettleModal';
 import { ContactModal } from '../components/people/ContactModal';
+import { ContactDetailModal } from '../components/people/ContactDetailModal';
 import { formatCurrency, formatPercent } from '../utils/formatters';
 import { formatReadableDate } from '../utils/dates';
 import type { PeopleLedgerEntry, PeopleEntryType } from '../types';
@@ -25,6 +26,7 @@ import {
   TrendingUp,
   UserPlus,
   AlertCircle,
+  Search,
 } from 'lucide-react';
 
 export const PeopleLedgerView: React.FC = () => {
@@ -34,6 +36,9 @@ export const PeopleLedgerView: React.FC = () => {
   const accountLookup = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
 
   const [activeTab, setActiveTab] = useState<'lent' | 'borrowed' | 'holding' | 'contacts'>('lent');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'settled' | 'all'>('active');
+  const [contactSearch, setContactSearch] = useState('');
+  const [selectedContactForDetail, setSelectedContactForDetail] = useState<string | null>(null);
   const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [contactToEdit, setContactToEdit] = useState<{
@@ -48,6 +53,38 @@ export const PeopleLedgerView: React.FC = () => {
 
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
+
+  // Helper to determine if an entry is active (has remaining balance and not closed)
+  const isEntryActive = (entry: PeopleLedgerEntry) => {
+    const settled = (entry.settlements || []).reduce((sum, s) => sum + s.amount, 0);
+    const remaining = Math.max(0, entry.amount - settled);
+    return entry.status !== 'closed' && remaining > 0;
+  };
+
+  // Active counts for tab badges
+  const activeLentCount = useMemo(() => peopleLedger.filter((e) => e.type === 'lent' && isEntryActive(e)).length, [peopleLedger]);
+  const activeBorrowedCount = useMemo(() => peopleLedger.filter((e) => e.type === 'borrowed' && isEntryActive(e)).length, [peopleLedger]);
+  const activeHoldingCount = useMemo(() => peopleLedger.filter((e) => e.type === 'holding' && isEntryActive(e)).length, [peopleLedger]);
+
+  const totalLentCount = useMemo(() => peopleLedger.filter((e) => e.type === 'lent').length, [peopleLedger]);
+  const totalBorrowedCount = useMemo(() => peopleLedger.filter((e) => e.type === 'borrowed').length, [peopleLedger]);
+  const totalHoldingCount = useMemo(() => peopleLedger.filter((e) => e.type === 'holding').length, [peopleLedger]);
+
+  const currentTabActiveCount = useMemo(() => {
+    if (activeTab === 'lent') return activeLentCount;
+    if (activeTab === 'borrowed') return activeBorrowedCount;
+    if (activeTab === 'holding') return activeHoldingCount;
+    return 0;
+  }, [activeTab, activeLentCount, activeBorrowedCount, activeHoldingCount]);
+
+  const currentTabTotalCount = useMemo(() => {
+    if (activeTab === 'lent') return totalLentCount;
+    if (activeTab === 'borrowed') return totalBorrowedCount;
+    if (activeTab === 'holding') return totalHoldingCount;
+    return 0;
+  }, [activeTab, totalLentCount, totalBorrowedCount, totalHoldingCount]);
+
+  const currentTabSettledCount = currentTabTotalCount - currentTabActiveCount;
 
   // Compute summary totals
   const summary = useMemo(() => {
@@ -82,11 +119,18 @@ export const PeopleLedgerView: React.FC = () => {
     );
   }, [peopleLedger]);
 
-  // Filter entries for active tab
+  // Filter entries for active tab based on statusFilter (active by default)
   const filteredEntries = useMemo(() => {
     if (activeTab === 'contacts') return [];
-    return peopleLedger.filter((e) => e.type === activeTab);
-  }, [peopleLedger, activeTab]);
+    const entriesOfType = peopleLedger.filter((e) => e.type === activeTab);
+    if (statusFilter === 'active') {
+      return entriesOfType.filter(isEntryActive);
+    }
+    if (statusFilter === 'settled') {
+      return entriesOfType.filter((e) => !isEntryActive(e));
+    }
+    return entriesOfType;
+  }, [peopleLedger, activeTab, statusFilter]);
 
   // Aggregate by contact for the Contacts tab
   const contactAggregates = useMemo(() => {
@@ -136,6 +180,18 @@ export const PeopleLedgerView: React.FC = () => {
       return a.name.localeCompare(b.name);
     });
   }, [peopleLedger]);
+
+  // Filter contacts by search query
+  const filteredContacts = useMemo(() => {
+    if (!contactSearch.trim()) return contactAggregates;
+    const q = contactSearch.trim().toLowerCase();
+    return contactAggregates.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.phone && c.phone.toLowerCase().includes(q)) ||
+        (c.notes && c.notes.toLowerCase().includes(q))
+    );
+  }, [contactAggregates, contactSearch]);
 
   const handleDelete = async (id: string, name: string) => {
     if (window.confirm(`Delete entry for "${name}"?`)) {
@@ -309,9 +365,9 @@ export const PeopleLedgerView: React.FC = () => {
       {/* Segmented Tab Controls */}
       <div className="flex items-center gap-1 p-1 bg-moss/80 rounded-xl max-w-lg border border-line overflow-x-auto">
         {[
-          { id: 'lent', label: `Money Lent (${peopleLedger.filter((e) => e.type === 'lent').length})` },
-          { id: 'borrowed', label: `Borrowed (${peopleLedger.filter((e) => e.type === 'borrowed').length})` },
-          { id: 'holding', label: `Holding (${peopleLedger.filter((e) => e.type === 'holding').length})` },
+          { id: 'lent', label: `Money Lent (${activeLentCount})` },
+          { id: 'borrowed', label: `Borrowed (${activeBorrowedCount})` },
+          { id: 'holding', label: `Holding (${activeHoldingCount})` },
           { id: 'contacts', label: `Contacts (${contactAggregates.length})` },
         ].map((tab) => (
           <button
@@ -331,27 +387,87 @@ export const PeopleLedgerView: React.FC = () => {
       {/* ENTRIES LIST VIEW */}
       {activeTab !== 'contacts' && (
         <div className="space-y-4">
+          {/* Status Segmented Toggle: Active Only (default) | Settled | All */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card/60 p-2 rounded-2xl border border-line">
+            <div className="flex items-center gap-1 p-1 bg-moss/80 dark:bg-moss/30 rounded-xl border border-line text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setStatusFilter('active')}
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  statusFilter === 'active'
+                    ? 'bg-card text-ink font-bold shadow-2xs border border-line'
+                    : 'text-ink/60 hover:text-ink'
+                }`}
+              >
+                Active Only ({currentTabActiveCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('settled')}
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  statusFilter === 'settled'
+                    ? 'bg-card text-ink font-bold shadow-2xs border border-line'
+                    : 'text-ink/60 hover:text-ink'
+                }`}
+              >
+                Settled ({currentTabSettledCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('all')}
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  statusFilter === 'all'
+                    ? 'bg-card text-ink font-bold shadow-2xs border border-line'
+                    : 'text-ink/60 hover:text-ink'
+                }`}
+              >
+                All ({currentTabTotalCount})
+              </button>
+            </div>
+
+            {statusFilter === 'active' && currentTabSettledCount > 0 && (
+              <span className="text-[11px] text-ink/50 px-2 hidden sm:inline">
+                Hiding {currentTabSettledCount} settled ₹0 balance record(s) to reduce clutter.
+              </span>
+            )}
+          </div>
+
           {filteredEntries.length === 0 ? (
             <Card className="text-center py-12 text-xs space-y-3 lift">
               <div className="w-12 h-12 rounded-2xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 grid place-items-center mx-auto text-pine-600">
                 <Users2 className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="font-display font-bold text-sm text-ink">No {activeTab} entries recorded</h3>
+                <h3 className="font-display font-bold text-sm text-ink">
+                  {statusFilter === 'active' && currentTabSettledCount > 0
+                    ? `No active ${activeTab} entries`
+                    : `No ${statusFilter !== 'all' ? statusFilter + ' ' : ''}${activeTab} entries recorded`}
+                </h3>
                 <p className="text-xs text-ink/50 mt-1 max-w-sm mx-auto">
-                  Keep informal lending, borrowing, and custodial money clear and auditable.
+                  {statusFilter === 'active' && currentTabSettledCount > 0
+                    ? `All ${currentTabSettledCount} ${activeTab} entries are currently fully settled.`
+                    : 'Keep informal lending, borrowing, and custodial money clear and auditable.'}
                 </p>
               </div>
-              <button
-                onClick={() => {
-                  setEntryToEdit(undefined);
-                  setIsEntryModalOpen(true);
-                }}
-                className="px-4 py-2 rounded-xl bg-pine-700 text-white text-xs font-bold shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add First Entry</span>
-              </button>
+              {statusFilter === 'active' && currentTabSettledCount > 0 ? (
+                <button
+                  onClick={() => setStatusFilter('settled')}
+                  className="px-4 py-2 rounded-xl bg-card hover:bg-moss border border-line text-ink text-xs font-bold shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>View {currentTabSettledCount} Settled Entries</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setEntryToEdit(undefined);
+                    setIsEntryModalOpen(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-pine-700 text-white text-xs font-bold shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add First Entry</span>
+                </button>
+              )}
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
@@ -370,14 +486,24 @@ export const PeopleLedgerView: React.FC = () => {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-2.5 min-w-0">
                           {/* Avatar Initials Circle */}
-                          <div className="w-9 h-9 rounded-xl bg-pine-50 dark:bg-pine-950/40 text-pine-600 border border-pine-200/60 dark:border-pine-800/40 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedContactForDetail(entry.contactName)}
+                            className="w-9 h-9 rounded-xl bg-pine-50 dark:bg-pine-950/40 text-pine-600 border border-pine-200/60 dark:border-pine-800/40 flex items-center justify-center font-bold text-xs flex-shrink-0 cursor-pointer hover:scale-105 transition-transform"
+                            title="View contact detail & full history"
+                          >
                             {getInitials(entry.contactName)}
-                          </div>
+                          </button>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <h2 className="font-display font-bold text-sm text-ink truncate">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedContactForDetail(entry.contactName)}
+                                className="font-display font-bold text-sm text-ink hover:text-pine-600 dark:hover:text-pine-400 truncate text-left cursor-pointer transition-colors"
+                                title="View contact detail & full history"
+                              >
                                 {entry.contactName}
-                              </h2>
+                              </button>
                               {isClosed ? (
                                 <Badge tone="pine" size="xs">
                                   Settled
@@ -516,9 +642,20 @@ export const PeopleLedgerView: React.FC = () => {
 
                     {/* Settle Action Bar */}
                     <div className="pt-2.5 border-t border-line flex items-center justify-between">
-                      <span className="text-[11px] text-ink/45 font-medium">
-                        {entry.settlements.length} settlement(s) logged
-                      </span>
+                      {entry.settlements.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedContactForDetail(entry.contactName)}
+                          className="text-[11px] text-pine-700 dark:text-pine-400 hover:underline font-semibold cursor-pointer"
+                          title="View settlements & contact history"
+                        >
+                          {entry.settlements.length} settlement(s) logged →
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-ink/45 font-medium">
+                          0 settlements logged
+                        </span>
+                      )}
 
                       {!isClosed && (
                         <button
@@ -541,26 +678,76 @@ export const PeopleLedgerView: React.FC = () => {
       {/* CONTACTS AGGREGATE VIEW */}
       {activeTab === 'contacts' && (
         <div className="space-y-4">
-          {contactAggregates.length === 0 ? (
+          {/* Contact Search & Filter Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card/60 p-2.5 rounded-2xl border border-line">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink/40" />
+              <input
+                type="text"
+                placeholder="Search contacts by name, phone, notes..."
+                value={contactSearch}
+                onChange={(e) => setContactSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-line bg-card text-xs text-ink placeholder:text-ink/40 focus:outline-none focus:ring-1 focus:ring-pine-500"
+              />
+            </div>
+            <div className="flex items-center gap-2 text-xs text-ink/50 font-medium">
+              <span>
+                Showing {filteredContacts.length} of {contactAggregates.length} contact(s)
+              </span>
+              {contactSearch && (
+                <button
+                  type="button"
+                  onClick={() => setContactSearch('')}
+                  className="text-pine-700 dark:text-pine-400 hover:underline font-bold cursor-pointer"
+                >
+                  Clear search
+                </button>
+              )}
+            </div>
+          </div>
+
+          {filteredContacts.length === 0 ? (
             <Card className="text-center py-12 text-xs space-y-3 lift">
               <Users2 className="w-10 h-10 mx-auto text-pine-600" />
-              <p className="font-display font-bold text-sm text-ink">No contacts recorded yet</p>
+              <p className="font-display font-bold text-sm text-ink">
+                {contactSearch ? `No contacts matching "${contactSearch}"` : 'No contacts recorded yet'}
+              </p>
+              {contactSearch && (
+                <button
+                  onClick={() => setContactSearch('')}
+                  className="px-3 py-1.5 rounded-xl bg-card border border-line text-xs font-semibold cursor-pointer"
+                >
+                  Reset search filter
+                </button>
+              )}
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              {contactAggregates.map((contact) => (
+              {filteredContacts.map((contact) => (
                 <div
                   key={contact.name}
                   className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-3 shadow-sm lift flex flex-col justify-between"
                 >
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-pine-50 dark:bg-pine-950/40 text-pine-600 border border-pine-200/60 dark:border-pine-800/40 flex items-center justify-center font-bold text-sm shrink-0">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedContactForDetail(contact.name)}
+                          className="w-10 h-10 rounded-xl bg-pine-50 dark:bg-pine-950/40 text-pine-600 border border-pine-200/60 dark:border-pine-800/40 flex items-center justify-center font-bold text-sm shrink-0 cursor-pointer hover:scale-105 transition-transform"
+                          title="View full history & ledger"
+                        >
                           {getInitials(contact.name)}
-                        </div>
-                        <div>
-                          <h3 className="font-display font-bold text-sm text-ink">{contact.name}</h3>
+                        </button>
+                        <div className="min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedContactForDetail(contact.name)}
+                            className="font-display font-bold text-sm text-ink hover:text-pine-600 dark:hover:text-pine-400 text-left truncate block cursor-pointer transition-colors"
+                            title="View full history & ledger"
+                          >
+                            {contact.name}
+                          </button>
                           <div className="flex items-center gap-2 mt-0.5">
                             {contact.phone && (
                               <span className="text-[11px] text-ink/50 font-mono">
@@ -576,7 +763,7 @@ export const PeopleLedgerView: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 shrink-0">
                         <button
                           onClick={() => {
                             setContactToEdit({
@@ -654,6 +841,16 @@ export const PeopleLedgerView: React.FC = () => {
                         </div>
                       )}
                     </div>
+
+                    {/* View History & Full Ledger Button */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedContactForDetail(contact.name)}
+                      className="w-full py-1.5 px-3 rounded-xl bg-moss/70 hover:bg-card text-ink border border-line text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-2xs hover:shadow-xs mt-1"
+                    >
+                      <Clock className="w-3.5 h-3.5 text-pine-600" />
+                      <span>View History & Full Ledger</span>
+                    </button>
                   </div>
 
                   {/* Quick Actions Bar */}
@@ -737,6 +934,15 @@ export const PeopleLedgerView: React.FC = () => {
           isOpen={Boolean(selectedEntryForSettlement)}
           onClose={() => setSelectedEntryForSettlement(null)}
           entry={selectedEntryForSettlement}
+        />
+      )}
+
+      {/* Contact Detail & History Modal */}
+      {selectedContactForDetail && (
+        <ContactDetailModal
+          isOpen={Boolean(selectedContactForDetail)}
+          onClose={() => setSelectedContactForDetail(null)}
+          contactName={selectedContactForDetail}
         />
       )}
     </div>

@@ -6,6 +6,8 @@ import { Select } from '../components/common/Select';
 import { AnimatedNumber } from '../components/common/AnimatedNumber';
 import { QuickAddModal } from '../components/transactions/QuickAddModal';
 import { EditTransactionModal } from '../components/transactions/EditTransactionModal';
+import { PeopleEntryModal } from '../components/people/PeopleEntryModal';
+import { EditSettlementModal } from '../components/people/EditSettlementModal';
 import { IconRenderer } from '../components/common/IconRenderer';
 import { formatCurrency } from '../utils/formatters';
 import { formatReadableDate, getDateRangePresets } from '../utils/dates';
@@ -92,6 +94,11 @@ export const TransactionsView: React.FC = () => {
   const [dateRangePreset, setDateRangePreset] = useState<string>('all-time');
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [txToEdit, setTxToEdit] = useState<Transaction | null>(null);
+  const [peopleEntryToEdit, setPeopleEntryToEdit] = useState<PeopleLedgerEntry | null>(null);
+  const [settlementToEdit, setSettlementToEdit] = useState<{
+    entry: PeopleLedgerEntry;
+    settlement: SettlementRecord;
+  } | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [isReconciling, setIsReconciling] = useState(false);
 
@@ -386,6 +393,13 @@ export const TransactionsView: React.FC = () => {
   const handleEditEntry = (entry: UnifiedLedgerEntry) => {
     if (entry.source === 'transaction' && entry.rawTransaction) {
       setTxToEdit(entry.rawTransaction);
+    } else if (entry.source === 'people' && entry.rawPeopleEntry) {
+      setPeopleEntryToEdit(entry.rawPeopleEntry);
+    } else if (entry.source === 'settlement' && entry.rawPeopleEntry && entry.rawSettlement) {
+      setSettlementToEdit({
+        entry: entry.rawPeopleEntry,
+        settlement: entry.rawSettlement,
+      });
     }
   };
 
@@ -418,9 +432,7 @@ export const TransactionsView: React.FC = () => {
       } else if (e.key === 'Enter') {
         e.preventDefault();
         const item = filteredEntries[currentIndex];
-        if (item.source === 'transaction' && item.rawTransaction) {
-          setTxToEdit(item.rawTransaction);
-        }
+        handleEditEntry(item);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         const item = filteredEntries[currentIndex];
@@ -842,16 +854,14 @@ export const TransactionsView: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {selectedEntry.source === 'transaction' && (
-                    <button
-                      type="button"
-                      onClick={() => handleEditEntry(selectedEntry)}
-                      className="px-2.5 py-1 rounded-lg bg-pine-700 hover:bg-pine-600 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition-all shadow-xs"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                      <span>Edit</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleEditEntry(selectedEntry)}
+                    className="px-2.5 py-1 rounded-lg bg-pine-700 hover:bg-pine-600 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    <span>Edit</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleDeleteEntry(selectedEntry)}
@@ -974,17 +984,15 @@ export const TransactionsView: React.FC = () => {
                             className="flex items-center justify-end gap-1"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            {entry.source === 'transaction' && (
-                              <button
-                                type="button"
-                                onClick={() => handleEditEntry(entry)}
-                                className="p-1.5 text-ink/40 hover:text-pine-600 hover:bg-pine-50 dark:hover:bg-pine-950/40 rounded-lg cursor-pointer transition-colors"
-                                title="Edit transaction"
-                                aria-label="Edit transaction"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleEditEntry(entry)}
+                              className="p-1.5 text-ink/40 hover:text-pine-600 hover:bg-pine-50 dark:hover:bg-pine-950/40 rounded-lg cursor-pointer transition-colors"
+                              title="Edit entry"
+                              aria-label="Edit entry"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteEntry(entry)}
@@ -1075,16 +1083,14 @@ export const TransactionsView: React.FC = () => {
                         className="flex items-center gap-1 shrink-0"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {entry.source === 'transaction' && (
-                          <button
-                            type="button"
-                            onClick={() => handleEditEntry(entry)}
-                            className="p-1.5 text-ink/50 hover:text-pine-600 rounded-lg"
-                            title="Edit"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleEditEntry(entry)}
+                          className="p-1.5 text-ink/50 hover:text-pine-600 rounded-lg cursor-pointer"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteEntry(entry)}
@@ -1114,6 +1120,25 @@ export const TransactionsView: React.FC = () => {
           isOpen={Boolean(txToEdit)}
           transaction={txToEdit}
           onClose={() => setTxToEdit(null)}
+        />
+      )}
+
+      {/* Edit People Entry Modal */}
+      {peopleEntryToEdit && (
+        <PeopleEntryModal
+          isOpen={Boolean(peopleEntryToEdit)}
+          onClose={() => setPeopleEntryToEdit(null)}
+          entryToEdit={peopleEntryToEdit}
+        />
+      )}
+
+      {/* Edit Settlement Modal */}
+      {settlementToEdit && (
+        <EditSettlementModal
+          isOpen={Boolean(settlementToEdit)}
+          onClose={() => setSettlementToEdit(null)}
+          entry={settlementToEdit.entry}
+          settlement={settlementToEdit.settlement}
         />
       )}
     </div>
