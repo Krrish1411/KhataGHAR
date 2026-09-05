@@ -438,13 +438,43 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Self-heal and auto-rebalance any unbalanced settlements (e.g. 2k + 2k holding vs 4k return)
       const rebalancedPeople = await rebalancePeopleSettlements(people, sessionKey);
 
+      // Self-heal any assets that were doubled by the initial-purchase linkToBank bug
+      const healedAssets = await Promise.all(
+        asts.map(async (ast) => {
+          if (ast.tranches && ast.tranches.length === 1) {
+            const singleTranche = ast.tranches[0];
+            const isInitialNote = singleTranche.note?.toLowerCase().startsWith('initial purchase');
+            // If purchasePrice is exactly 2x the single initial tranche amount
+            if (
+              isInitialNote &&
+              ast.purchasePrice !== undefined &&
+              Math.abs(ast.purchasePrice - singleTranche.amount * 2) < 0.05
+            ) {
+              const healed: Asset = {
+                ...ast,
+                purchasePrice: singleTranche.amount,
+                currentValue:
+                  Math.abs(ast.currentValue - singleTranche.amount * 2) < 0.05
+                    ? singleTranche.amount
+                    : Math.max(0, round2(ast.currentValue - singleTranche.amount)),
+                updatedAt: new Date().toISOString(),
+              };
+              await saveEncryptedRecord('asset', healed, sessionKey);
+              return healed;
+            }
+          }
+          return ast;
+        })
+      );
+
       setAccounts(accs);
       setTransactions(txs);
       setCategories(cleanCats);
       setPeopleLedger(rebalancedPeople);
       setBudgets(bdgs);
       setGoals(gls);
-      setAssets(asts);
+      setAssets(healedAssets);
+      assetsRef.current = healedAssets;
       setLiabilities(liabs);
       setDocuments(docs);
       setPlannedExpenses(plans);
@@ -706,29 +736,43 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             await saveEncryptedRecord('asset', updatedAsset, sessionKey);
           } else {
             // Asset Purchase / Investment: ADD to currentValue and purchasePrice
+            const isInitial = Boolean((newTx as any).isInitialPurchase);
+
             const newTranche: AssetTranche = {
               id: trancheId,
               date: newTx.date,
               amount: newTx.amount,
-              units: trancheUnits,
-              unitPrice: trancheUnitPrice,
+              units: trancheUnits || (isInitial ? targetAsset.totalUnits : undefined),
+              unitPrice: trancheUnitPrice || (isInitial ? targetAsset.currentUnitPrice : undefined),
               transactionId: newTx.id,
               note: newTx.note,
             };
 
             const updatedTranches = [...(targetAsset.tranches || []), newTranche];
-            const newTotalUnits = (targetAsset.totalUnits || 0) + (trancheUnits || 0);
-            let newCurrentVal = round2(targetAsset.currentValue + newTx.amount);
-            if (targetAsset.currentUnitPrice && newTotalUnits > 0) {
+            const newTotalUnits = isInitial
+              ? (targetAsset.totalUnits || trancheUnits || undefined)
+              : (targetAsset.totalUnits || 0) + (trancheUnits || 0);
+
+            // If it's an initial purchase transaction, the asset's initial currentValue and purchasePrice already reflect this purchase!
+            // Do NOT add on top of it.
+            let newCurrentVal = isInitial
+              ? targetAsset.currentValue
+              : round2(targetAsset.currentValue + newTx.amount);
+
+            if (!isInitial && targetAsset.currentUnitPrice && newTotalUnits && newTotalUnits > 0) {
               newCurrentVal = round2(newTotalUnits * targetAsset.currentUnitPrice);
             }
+
+            const newPurchasePrice = isInitial
+              ? (targetAsset.purchasePrice ?? newTx.amount)
+              : round2((targetAsset.purchasePrice || 0) + newTx.amount);
 
             const updatedAsset: Asset = {
               ...targetAsset,
               tranches: updatedTranches,
-              totalUnits: newTotalUnits > 0 ? newTotalUnits : undefined,
+              totalUnits: newTotalUnits && newTotalUnits > 0 ? newTotalUnits : undefined,
               currentValue: newCurrentVal,
-              purchasePrice: round2((targetAsset.purchasePrice || 0) + newTx.amount),
+              purchasePrice: newPurchasePrice,
               updatedAt: new Date().toISOString(),
             };
 

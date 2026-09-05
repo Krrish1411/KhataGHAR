@@ -18,6 +18,7 @@ import {
   Check,
   Wallet,
   CheckCircle2,
+  Edit2,
 } from 'lucide-react';
 import { formatPercent, formatCompactCurrency, formatCurrency } from '../../utils/formatters';
 
@@ -25,12 +26,14 @@ interface AssetDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   asset: Asset;
+  onEditAsset?: (asset: Asset) => void;
 }
 
 export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   isOpen,
   onClose,
   asset,
+  onEditAsset,
 }) => {
   const { assets, accounts, addAssetTranche, deleteAssetTranche, updateAssetUnitPrice, sellAsset, recordDividend, activeVault } = useVault();
   const { isPrivacyMode } = usePrivacy();
@@ -103,11 +106,30 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     }
   }
 
+  // Guard against legacy bug where an asset with an initial purchase tranche had its valuation/purchasePrice doubled
+  const hasInitialPurchaseTranche = buyTranches.some(
+    (t) => t.note?.toLowerCase().startsWith('initial purchase')
+  );
+  const isDoubledByInitialPurchaseBug =
+    hasInitialPurchaseTranche &&
+    buyTranches.length === 1 &&
+    Math.abs(totalInvested - buyTranchesSum * 2) < 0.05;
+
+  if (isDoubledByInitialPurchaseBug) {
+    totalInvested = buyTranchesSum;
+  }
+
   // Pre-existing initial holding before individual SIP lots were recorded
-  const initialHoldingCost = Math.max(0, totalInvested - buyTranchesSum);
+  const initialHoldingCost = isDoubledByInitialPurchaseBug
+    ? 0
+    : Math.max(0, totalInvested - buyTranchesSum);
 
   const avgCostPerUnit = totalUnits > 0 && totalInvested > 0 ? totalInvested / totalUnits : undefined;
-  const currentVal = isFullyLiquidated ? 0 : liveAsset.currentValue;
+  const currentVal = isFullyLiquidated
+    ? 0
+    : isDoubledByInitialPurchaseBug
+    ? buyTranchesSum
+    : liveAsset.currentValue;
   const overallGain = isFullyLiquidated ? totalRealizedGains : (currentVal - totalInvested);
   const historicalCostBasisSold = Math.max(0, soldProceedsSum - totalRealizedGains);
   const overallGainPct = isFullyLiquidated
@@ -246,6 +268,20 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
               <Badge tone="pine" size="xs" className="capitalize shrink-0">
                 {liveAsset.type.replace('_', ' ')}
               </Badge>
+              {onEditAsset && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onEditAsset(liveAsset);
+                    onClose();
+                  }}
+                  className="px-2 py-0.5 rounded-lg border border-line hover:border-pine-300 bg-card hover:bg-moss text-ink/70 hover:text-ink text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                  title="Edit asset details, units, or NAV"
+                >
+                  <Edit2 className="w-3 h-3 text-pine-600" />
+                  <span>Edit Asset</span>
+                </button>
+              )}
             </div>
             <p className="text-[11.5px] text-ink/50 font-normal truncate mt-0.5">
               Consolidated holding, unit economics & SIP lots
@@ -891,6 +927,13 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                             <span>
                               <b>{t.units.toFixed(3)}</b> units
                               {t.unitPrice && <span className="text-ink/45"> @ ₹{t.unitPrice.toFixed(2)}</span>}
+                            </span>
+                          ) : liveAsset.totalUnits && buyTranches.length === 1 ? (
+                            <span>
+                              <b>{liveAsset.totalUnits.toFixed(3)}</b> units
+                              {liveAsset.currentUnitPrice && (
+                                <span className="text-ink/45"> @ ₹{liveAsset.currentUnitPrice.toFixed(2)}</span>
+                              )}
                             </span>
                           ) : (
                             <span className="text-ink/40">—</span>

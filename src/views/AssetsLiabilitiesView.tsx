@@ -825,6 +825,11 @@ export const AssetsLiabilitiesView: React.FC = () => {
           isOpen={Boolean(detailAsset)}
           onClose={() => setDetailAsset(null)}
           asset={assets.find((a) => a.id === detailAsset.id) || detailAsset}
+          onEditAsset={(ast) => {
+            setDetailAsset(null);
+            setAssetToEdit(ast);
+            setIsAssetModalOpen(true);
+          }}
         />
       )}
 
