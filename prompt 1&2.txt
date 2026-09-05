@@ -1,0 +1,42 @@
+for now the entries edit module for asset and liability related shows the pop up same as income expense and transfer
+bro think of financial advanced prespective for our app
+if a asset got saled the cost is not my income or expense but the gain or loss might be so how can i differeniate it ? and it is not reducing form assets also
+so i want you to go through the full this kind of financal linking for everything and fix it, even though asset sell entries add up into asset lot so that is wrong also 
+also asking that in money lent borrowed and holding's settled tab you show each card for each entries so will it not be cluttery? and laggy for 100 or 1000 transaction like this? i dont want site to be lagg so we should fix this right?
+
+what the need of reconcile button ? its not much of use right cause if entries are properly added and our app has no bug then it will come good right?
+
+i want in report section pure income and expense analysis not with deposit cause deposit is not my income and expense i want pure income and expense analysis also like a profit and loss account and analysis 
+
+also how it is decidded that which is essential & which is discreationary cause it should be user selected in catagory liek it takes investment & SIP on essential and food and some other need catagory in discreationary so ratio will go bad 
+
+and how some ratio are calculated investment rate - i have in 1 month both investment and sell transaction making at the end investment 0 so it still show 42.2, see i dont know how it works so want you to just cross check that is it okay or not
+also i have no immediate liabilities in liability section and ratio shows 99.00x is it good ? i do not think so its right same goes with asset coverage it comes as 10.0x
+
+6. Cashflow Velocity & Burn Radar is not taking income and only showing that how much i will survive but is it good ? that should ve take income for projecting or not? some one will have good income consistenly monthl and some one might not but they might getting 2-3 month a big amount and some one only doing expense so we need to make it accordingly 
+
+and how saving is counted inflow - out flow but what if inflow holds some people ledger? and our flow also? is it good ratio? cause holding for some one will count inflow but its not my saving same for every lent and brorrow 
+
+the asset buy and sold like ipo short term gain shows in what went wrong and leakages that Heavy budget concentration: "Investments & SIP" consumed 64.9% (₹14.8 k) of total outlays.
+is it okay? cause investment is not there 
+
+
+the hidden on dashboard button not working for hiding balance of account from dashboard and everywhere 
+also if i have planed expense/budget for this month but payment is made on next month then how it works? it will exhaust next month buget right
+like i have milk budget for this month but payment will be done after the month end how it should be dealt?
+
+also the report section 2. Multi-Month Cashflow Horizon & Savings Trajectory is inflow and out flow showing but it says income and expense and net saving rather it should say otherwise 
+
+and i want to re do the architecture like i am the manager of 2-3 person of my family and managing there vault why would i have 3 vault and remember 3 vault password?
+rather i should have 1 master password good one and have all 3 vault there right?
+also importing 1 vault if i am managing 1 person but he also have his vault in his device and he share it me so make importing works good and import function need some more advance like i already have data and importing should also have option like import new entries and new things right? how we should handel the import?
+
+
+also the 12 phase recovery vault restor not working and give a copy button for that 12 phase recovery key 
+and do spaces will count in password for 12 phase vault recovery? i guess it shoudld be exact same as copied 12 phases for password and also give a text or pdf downloadable file for that 12 phases in format of password
+also i want personal liability record catagory or adding catagory whatever i need cause i have a liability from my sister so how can i do so?
+
+
+
+also for every single fix i want a summary of what fix we made and how to verify it so debuging made easy 
+now you know how deep i am analysing the code and its usability so you should go through the code and debug like this in advance CA and CFA and Finalist that how to make this app work and inter connected for everything good way and normal usability for normal user comes good and in simple way

@@ -37,7 +37,7 @@ export const PeopleLedgerView: React.FC = () => {
   const accountLookup = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
 
   const [activeTab, setActiveTab] = useState<'lent' | 'borrowed' | 'holding' | 'contacts'>('lent');
-  const [statusFilter, setStatusFilter] = useState<'active' | 'settled' | 'all'>('active');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'settled'>('active');
   const [settledPage, setSettledPage] = useState(1);
   const SETTLED_PER_PAGE = 15;
 
@@ -426,17 +426,6 @@ export const PeopleLedgerView: React.FC = () => {
               >
                 Settled ({currentTabSettledCount})
               </button>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('all')}
-                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
-                  statusFilter === 'all'
-                    ? 'bg-card text-ink font-bold shadow-2xs border border-line'
-                    : 'text-ink/60 hover:text-ink'
-                }`}
-              >
-                All ({currentTabTotalCount})
-              </button>
             </div>
 
             {statusFilter === 'active' && currentTabSettledCount > 0 && (
@@ -455,7 +444,7 @@ export const PeopleLedgerView: React.FC = () => {
                 <h3 className="font-display font-bold text-sm text-ink">
                   {statusFilter === 'active' && currentTabSettledCount > 0
                     ? `No active ${activeTab} entries`
-                    : `No ${statusFilter !== 'all' ? statusFilter + ' ' : ''}${activeTab} entries recorded`}
+                    : `No ${statusFilter} ${activeTab} entries recorded`}
                 </h3>
                 <p className="text-xs text-ink/50 mt-1 max-w-sm mx-auto">
                   {statusFilter === 'active' && currentTabSettledCount > 0

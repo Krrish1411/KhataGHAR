@@ -265,6 +265,7 @@ export interface Liability {
   vaultId: string;
   name: string;
   type: LiabilityType;
+  category?: string; // e.g. 'Sister Loan', 'Family Debt', 'Hand Loan'
   lender: string;
   principalAmount: number;
   outstandingBalance: number;

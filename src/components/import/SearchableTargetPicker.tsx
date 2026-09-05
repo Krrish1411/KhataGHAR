@@ -133,12 +133,25 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
     }
 
     if (type === 'debt_payment' || type === 'loan_received') {
-      return liabilities.map((l) => ({
+      const list: DisplayItem[] = liabilities.map((l) => ({
         id: l.id,
         label: l.name,
-        subLabel: `${type === 'loan_received' ? 'Principal: ' : 'Bal: '}${formatCurrency(l.outstandingBalance, l.currency, numberFormat, isPrivacyMode)}`,
+        subLabel: `${l.category ? `${l.category} • ` : ''}${type === 'loan_received' ? 'Principal: ' : 'Bal: '}${formatCurrency(l.outstandingBalance, l.currency, numberFormat, isPrivacyMode)}`,
         icon: <Landmark className={`w-3.5 h-3.5 shrink-0 ${type === 'loan_received' ? 'text-pine-600' : 'text-flare-600'}`} />,
       }));
+
+      // Allow creating a new liability on the fly (e.g. Sister Loan)
+      const q = searchQuery.trim();
+      if (q && !liabilities.some((l) => l.name.toLowerCase() === q.toLowerCase())) {
+        list.unshift({
+          id: `new-liability:${q}`,
+          label: `+ Create Liability: "${q}"`,
+          subLabel: 'New Personal Debt / Loan (Click to create)',
+          icon: <Plus className="w-3.5 h-3.5 text-pine-600 shrink-0" />,
+          isCustom: true,
+        });
+      }
+      return list;
     }
 
     if (isPeopleType(type)) {
@@ -236,6 +249,15 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
         id: value,
         label: `+ Create "${name}"`,
         subLabel: `New ${catType} Category`,
+        icon: <Plus className="w-3.5 h-3.5 text-pine-600 shrink-0" />,
+      };
+    }
+    if (value.startsWith('new-liability:')) {
+      const name = value.replace('new-liability:', '');
+      return {
+        id: value,
+        label: `+ Create "${name}"`,
+        subLabel: 'New Personal Debt / Loan',
         icon: <Plus className="w-3.5 h-3.5 text-pine-600 shrink-0" />,
       };
     }

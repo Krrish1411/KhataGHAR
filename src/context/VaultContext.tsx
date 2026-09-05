@@ -2202,10 +2202,29 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!targetTranche) return;
 
     const updatedTranches = asset.tranches.filter((t) => t.id !== trancheId);
-    const newTotalUnits = Math.max(0, (asset.totalUnits || 0) - (targetTranche.units || 0));
-    let newCurrentVal = Math.max(0, round2(asset.currentValue - targetTranche.amount));
-    if (asset.currentUnitPrice && newTotalUnits > 0) {
-      newCurrentVal = round2(newTotalUnits * asset.currentUnitPrice);
+    const isSell = targetTranche.type === 'sell';
+
+    let newTotalUnits = asset.totalUnits || 0;
+    let newPurchasePrice = asset.purchasePrice || 0;
+    let newCurrentVal = asset.currentValue;
+
+    if (isSell) {
+      // Reverting a sale: restore redeemed units and cost basis back to asset
+      const unitsRestored = targetTranche.units || 0;
+      newTotalUnits = newTotalUnits + unitsRestored;
+      const costBasisRestored = round2((targetTranche.amount || 0) - (targetTranche.realizedGain || 0));
+      newPurchasePrice = round2(newPurchasePrice + costBasisRestored);
+      newCurrentVal = asset.currentUnitPrice && newTotalUnits > 0
+        ? round2(newTotalUnits * asset.currentUnitPrice)
+        : round2(asset.currentValue + costBasisRestored);
+    } else {
+      // Reverting a purchase lot: subtract units and purchase price
+      const unitsRemoved = targetTranche.units || 0;
+      newTotalUnits = Math.max(0, newTotalUnits - unitsRemoved);
+      newPurchasePrice = Math.max(0, round2(newPurchasePrice - targetTranche.amount));
+      newCurrentVal = asset.currentUnitPrice && newTotalUnits > 0
+        ? round2(newTotalUnits * asset.currentUnitPrice)
+        : Math.max(0, round2(asset.currentValue - targetTranche.amount));
     }
 
     const updatedAsset: Asset = {
@@ -2213,9 +2232,14 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       tranches: updatedTranches,
       totalUnits: newTotalUnits > 0 ? newTotalUnits : undefined,
       currentValue: newCurrentVal,
-      purchasePrice: Math.max(0, round2((asset.purchasePrice || 0) - targetTranche.amount)),
+      purchasePrice: newPurchasePrice,
       updatedAt: new Date().toISOString(),
     };
+
+    // If there is an associated transaction, delete it
+    if (targetTranche.transactionId) {
+      await deleteTransaction(targetTranche.transactionId);
+    }
 
     setAssets((prev) => prev.map((a) => (a.id === assetId ? updatedAsset : a)));
     await saveEncryptedRecord('asset', updatedAsset, sessionKey);

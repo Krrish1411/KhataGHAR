@@ -442,9 +442,12 @@ export const AccountsView: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-0.5">
+                    <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
                       <button
-                        onClick={() => handleToggleVisibility(account)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleVisibility(account);
+                        }}
                         title={account.isVisibleOnDashboard ? 'Visible on dashboard' : 'Hidden on dashboard'}
                         className={`p-1.5 rounded-lg cursor-pointer transition-colors ${
                           account.isVisibleOnDashboard
@@ -460,7 +463,10 @@ export const AccountsView: React.FC = () => {
                         )}
                       </button>
                       <button
-                        onClick={() => handleEdit(account)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEdit(account);
+                        }}
                         className="p-1.5 rounded-lg text-ink/40 hover:text-ink transition-colors cursor-pointer"
                         title="Edit Account"
                         aria-label="Edit Account"
@@ -468,7 +474,10 @@ export const AccountsView: React.FC = () => {
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={() => handleDelete(account.id, account.name)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(account.id, account.name);
+                        }}
                         className="p-1.5 rounded-lg text-ink/40 hover:text-flare-600 transition-colors cursor-pointer"
                         title="Delete Account"
                         aria-label="Delete Account"

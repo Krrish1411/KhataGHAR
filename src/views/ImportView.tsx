@@ -62,6 +62,7 @@ export const ImportView: React.FC = () => {
     addAsset,
     sellAsset,
     updateLiability,
+    addLiability,
     bulkAddTransactions,
     undoImport,
     activeVault,
@@ -543,9 +544,39 @@ export const ImportView: React.FC = () => {
         console.warn(`Skipped ${assetSaleSkipped.length} asset sale rows (no asset selected):`, assetSaleSkipped);
       }
 
+      // Helper to resolve or create liability on the fly
+      const resolveLiabilityId = async (idOrNew: string | undefined, defaultDesc: string, amt: number): Promise<string | undefined> => {
+        if (!idOrNew) return liabilities.length > 0 ? liabilities[0].id : undefined;
+        if (idOrNew.startsWith('new-liability:')) {
+          const rawName = idOrNew.replace('new-liability:', '').trim();
+          const existing = liabilities.find((l) => l.name.toLowerCase() === rawName.toLowerCase());
+          if (existing) return existing.id;
+          const isPersonal =
+            rawName.toLowerCase().includes('sister') ||
+            rawName.toLowerCase().includes('family') ||
+            rawName.toLowerCase().includes('friend') ||
+            rawName.toLowerCase().includes('hand');
+          const created = await addLiability({
+            name: rawName,
+            type: isPersonal ? 'family_peer' : 'personal_loan',
+            category: rawName,
+            lender: isPersonal ? rawName : 'Direct Lender',
+            principalAmount: amt,
+            outstandingBalance: amt,
+            interestRate: isPersonal ? 0 : 8.5,
+            emiAmount: 0,
+            currency: baseCurrency,
+            notes: `Auto-created from statement import: ${defaultDesc}`,
+          });
+          return created.id;
+        }
+        return idOrNew;
+      };
+
       // 4. Loan EMIs & Debt Paydowns
       const debtTxs = toImport.filter((t) => t.type === 'debt_payment');
       for (const t of debtTxs) {
+        const finalLiabId = await resolveLiabilityId(t.linkedLiabilityId, t.description, t.amount);
         await addTransaction({
           accountId: selectedAccountId,
           type: 'expense',
@@ -553,7 +584,7 @@ export const ImportView: React.FC = () => {
           currency: t.currency || baseCurrency,
           date: t.date,
           note: t.description,
-          linkedLiabilityId: t.linkedLiabilityId || (liabilities.length > 0 ? liabilities[0].id : undefined),
+          linkedLiabilityId: finalLiabId,
           tags: ['statement-import', 'loan-emi'],
           isRecurring: false,
           importBatchId: batchId,
@@ -563,6 +594,7 @@ export const ImportView: React.FC = () => {
       // 4b. Loan Disbursements Received (credit account + increase outstanding)
       const loanReceivedTxs = toImport.filter((t) => t.type === 'loan_received');
       for (const t of loanReceivedTxs) {
+        const finalLiabId = await resolveLiabilityId(t.linkedLiabilityId, t.description, t.amount);
         await addTransaction({
           accountId: selectedAccountId,
           type: 'income',
@@ -570,14 +602,14 @@ export const ImportView: React.FC = () => {
           currency: t.currency || baseCurrency,
           date: t.date,
           note: t.description,
-          linkedLiabilityId: t.linkedLiabilityId || undefined,
+          linkedLiabilityId: finalLiabId,
           tags: ['statement-import', 'loan-disbursement'],
           isRecurring: false,
           importBatchId: batchId,
         });
         // Increase liability outstanding balance if linked
-        if (t.linkedLiabilityId) {
-          const liab = liabilities.find((l) => l.id === t.linkedLiabilityId);
+        if (finalLiabId && !t.linkedLiabilityId?.startsWith('new-liability:')) {
+          const liab = liabilities.find((l) => l.id === finalLiabId);
           if (liab) {
             await updateLiability({
               ...liab,

@@ -205,10 +205,34 @@ export const AssetsLiabilitiesView: React.FC = () => {
               setLiabilityToEdit(undefined);
               setIsLiabilityModalOpen(true);
             }}
-            className="px-4 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-[0.97] text-white text-xs font-bold shadow-sm shadow-pine-900/20 flex items-center gap-1.5 cursor-pointer transition-all"
+            className="px-3.5 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-[0.97] text-white text-xs font-bold shadow-sm shadow-pine-900/20 flex items-center gap-1.5 cursor-pointer transition-all"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Loan / Debt</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setLiabilityToEdit({
+                id: '',
+                vaultId: '',
+                name: 'Sister Loan',
+                type: 'family_peer',
+                category: 'Sister Loan',
+                lender: 'Sister',
+                principalAmount: 0,
+                outstandingBalance: 0,
+                interestRate: 0,
+                emiAmount: 0,
+                currency: 'INR',
+                updatedAt: '',
+              } as any);
+              setIsLiabilityModalOpen(true);
+            }}
+            className="px-3.5 py-2 rounded-xl border border-line bg-card hover:bg-moss active:scale-[0.97] text-xs font-bold text-ink flex items-center gap-1.5 cursor-pointer transition-all"
+          >
+            <span>🤝</span>
+            <span>+ Family / Sister Debt</span>
           </button>
         </div>
       </div>
@@ -549,11 +573,23 @@ export const AssetsLiabilitiesView: React.FC = () => {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <h3 className="font-display font-bold text-sm text-ink">{loan.name}</h3>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3 className="font-display font-bold text-sm text-ink">{loan.name}</h3>
+                        {loan.category && (
+                          <Badge tone="sky" size="xs">
+                            {loan.category}
+                          </Badge>
+                        )}
+                        {loan.interestRate === 0 && (
+                          <Badge tone="pine" size="xs">
+                            0% APR
+                          </Badge>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 text-[11px] text-ink/50 mt-0.5">
                         <span>{loan.lender}</span>
                         <span>•</span>
-                        <span className="capitalize">{loan.type.replace('_', ' ')}</span>
+                        <span className="capitalize">{loan.category || loan.type.replace('_', ' ')}</span>
                       </div>
                     </div>
 

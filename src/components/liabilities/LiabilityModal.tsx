@@ -22,6 +22,9 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
 
   const [name, setName] = useState(liabilityToEdit?.name || '');
   const [type, setType] = useState<LiabilityType>(liabilityToEdit?.type || 'home_loan');
+  const [category, setCategory] = useState(
+    liabilityToEdit?.category || (liabilityToEdit?.type === 'family_peer' ? 'Sister Loan' : '')
+  );
   const [lender, setLender] = useState(liabilityToEdit?.lender || '');
   const [principalAmount, setPrincipalAmount] = useState(
     liabilityToEdit ? String(liabilityToEdit.principalAmount) : ''
@@ -87,6 +90,7 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
           ...liabilityToEdit,
           name: name.trim(),
           type,
+          category: category.trim() || undefined,
           lender: lender.trim(),
           principalAmount: isNaN(numPrincipal) ? numOutstanding : numPrincipal,
           outstandingBalance: numOutstanding,
@@ -105,6 +109,7 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
         const newLiability = await addLiability({
           name: name.trim(),
           type,
+          category: category.trim() || undefined,
           lender: lender.trim(),
           principalAmount: isNaN(numPrincipal) ? numOutstanding : numPrincipal,
           outstandingBalance: numOutstanding,
@@ -172,7 +177,7 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
 
         <div className="grid grid-cols-2 gap-3">
           <Select
-            label="Liability Category"
+            label="Liability Type"
             value={type}
             onChange={(e) => {
               const newType = e.target.value as LiabilityType;
@@ -180,6 +185,7 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
               if (newType === 'family_peer') {
                 setInterestRate('0');
                 setInterestType('fixed');
+                if (!category) setCategory('Sister Loan');
               }
             }}
             options={[
@@ -190,7 +196,7 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
               { value: 'family_peer', label: 'Family / Relative / Personal Debt' },
               { value: 'credit_card', label: 'Credit Card Outstanding' },
               { value: 'gold_loan', label: 'Gold Loan' },
-              { value: 'other', label: 'Other Institutional Debt' },
+              { value: 'other', label: 'Other Debt' },
             ]}
           />
 
@@ -199,6 +205,41 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
             placeholder={type === 'family_peer' ? 'e.g. Sister, Father, Friend' : 'e.g. HDFC Bank, SBI, Tata Capital'}
             value={lender}
             onChange={(e) => setLender(e.target.value)}
+          />
+        </div>
+
+        {/* Custom Category Input & Quick Presets */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-ink">Category / Tag</label>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {['Sister Loan', 'Family Debt', 'Hand Loan', 'Personal Borrowing'].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => {
+                    setCategory(preset);
+                    if (preset === 'Sister Loan' || preset === 'Family Debt' || preset === 'Hand Loan') {
+                      setType('family_peer');
+                      setInterestRate('0');
+                      setInterestType('fixed');
+                    }
+                  }}
+                  className={`text-[10px] px-2 py-0.5 rounded-md border font-semibold cursor-pointer transition-all ${
+                    category === preset
+                      ? 'bg-pine-100 border-pine-300 text-pine-700 dark:bg-pine-900/40 dark:border-pine-800 dark:text-pine-300'
+                      : 'bg-moss border-line text-ink/60 hover:text-ink'
+                  }`}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Input
+            placeholder="e.g. Sister Loan, Brother Debt, Hand Loan, Business Loan"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
           />
         </div>
 
@@ -311,15 +352,64 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
               </div>
             </div>
           ) : (
-            <Input
-              type="number"
-              step="any"
-              label="Fixed Annual Interest Rate (%)"
-              placeholder="e.g. 8.75"
-              value={interestRate}
-              onChange={(e) => setInterestRate(e.target.value)}
-              tabularNums
-            />
+            <div className="space-y-2">
+              <Input
+                type="number"
+                step="any"
+                label="Fixed Annual Interest Rate (%)"
+                placeholder="e.g. 0 for family loans, 8.75 for banks"
+                value={interestRate}
+                onChange={(e) => setInterestRate(e.target.value)}
+                tabularNums
+              />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold text-ink/50 uppercase">Presets:</span>
+                <button
+                  type="button"
+                  onClick={() => setInterestRate('0')}
+                  className={`text-[10.5px] px-2 py-0.5 rounded-lg border font-bold cursor-pointer transition-all ${
+                    interestRate === '0'
+                      ? 'bg-pine-100 border-pine-400 text-pine-800 dark:bg-pine-900/50 dark:text-pine-200'
+                      : 'bg-card border-line text-ink/60 hover:text-ink'
+                  }`}
+                >
+                  0% (Sister / Family Loan)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInterestRate('8.5')}
+                  className={`text-[10.5px] px-2 py-0.5 rounded-lg border font-bold cursor-pointer transition-all ${
+                    interestRate === '8.5'
+                      ? 'bg-pine-100 border-pine-400 text-pine-800 dark:bg-pine-900/50 dark:text-pine-200'
+                      : 'bg-card border-line text-ink/60 hover:text-ink'
+                  }`}
+                >
+                  8.5% (Bank Standard)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInterestRate('12.0')}
+                  className={`text-[10.5px] px-2 py-0.5 rounded-lg border font-bold cursor-pointer transition-all ${
+                    interestRate === '12.0'
+                      ? 'bg-pine-100 border-pine-400 text-pine-800 dark:bg-pine-900/50 dark:text-pine-200'
+                      : 'bg-card border-line text-ink/60 hover:text-ink'
+                  }`}
+                >
+                  12% (Personal)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInterestRate('36.0')}
+                  className={`text-[10.5px] px-2 py-0.5 rounded-lg border font-bold cursor-pointer transition-all ${
+                    interestRate === '36.0'
+                      ? 'bg-flare-100 border-flare-400 text-flare-800 dark:bg-flare-900/50 dark:text-flare-200'
+                      : 'bg-card border-line text-ink/60 hover:text-ink'
+                  }`}
+                >
+                  36% (Card)
+                </button>
+              </div>
+            </div>
           )}
         </div>
 

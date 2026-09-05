@@ -65,6 +65,7 @@ export interface UnifiedLedgerEntry {
   contactName?: string;
   linkedAssetId?: string;
   linkedLiabilityId?: string;
+  realizedGain?: number;
   note?: string;
   rawTransaction?: Transaction;
   rawPeopleEntry?: PeopleLedgerEntry;
@@ -184,6 +185,7 @@ export const TransactionsView: React.FC = () => {
         categoryId: tx.categoryId,
         linkedAssetId: tx.linkedAssetId,
         linkedLiabilityId: tx.linkedLiabilityId,
+        realizedGain: tx.realizedGain,
         note: tx.note,
         rawTransaction: tx,
       });
@@ -959,13 +961,27 @@ export const TransactionsView: React.FC = () => {
                               : 'text-ink'
                           }`}
                         >
-                          {isOutflow ? '-' : isInflow ? '+' : ''}
-                          <AnimatedNumber
-                            value={entry.amount}
-                            currency={baseCurrency}
-                            numberFormat={numberFormat}
-                            isPrivacyMode={isPrivacyMode}
-                          />
+                          <div>
+                            {isOutflow ? '-' : isInflow ? '+' : ''}
+                            <AnimatedNumber
+                              value={entry.amount}
+                              currency={baseCurrency}
+                              numberFormat={numberFormat}
+                              isPrivacyMode={isPrivacyMode}
+                            />
+                          </div>
+                          {entry.type === 'asset_sale' && entry.realizedGain !== undefined && (
+                            <div
+                              className={`text-[10px] font-semibold mt-0.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md ${
+                                entry.realizedGain >= 0
+                                  ? 'text-pine-700 dark:text-pine-300 bg-pine-500/10 border border-pine-500/20'
+                                  : 'text-flare-600 dark:text-flare-400 bg-flare-500/10 border border-flare-500/20'
+                              }`}
+                            >
+                              {entry.realizedGain >= 0 ? '📈 Gain: +' : '📉 Loss: -'}
+                              {formatCurrency(Math.abs(entry.realizedGain), baseCurrency, numberFormat, isPrivacyMode)}
+                            </div>
+                          )}
                         </td>
 
                         {/* Actions (Always right-aligned, fixed width, never moves left) */}
@@ -1026,23 +1042,37 @@ export const TransactionsView: React.FC = () => {
                         {renderTypeBadge(entry.type)}
                         <div className="truncate">{renderEntityBadge(entry)}</div>
                       </div>
-                      <span
-                        className={`font-display font-extrabold text-sm num tabular-nums whitespace-nowrap shrink-0 ${
-                          isOutflow
-                            ? 'text-flare-600'
-                            : isInflow
-                            ? 'text-pine-700 dark:text-pine-400'
-                            : 'text-ink'
-                        }`}
-                      >
-                        {isOutflow ? '-' : isInflow ? '+' : ''}
-                        <AnimatedNumber
-                          value={entry.amount}
-                          currency={baseCurrency}
-                          numberFormat={numberFormat}
-                          isPrivacyMode={isPrivacyMode}
-                        />
-                      </span>
+                      <div className="flex flex-col items-end shrink-0">
+                        <span
+                          className={`font-display font-extrabold text-sm num tabular-nums whitespace-nowrap ${
+                            isOutflow
+                              ? 'text-flare-600'
+                              : isInflow
+                              ? 'text-pine-700 dark:text-pine-400'
+                              : 'text-ink'
+                          }`}
+                        >
+                          {isOutflow ? '-' : isInflow ? '+' : ''}
+                          <AnimatedNumber
+                            value={entry.amount}
+                            currency={baseCurrency}
+                            numberFormat={numberFormat}
+                            isPrivacyMode={isPrivacyMode}
+                          />
+                        </span>
+                        {entry.type === 'asset_sale' && entry.realizedGain !== undefined && (
+                          <span
+                            className={`text-[10px] font-semibold mt-0.5 px-1.5 py-0.5 rounded-md ${
+                              entry.realizedGain >= 0
+                                ? 'text-pine-700 dark:text-pine-300 bg-pine-500/10 border border-pine-500/20'
+                                : 'text-flare-600 dark:text-flare-400 bg-flare-500/10 border border-flare-500/20'
+                            }`}
+                          >
+                            {entry.realizedGain >= 0 ? '📈 +' : '📉 -'}
+                            {formatCurrency(Math.abs(entry.realizedGain), baseCurrency, numberFormat, isPrivacyMode)}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Middle row: Title & Subtitle */}

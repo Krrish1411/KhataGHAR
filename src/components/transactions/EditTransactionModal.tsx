@@ -97,18 +97,33 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
   const liveSaleMetrics = React.useMemo(() => {
     if (!selectedAsset) return { costBasis: numAmount, realizedGain: 0 };
-    const totalUnits = selectedAsset.totalUnits || 0;
-    const currentCostBasis = selectedAsset.purchasePrice || selectedAsset.currentValue;
+
+    // If editing the sale that already affected this selectedAsset, reconstruct the pre-sale baseline
+    const isEditingThisSale =
+      transaction.linkedAssetId === selectedAsset.id &&
+      (transaction.subType === 'asset_sale' ||
+        (transaction.type === 'income' && Boolean(transaction.linkedAssetId)) ||
+        Boolean(transaction.tags && transaction.tags.includes('asset-sale')));
+
+    const prevSoldUnits = isEditingThisSale ? (transaction.units || 0) : 0;
+    const prevGain = isEditingThisSale ? (transaction.realizedGain || 0) : 0;
+    const prevProceeds = isEditingThisSale ? (transaction.amount || 0) : 0;
+    const prevCostBasis = Math.max(0, prevProceeds - prevGain);
+
+    const baseUnits = (selectedAsset.totalUnits || 0) + prevSoldUnits;
+    const baseCostBasis = (selectedAsset.purchasePrice || 0) + prevCostBasis;
+    const baseCurrentValue = (selectedAsset.currentValue || 0) + prevProceeds;
 
     const costBasis =
-      totalUnits > 0 && numUnits > 0
-        ? Math.round(((numUnits / totalUnits) * currentCostBasis) * 100) / 100
-        : selectedAsset.currentValue > 0
-        ? Math.round(((numAmount / selectedAsset.currentValue) * currentCostBasis) * 100) / 100
-        : numAmount;
+      baseUnits > 0 && numUnits > 0
+        ? Math.round(((numUnits / baseUnits) * baseCostBasis) * 100) / 100
+        : baseCurrentValue > 0
+        ? Math.round(((numAmount / baseCurrentValue) * baseCostBasis) * 100) / 100
+        : (isEditingThisSale && prevCostBasis > 0 ? prevCostBasis : numAmount);
+
     const realizedGain = Math.round((numAmount - costBasis) * 100) / 100;
     return { costBasis, realizedGain };
-  }, [selectedAsset, numAmount, numUnits]);
+  }, [selectedAsset, numAmount, numUnits, transaction]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

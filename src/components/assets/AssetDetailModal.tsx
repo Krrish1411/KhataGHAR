@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Check,
   Wallet,
+  CheckCircle2,
 } from 'lucide-react';
 import { formatPercent, formatCompactCurrency, formatCurrency } from '../../utils/formatters';
 
@@ -68,29 +69,50 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   const baseCurrency = liveAsset.currency || activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
 
-  // Derived calculations with strict mathematical accuracy
+  // Derived calculations with strict mathematical accuracy (Separating Buy Lots vs Sell Redemptions)
   const tranches: AssetTranche[] = liveAsset.tranches || [];
-  const tranchesSum = tranches.reduce((sum, t) => sum + (t.amount || 0), 0);
+  const buyTranches = tranches.filter((t) => t.type !== 'sell');
+  const sellTranches = tranches.filter((t) => t.type === 'sell');
 
-  // Initial cost entered when creating the asset
-  const initialCost = liveAsset.purchasePrice || 0;
-  // If purchasePrice was tracked, it holds initial cost + tranches
-  let totalInvested = initialCost > 0 ? initialCost : (tranchesSum > 0 ? tranchesSum : liveAsset.currentValue);
-  if (initialCost > 0 && tranchesSum > 0 && initialCost < tranchesSum) {
-    totalInvested = tranchesSum;
+  const buyTranchesSum = buyTranches.reduce((sum, t) => sum + (t.amount || 0), 0);
+  const buyTranchesUnits = buyTranches.reduce((sum, t) => sum + (t.units || 0), 0);
+  const soldUnitsSum = sellTranches.reduce((sum, t) => sum + (t.units || 0), 0);
+  const soldProceedsSum = sellTranches.reduce((sum, t) => sum + (t.amount || 0), 0);
+  const totalRealizedGains = sellTranches.reduce((sum, t) => sum + (t.realizedGain || 0), 0);
+
+  // Remaining active units
+  const totalUnits = liveAsset.totalUnits !== undefined
+    ? liveAsset.totalUnits
+    : (buyTranchesUnits > 0 ? Math.max(0, buyTranchesUnits - soldUnitsSum) : 0);
+
+  // Position is fully liquidated if current value is 0 or units is 0, AND at least one sell occurred
+  const isFullyLiquidated =
+    (liveAsset.currentValue <= 0 || (totalUnits === 0 && (buyTranches.length > 0 || liveAsset.purchasePrice === 0))) &&
+    sellTranches.length > 0;
+
+  // Active invested capital (cost basis of current active holding)
+  let totalInvested = 0;
+  if (!isFullyLiquidated) {
+    if (liveAsset.purchasePrice !== undefined && liveAsset.purchasePrice > 0) {
+      totalInvested = liveAsset.purchasePrice;
+    } else if (buyTranchesSum > 0) {
+      const costBasisOfSells = Math.max(0, soldProceedsSum - totalRealizedGains);
+      totalInvested = Math.max(0, buyTranchesSum - costBasisOfSells);
+    } else {
+      totalInvested = liveAsset.currentValue;
+    }
   }
 
   // Pre-existing initial holding before individual SIP lots were recorded
-  const initialHoldingCost = Math.max(0, totalInvested - tranchesSum);
+  const initialHoldingCost = Math.max(0, totalInvested - buyTranchesSum);
 
-  const totalUnits = tranches.length > 0
-    ? tranches.reduce((sum, t) => sum + (t.units || 0), 0) + (liveAsset.totalUnits && tranches.every(t => !t.units) ? liveAsset.totalUnits : 0)
-    : (liveAsset.totalUnits || 0);
-
-  const avgCostPerUnit = totalUnits > 0 ? totalInvested / totalUnits : undefined;
-  const currentVal = liveAsset.currentValue;
-  const overallGain = currentVal - totalInvested;
-  const overallGainPct = totalInvested > 0 ? (overallGain / totalInvested) * 100 : 0;
+  const avgCostPerUnit = totalUnits > 0 && totalInvested > 0 ? totalInvested / totalUnits : undefined;
+  const currentVal = isFullyLiquidated ? 0 : liveAsset.currentValue;
+  const overallGain = isFullyLiquidated ? totalRealizedGains : (currentVal - totalInvested);
+  const historicalCostBasisSold = Math.max(0, soldProceedsSum - totalRealizedGains);
+  const overallGainPct = isFullyLiquidated
+    ? (historicalCostBasisSold > 0 ? (totalRealizedGains / historicalCostBasisSold) * 100 : 0)
+    : (totalInvested > 0 ? (overallGain / totalInvested) * 100 : 0);
 
   const handleAddTranche = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -198,8 +220,11 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     }
   };
 
-  const handleDeleteTranche = async (trancheId: string, amt: number) => {
-    if (window.confirm(`Delete this SIP installment of ${baseCurrency} ${amt}?`)) {
+  const handleDeleteTranche = async (trancheId: string, amt: number, isSell?: boolean) => {
+    const confirmMsg = isSell
+      ? `Undo this sale / redemption of ${baseCurrency} ${amt}? This will restore the sold units and cost basis back into your active portfolio.`
+      : `Delete this SIP installment of ${baseCurrency} ${amt}?`;
+    if (window.confirm(confirmMsg)) {
       await deleteAssetTranche(liveAsset.id, trancheId);
     }
   };
@@ -231,8 +256,30 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
       maxWidth="3xl"
     >
       <div className="space-y-5">
-        {/* Performance Header Banner — 5 Separate Responsive Cards with Zero Text Overlap */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {/* Liquidated Position Banner */}
+        {isFullyLiquidated && (
+          <div className="p-4 rounded-2xl border border-pine-400/40 bg-pine-50/80 dark:bg-pine-950/40 flex items-start gap-3 shadow-xs">
+            <div className="w-8 h-8 rounded-xl bg-pine-600 text-white grid place-items-center shrink-0">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-display font-bold text-sm text-pine-900 dark:text-pine-200">
+                  Position Fully Liquidated (100% Redeemed)
+                </span>
+                <Badge tone="pine" size="xs">
+                  {overallGain >= 0 ? '+' : ''}{formatCurrency(overallGain, baseCurrency, numberFormat, isPrivacyMode)} Realized Gain
+                </Badge>
+              </div>
+              <p className="text-xs text-pine-800/70 dark:text-pine-300/70 mt-0.5">
+                All units of this asset have been redeemed and credited into your bank accounts. Historical purchase lots and realized divestment records are preserved below.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Performance Header Banner — 4 Separate Responsive Cards with Zero Text Overlap */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {/* Current Valuation Card */}
           <div className="p-4 rounded-2xl bg-moss border border-line shadow-xs min-w-0">
             <span className="text-[10.5px] text-ink/50 font-bold uppercase tracking-wider block truncate">
@@ -246,12 +293,15 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                 isPrivacyMode={isPrivacyMode}
               />
             </div>
+            {isFullyLiquidated && (
+              <span className="text-[10.5px] text-ink/40 font-semibold block mt-0.5">Closed Position</span>
+            )}
           </div>
 
           {/* Total Invested Card */}
           <div className="p-4 rounded-2xl bg-moss border border-line shadow-xs min-w-0">
             <span className="text-[10.5px] text-ink/50 font-bold uppercase tracking-wider block truncate">
-              Total Invested
+              Active Capital Invested
             </span>
             <div className="font-display font-extrabold text-lg sm:text-xl text-ink/80 mt-1 truncate">
               <AnimatedNumber
@@ -261,12 +311,17 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                 isPrivacyMode={isPrivacyMode}
               />
             </div>
+            {isFullyLiquidated && (
+              <span className="text-[10.5px] text-ink/40 font-mono block mt-0.5">
+                ({formatCompactCurrency(buyTranchesSum, baseCurrency, numberFormat, isPrivacyMode)} historical)
+              </span>
+            )}
           </div>
 
           {/* Total Gain / Loss Card */}
           <div className="p-4 rounded-2xl bg-moss border border-line shadow-xs min-w-0">
             <span className="text-[10.5px] text-ink/50 font-bold uppercase tracking-wider block truncate">
-              Total Gain / Loss
+              {isFullyLiquidated ? 'Total Realized Profit' : 'Total Gain / Loss'}
             </span>
             <div
               className={`font-display font-extrabold text-lg sm:text-xl mt-1 flex items-center gap-1 truncate ${
@@ -293,10 +348,17 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
               Lots & Holdings
             </span>
             <div className="font-display font-extrabold text-lg sm:text-xl text-ink mt-1 truncate">
-              {tranches.length > 0
-                ? `${tranches.length + (initialHoldingCost > 0 ? 1 : 0)} Lots`
+              {isFullyLiquidated
+                ? 'Fully Liquidated'
+                : buyTranches.length > 0
+                ? `${buyTranches.length + (initialHoldingCost > 0 ? 1 : 0)} Lots`
                 : '1 Initial Lot'}
             </div>
+            {isFullyLiquidated ? (
+              <span className="text-[10.5px] text-ink/45 block mt-0.5">
+                {buyTranches.length} bought • {sellTranches.length} sold
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -370,7 +432,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
             <h4 className="font-display font-bold text-sm text-ink flex items-center gap-2">
               <span>Periodic SIP Installments & Purchase Lots</span>
               <Badge tone="gray" size="sm">
-                {tranches.length + (initialHoldingCost > 0 ? 1 : 0)}
+                {buyTranches.length + (initialHoldingCost > 0 ? 1 : 0)}
               </Badge>
             </h4>
 
@@ -809,7 +871,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                   )}
 
                   {/* Individual SIP Lots / Purchase Tranches */}
-                  {tranches.map((t, index) => {
+                  {buyTranches.map((t, index) => {
                     const lotIndex = (initialHoldingCost > 0 ? 2 : 1) + index;
                     return (
                       <tr key={t.id} className="hover:bg-moss/50 transition-colors">
@@ -839,7 +901,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                         </td>
                         <td className="py-3 px-3.5 text-right">
                           <button
-                            onClick={() => handleDeleteTranche(t.id, t.amount)}
+                            onClick={() => handleDeleteTranche(t.id, t.amount, false)}
                             className="p-1.5 rounded-lg text-ink/40 hover:text-flare-600 hover:bg-flare-100/50 transition-colors cursor-pointer"
                             title="Delete this lot"
                           >
@@ -850,8 +912,8 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                     );
                   })}
 
-                  {/* Empty state only if zero initial cost and zero tranches */}
-                  {initialHoldingCost <= 0 && tranches.length === 0 && (
+                  {/* Empty state only if zero initial cost and zero buy tranches */}
+                  {initialHoldingCost <= 0 && buyTranches.length === 0 && (
                     <tr>
                       <td colSpan={5} className="text-center py-8 text-ink/40">
                         <Coins className="w-8 h-8 mx-auto mb-2 text-ink/20" />
@@ -867,6 +929,100 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Realized Divestments & Redemptions Section (Schedule CG) */}
+        {sellTranches.length > 0 && (
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <h4 className="font-display font-bold text-sm text-ink flex items-center gap-2">
+                <span>Realized Divestments & Liquidations (Schedule CG)</span>
+                <Badge tone="flare" size="sm">
+                  {sellTranches.length} {sellTranches.length === 1 ? 'Redemption' : 'Redemptions'}
+                </Badge>
+              </h4>
+              <span className="text-xs font-bold text-pine-600 font-mono">
+                Total Realized Gain: {totalRealizedGains >= 0 ? '+' : ''}
+                {formatCurrency(totalRealizedGains, baseCurrency, numberFormat, isPrivacyMode)}
+              </span>
+            </div>
+
+            <div className="rounded-2xl border border-line overflow-hidden bg-card shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-moss/80 border-b border-line text-ink/50 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="py-2.5 px-3.5">Redemption Date</th>
+                      <th className="py-2.5 px-3.5">Sale Proceeds</th>
+                      <th className="py-2.5 px-3.5">Units Redeemed</th>
+                      <th className="py-2.5 px-3.5">Acquisition Cost Basis</th>
+                      <th className="py-2.5 px-3.5">Realized Capital Gain / Loss</th>
+                      <th className="py-2.5 px-3.5">Note</th>
+                      <th className="py-2.5 px-3.5 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line/60">
+                    {sellTranches.map((t, index) => {
+                      const costBasis = Math.max(0, (t.amount || 0) - (t.realizedGain || 0));
+                      const gain = t.realizedGain !== undefined ? t.realizedGain : (t.amount - costBasis);
+                      return (
+                        <tr key={t.id} className="hover:bg-moss/50 transition-colors">
+                          <td className="py-3 px-3.5">
+                            <div className="flex items-center gap-1.5">
+                              <Badge tone="flare" size="xs">
+                                Sale #{index + 1}
+                              </Badge>
+                              <span className="font-mono text-xs text-ink/80">{t.date}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3.5 font-mono font-bold text-pine-700 dark:text-pine-400">
+                            +{formatCurrency(t.amount, baseCurrency, numberFormat, isPrivacyMode)}
+                          </td>
+                          <td className="py-3 px-3.5 font-mono text-xs text-ink/80">
+                            {t.units ? (
+                              <span>
+                                <b>{t.units.toFixed(3)}</b> units
+                                {t.unitPrice && <span className="text-ink/45"> @ ₹{t.unitPrice.toFixed(2)}</span>}
+                              </span>
+                            ) : (
+                              <span className="text-ink/40">Full / Lump-sum</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3.5 font-mono text-xs text-ink/70">
+                            {formatCurrency(costBasis, baseCurrency, numberFormat, isPrivacyMode)}
+                          </td>
+                          <td className="py-3 px-3.5 font-mono text-xs">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                                gain >= 0
+                                  ? 'bg-pine-100 text-pine-700 dark:bg-pine-900/40 dark:text-pine-300'
+                                  : 'bg-flare-100 text-flare-700 dark:bg-flare-900/40 dark:text-flare-300'
+                              }`}
+                            >
+                              {gain >= 0 ? '+' : ''}
+                              {formatCurrency(gain, baseCurrency, numberFormat, isPrivacyMode)}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3.5 text-xs text-ink/70">
+                            {t.note || <span className="text-ink/30 italic">Redemption</span>}
+                          </td>
+                          <td className="py-3 px-3.5 text-right">
+                            <button
+                              onClick={() => handleDeleteTranche(t.id, t.amount, true)}
+                              className="p-1.5 rounded-lg text-ink/40 hover:text-flare-600 hover:bg-flare-100/50 transition-colors cursor-pointer"
+                              title="Undo this sale lot"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="flex justify-end pt-2 border-t border-line">

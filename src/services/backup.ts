@@ -125,8 +125,8 @@ export async function importVaultEncrypted(
       ciphertextBytes
     );
   } catch (err) {
-    // If decryption fails, try normalizing whitespace & casing (crucial for 12-word recovery phrases)
-    const normalized = backupSecret.trim().toLowerCase().replace(/\s+/g, ' ');
+    // If decryption fails, try normalizing whitespace, newlines, commas & casing (crucial for 12-word recovery phrases)
+    const normalized = backupSecret.trim().toLowerCase().replace(/[\r\n\t,]+/g, ' ').replace(/\s+/g, ' ');
     if (normalized !== backupSecret) {
       try {
         const altKey = await deriveKey(normalized, salt);

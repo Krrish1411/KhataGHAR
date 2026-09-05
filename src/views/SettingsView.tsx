@@ -79,6 +79,7 @@ export const SettingsView: React.FC = () => {
   const [catNewEssential, setCatNewEssential] = useState<boolean>(false);
   const [catEditId, setCatEditId] = useState<string | null>(null);
   const [catEditName, setCatEditName] = useState('');
+  const [catEditIsEssential, setCatEditIsEssential] = useState<boolean>(false);
   const [catFilter, setCatFilter] = useState<'all' | 'expense' | 'income'>('all');
 
   // Keyboard Shortcuts Customization state
@@ -1101,112 +1102,194 @@ export const SettingsView: React.FC = () => {
             .filter((c) => !c.parentId && (catFilter === 'all' || c.type === catFilter))
             .sort((a, b) => a.name.localeCompare(b.name))
             .map((cat) => (
-              <div
-                key={cat.id}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-all ${
-                  catEditId === cat.id
-                    ? 'border-pine-500 bg-pine-50/80 dark:bg-pine-950/60 ring-2 ring-pine-500 shadow-md scale-[1.01]'
-                    : cat.hidden
-                    ? 'opacity-40 border-dashed border-line'
-                    : 'border-line bg-card/60 hover:bg-moss/50'
-                }`}
-              >
-                <div className="w-7 h-7 rounded-xl bg-moss/80 border border-line flex items-center justify-center shrink-0 text-pine-700 dark:text-pine-300">
-                  <IconRenderer name={cat.icon} className="w-3.5 h-3.5" />
-                </div>
+              catEditId === cat.id ? (
+                <div
+                  key={cat.id}
+                  className="p-3.5 rounded-2xl border-2 border-pine-500/80 bg-card shadow-sm space-y-3 anim-fade"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-pine-700 dark:text-pine-300">
+                      Editing Category
+                    </span>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                        cat.type === 'expense'
+                          ? 'bg-flare-100 text-flare-700 dark:bg-flare-900/30 dark:text-flare-300'
+                          : 'bg-pine-100 text-pine-700 dark:bg-pine-900/30 dark:text-pine-300'
+                      }`}
+                    >
+                      {cat.type}
+                    </span>
+                  </div>
 
-                {catEditId === cat.id ? (
-                  <input
-                    type="text"
-                    value={catEditName}
-                    onChange={(e) => setCatEditName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && catEditName.trim()) {
-                        updateCategory({ ...cat, name: catEditName.trim() });
-                        setCatEditId(null);
-                      }
-                      if (e.key === 'Escape') setCatEditId(null);
-                    }}
-                    autoFocus
-                    className="flex-1 text-xs font-semibold bg-transparent border-b border-pine-500 outline-none text-ink"
-                  />
-                ) : (
-                  <span className="flex-1 text-xs font-semibold text-ink truncate">{cat.name}</span>
-                )}
+                  <div>
+                    <label className="text-[10.5px] font-bold uppercase text-ink/50 block mb-1">
+                      Category Name
+                    </label>
+                    <input
+                      type="text"
+                      value={catEditName}
+                      onChange={(e) => setCatEditName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && catEditName.trim()) {
+                          updateCategory({
+                            ...cat,
+                            name: catEditName.trim(),
+                            isEssential: cat.type === 'expense' ? catEditIsEssential : cat.isEssential,
+                          });
+                          setCatEditId(null);
+                        }
+                        if (e.key === 'Escape') setCatEditId(null);
+                      }}
+                      autoFocus
+                      className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-line bg-card outline-none focus:border-pine-500 text-ink"
+                    />
+                  </div>
 
-                {cat.type === 'expense' && (
-                  <button
-                    type="button"
-                    onClick={() => updateCategory({ ...cat, isEssential: !cat.isEssential })}
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 transition-all cursor-pointer border ${
-                      cat.isEssential
-                        ? 'bg-pine-100 border-pine-300 text-pine-700 dark:bg-pine-900/40 dark:border-pine-800 dark:text-pine-300 hover:bg-pine-200'
-                        : 'bg-moss border-line text-ink/60 hover:text-ink'
-                    }`}
-                    title="Click to toggle Essential (Need) vs Discretionary (Want)"
-                  >
-                    {cat.isEssential ? '⭐ Essential' : 'Discretionary'}
-                  </button>
-                )}
+                  {cat.type === 'expense' && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10.5px] font-bold uppercase text-ink/50 block">
+                        Classification (50/30/20 Rule)
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCatEditIsEssential(true)}
+                          className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                            catEditIsEssential
+                              ? 'bg-pine-100/70 border-pine-500 text-pine-800 dark:bg-pine-950/60 dark:text-pine-200 shadow-xs'
+                              : 'bg-moss/40 border-line text-ink/60 hover:text-ink'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 font-bold text-xs">
+                            <span>⭐</span>
+                            <span>Essential Need</span>
+                          </div>
+                          <p className="text-[10px] text-ink/50 mt-0.5">Rent, Groceries, Healthcare, Utility</p>
+                        </button>
 
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${cat.type === 'expense' ? 'bg-flare-100 text-flare-700 dark:bg-flare-900/30 dark:text-flare-300' : 'bg-pine-100 text-pine-700 dark:bg-pine-900/30 dark:text-pine-300'}`}>
-                  {cat.type}
-                </span>
-
-                <div className="flex items-center gap-0.5 shrink-0">
-                  {catEditId === cat.id ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => { if (catEditName.trim()) { updateCategory({ ...cat, name: catEditName.trim() }); setCatEditId(null); } }}
-                        className="p-1 rounded-lg text-pine-600 hover:bg-pine-100 cursor-pointer"
-                        title="Save"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCatEditId(null)}
-                        className="p-1 rounded-lg text-ink/40 hover:bg-moss cursor-pointer"
-                        title="Cancel"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => { setCatEditId(cat.id); setCatEditName(cat.name); }}
-                        className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-moss transition-all cursor-pointer"
-                        title="Rename"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateCategory({ ...cat, hidden: !cat.hidden })}
-                        className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-moss transition-all cursor-pointer"
-                        title={cat.hidden ? 'Show in dropdowns' : 'Hide from dropdowns'}
-                      >
-                        {cat.hidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm(`Delete category "${cat.name}"? This cannot be undone.`)) {
-                            deleteCategory(cat.id);
-                          }
-                        }}
-                        className="p-1 rounded-lg text-ink/40 hover:text-flare-600 hover:bg-flare-50 dark:hover:bg-flare-900/20 transition-all cursor-pointer"
-                        title="Delete category"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </>
+                        <button
+                          type="button"
+                          onClick={() => setCatEditIsEssential(false)}
+                          className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                            !catEditIsEssential
+                              ? 'bg-amber-100/70 border-amber-500 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200 shadow-xs'
+                              : 'bg-moss/40 border-line text-ink/60 hover:text-ink'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 font-bold text-xs">
+                            <span>🎯</span>
+                            <span>Discretionary Want</span>
+                          </div>
+                          <p className="text-[10px] text-ink/50 mt-0.5">Dining, Shopping, Travel, Entertainment</p>
+                        </button>
+                      </div>
+                    </div>
                   )}
+
+                  <div className="flex items-center justify-end gap-2 pt-1 border-t border-line">
+                    <button
+                      type="button"
+                      onClick={() => setCatEditId(null)}
+                      className="px-3 py-1.5 rounded-xl border border-line bg-card hover:bg-moss text-xs font-semibold text-ink cursor-pointer transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!catEditName.trim()}
+                      onClick={() => {
+                        if (catEditName.trim()) {
+                          updateCategory({
+                            ...cat,
+                            name: catEditName.trim(),
+                            isEssential: cat.type === 'expense' ? catEditIsEssential : cat.isEssential,
+                          });
+                          setCatEditId(null);
+                        }
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-pine-700 hover:bg-pine-600 text-white text-xs font-bold shadow-xs cursor-pointer transition-all disabled:opacity-40"
+                    >
+                      Save Changes
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div
+                  key={cat.id}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-all ${
+                    cat.hidden
+                      ? 'opacity-40 border-dashed border-line'
+                      : 'border-line bg-card/60 hover:bg-moss/50'
+                  }`}
+                >
+                  <div className="w-7 h-7 rounded-xl bg-moss/80 border border-line flex items-center justify-center shrink-0 text-pine-700 dark:text-pine-300">
+                    <IconRenderer name={cat.icon} className="w-3.5 h-3.5" />
+                  </div>
+
+                  <span className="flex-1 text-xs font-semibold text-ink truncate">{cat.name}</span>
+
+                  {cat.type === 'expense' && (
+                    <button
+                      type="button"
+                      onClick={() => updateCategory({ ...cat, isEssential: !cat.isEssential })}
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 transition-all cursor-pointer border ${
+                        cat.isEssential
+                          ? 'bg-pine-100 border-pine-300 text-pine-700 dark:bg-pine-900/40 dark:border-pine-800 dark:text-pine-300 hover:bg-pine-200'
+                          : 'bg-moss border-line text-ink/60 hover:text-ink'
+                      }`}
+                      title="Click to toggle Essential (Need) vs Discretionary (Want)"
+                    >
+                      {cat.isEssential ? '⭐ Essential' : 'Discretionary'}
+                    </button>
+                  )}
+
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
+                      cat.type === 'expense'
+                        ? 'bg-flare-100 text-flare-700 dark:bg-flare-900/30 dark:text-flare-300'
+                        : 'bg-pine-100 text-pine-700 dark:bg-pine-900/30 dark:text-pine-300'
+                    }`}
+                  >
+                    {cat.type}
+                  </span>
+
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCatEditId(cat.id);
+                        setCatEditName(cat.name);
+                        setCatEditIsEssential(Boolean(cat.isEssential));
+                      }}
+                      className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-moss transition-all cursor-pointer"
+                      title="Edit Category"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateCategory({ ...cat, hidden: !cat.hidden })}
+                      className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-moss transition-all cursor-pointer"
+                      title={cat.hidden ? 'Show in dropdowns' : 'Hide from dropdowns'}
+                    >
+                      {cat.hidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`Delete category "${cat.name}"? This cannot be undone.`)) {
+                          deleteCategory(cat.id);
+                        }
+                      }}
+                      className="p-1 rounded-lg text-ink/40 hover:text-flare-600 hover:bg-flare-50 dark:hover:bg-flare-900/20 transition-all cursor-pointer"
+                      title="Delete category"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )
             ))}
           {categories.filter((c) => !c.parentId && (catFilter === 'all' || c.type === catFilter)).length === 0 && (
             <p className="text-xs text-ink/40 text-center py-4">No categories found for this filter.</p>

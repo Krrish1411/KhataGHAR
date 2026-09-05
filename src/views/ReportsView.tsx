@@ -38,7 +38,9 @@ import {
   Sparkles,
   Clock,
   AlertCircle,
+  Receipt,
 } from 'lucide-react';
+import { PnLStatementSection } from '../components/reports/PnLStatementSection';
 import {
   ResponsiveContainer,
   BarChart,
@@ -77,6 +79,7 @@ export const ReportsView: React.FC = () => {
     });
   }, [accounts, transactions, budgets, categories, peopleLedger, assets, liabilities, plannedExpenses, activeVault, isPrivacyMode]);
 
+  const [reportViewMode, setReportViewMode] = useState<'pnl' | 'dossier'>('pnl');
   const [timelinePreset, setTimelinePreset] = useState<string>('this-month');
   const [customStart, setCustomStart] = useState<string>('');
   const [customEnd, setCustomEnd] = useState<string>('');
@@ -654,6 +657,37 @@ export const ReportsView: React.FC = () => {
         </div>
       </div>
 
+      {/* Top Report View Mode Switcher: P&L Statement vs Executive KPI Dossier */}
+      <div className="flex items-center gap-2 p-1.5 bg-moss/80 dark:bg-moss/40 rounded-2xl border border-line w-fit">
+        <button
+          type="button"
+          onClick={() => setReportViewMode('pnl')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            reportViewMode === 'pnl'
+              ? 'bg-card text-ink shadow-xs border border-line text-pine-700 dark:text-pine-300'
+              : 'text-ink/60 hover:text-ink'
+          }`}
+        >
+          <Receipt className="w-4 h-4 text-pine-600" />
+          <span>Profit & Loss (P&L) Statement</span>
+          <Badge tone="pine" size="xs">ITR & Tax</Badge>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setReportViewMode('dossier')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            reportViewMode === 'dossier'
+              ? 'bg-card text-ink shadow-xs border border-line text-pine-700 dark:text-pine-300'
+              : 'text-ink/60 hover:text-ink'
+          }`}
+        >
+          <Activity className="w-4 h-4 text-mari-600" />
+          <span>Executive KPI Dossier & Health</span>
+          <Badge tone="gray" size="xs">16 Ratios</Badge>
+        </button>
+      </div>
+
       {/* Timeline Selector Bar */}
       <div className="rounded-2xl border border-line bg-card p-3 sm:p-4 space-y-3 shadow-sm lift">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
@@ -706,8 +740,24 @@ export const ReportsView: React.FC = () => {
         )}
       </div>
 
-      {/* FINANCIAL INTELLIGENCE & ACTIONABLE INSIGHTS HUB */}
-      <section id="insights-hub" className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-4 shadow-sm lift">
+      {/* REPORT CONTENT: P&L Statement vs Executive KPI Dossier */}
+      {reportViewMode === 'pnl' ? (
+        <PnLStatementSection
+          currentPeriodTxs={currentPeriodTxs}
+          categories={categories}
+          assets={assets}
+          liabilities={liabilities}
+          accounts={accounts}
+          selectedRange={selectedRange}
+          baseCurrency={baseCurrency}
+          numberFormat={numberFormat}
+          isPrivacyMode={isPrivacyMode}
+          vaultName={activeVault?.name || 'KhataGHAR Vault'}
+        />
+      ) : (
+        <>
+          {/* FINANCIAL INTELLIGENCE & ACTIONABLE INSIGHTS HUB */}
+          <section id="insights-hub" className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-4 shadow-sm lift">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-line pb-3.5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-mari-100 dark:bg-mari-950/60 border border-mari-400/40 grid place-items-center text-mari-700 dark:text-mari-300 shrink-0">
@@ -1878,6 +1928,8 @@ export const ReportsView: React.FC = () => {
           </div>
         </div>
       </div>
+        </>
+      )}
 
       {/* Comprehensive PDF Export Modal */}
       {isPdfModalOpen && activeVault && (
