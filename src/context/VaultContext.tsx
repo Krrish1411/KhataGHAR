@@ -75,6 +75,7 @@ interface VaultContextType {
     newDetails: { name: string; phone?: string; notes?: string }
   ) => Promise<void>;
   addSettlement: (entryId: string, settlement: Omit<SettlementRecord, 'id'>) => Promise<void>;
+  deleteSettlement: (entryId: string, settlementId: string) => Promise<void>;
   deletePeopleEntry: (id: string) => Promise<void>;
 
   // Budget & Goal Operations
@@ -155,6 +156,97 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   assetsRef.current = assets;
   const liabilitiesRef = useRef<Liability[]>(liabilities);
   liabilitiesRef.current = liabilities;
+
+  // Self-heal and auto-rebalance unbalanced settlements (e.g. 2k + 2k holding vs 4k return)
+  const rebalancePeopleSettlements = async (
+    entries: PeopleLedgerEntry[],
+    key: CryptoKey
+  ): Promise<PeopleLedgerEntry[]> => {
+    const groups = new Map<string, PeopleLedgerEntry[]>();
+    for (const e of entries) {
+      const keyStr = `${e.contactName.trim().toLowerCase()}__${e.type}`;
+      const list = groups.get(keyStr) || [];
+      list.push(e);
+      groups.set(keyStr, list);
+    }
+
+    let hasChanges = false;
+    const finalEntries: PeopleLedgerEntry[] = [];
+
+    for (const group of groups.values()) {
+      if (group.length <= 1) {
+        finalEntries.push(...group);
+        continue;
+      }
+
+      // Check if rebalancing is needed
+      const isAnyOverSettled = group.some((e) => {
+        const sTotal = (e.settlements || []).reduce((sum, s) => sum + s.amount, 0);
+        return sTotal > e.amount + 0.001;
+      });
+      const isAnyUnderSettled = group.some((e) => {
+        const sTotal = (e.settlements || []).reduce((sum, s) => sum + s.amount, 0);
+        return sTotal < e.amount - 0.001;
+      });
+
+      if (!isAnyOverSettled || !isAnyUnderSettled) {
+        finalEntries.push(...group);
+        continue;
+      }
+
+      hasChanges = true;
+      const allSettlements: SettlementRecord[] = group.flatMap((e) => e.settlements || []);
+      const sortedEntries = [...group].sort((a, b) => a.date.localeCompare(b.date));
+
+      const rebalancedGroup: PeopleLedgerEntry[] = sortedEntries.map((e) => ({
+        ...e,
+        settlements: [],
+      }));
+
+      for (const s of allSettlements) {
+        let sAmount = s.amount;
+        for (let i = 0; i < rebalancedGroup.length; i++) {
+          if (sAmount <= 0) break;
+          const entry = rebalancedGroup[i];
+          const currSettled = entry.settlements.reduce((sum, x) => sum + x.amount, 0);
+          const needed = Math.max(0, round2(entry.amount - currSettled));
+
+          if (needed <= 0 && i < rebalancedGroup.length - 1) {
+            continue;
+          }
+
+          if (i === rebalancedGroup.length - 1 && needed <= 0) {
+            const lastS = entry.settlements[entry.settlements.length - 1];
+            if (lastS) {
+              lastS.amount = round2(lastS.amount + sAmount);
+            } else {
+              entry.settlements.push({ ...s, amount: sAmount });
+            }
+            sAmount = 0;
+            break;
+          }
+
+          const take = Math.min(needed, sAmount);
+          entry.settlements.push({
+            ...s,
+            id: generateUUID(),
+            amount: take,
+          });
+          sAmount = round2(sAmount - take);
+        }
+      }
+
+      for (const entry of rebalancedGroup) {
+        const total = round2(entry.settlements.reduce((sum, x) => sum + x.amount, 0));
+        entry.status = total >= entry.amount ? 'closed' : total > 0 ? 'partially_settled' : 'open';
+        entry.updatedAt = new Date().toISOString();
+        await saveEncryptedRecord('people', entry, key);
+        finalEntries.push(entry);
+      }
+    }
+
+    return hasChanges ? finalEntries : entries;
+  };
 
   // Load and decrypt records whenever activeVault and sessionKey change
   const loadVaultData = useCallback(async () => {
@@ -338,10 +430,13 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         cleanCats = cats.filter((c) => !c.parentId && !c.id.includes('_sub_'));
       }
 
+      // Self-heal and auto-rebalance any unbalanced settlements (e.g. 2k + 2k holding vs 4k return)
+      const rebalancedPeople = await rebalancePeopleSettlements(people, sessionKey);
+
       setAccounts(accs);
       setTransactions(txs);
       setCategories(cleanCats);
-      setPeopleLedger(people);
+      setPeopleLedger(rebalancedPeople);
       setBudgets(bdgs);
       setGoals(gls);
       setAssets(asts);
@@ -538,44 +633,90 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setAccounts(accountsRef.current);
     }
 
-    // If linked to an Asset (Investment / SIP / Asset purchase)
+    // If linked to an Asset (Investment / SIP / Asset purchase OR Asset Sale / Redemption)
     if (newTx.linkedAssetId) {
-      const targetAsset = assetsRef.current.find((a) => a.id === newTx.linkedAssetId);
-      if (targetAsset) {
-        const trancheId = generateUUID();
-        newTx.trancheId = trancheId;
-        const trancheUnits = (newTx as any).units || undefined;
-        const trancheUnitPrice = (newTx as any).unitPrice || undefined;
+      if ((newTx as any).isSaleTrancheHandled) {
+        // Tranche and asset valuation already updated by sellAsset
+      } else {
+        const targetAsset = assetsRef.current.find((a) => a.id === newTx.linkedAssetId);
+        if (targetAsset) {
+          const isSale =
+            newTx.type === 'income' ||
+            (newTx as any).subType === 'asset_sale' ||
+            (newTx.tags && newTx.tags.includes('asset-sale'));
 
-        const newTranche: AssetTranche = {
-          id: trancheId,
-          date: newTx.date,
-          amount: newTx.amount,
-          units: trancheUnits,
-          unitPrice: trancheUnitPrice,
-          transactionId: newTx.id,
-          note: newTx.note,
-        };
+          const trancheId = generateUUID();
+          newTx.trancheId = trancheId;
+          const trancheUnits = (newTx as any).units || undefined;
+          const trancheUnitPrice = (newTx as any).unitPrice || undefined;
 
-        const updatedTranches = [...(targetAsset.tranches || []), newTranche];
-        const newTotalUnits = (targetAsset.totalUnits || 0) + (trancheUnits || 0);
-        let newCurrentVal = round2(targetAsset.currentValue + newTx.amount);
-        if (targetAsset.currentUnitPrice && newTotalUnits > 0) {
-          newCurrentVal = round2(newTotalUnits * targetAsset.currentUnitPrice);
+          if (isSale) {
+            // Asset Sale / Redemption: DEDUCT from currentValue and purchasePrice
+            const unitsSold = trancheUnits || 0;
+            const remainingUnits = Math.max(0, (targetAsset.totalUnits || 0) - unitsSold);
+            let newCurrentVal = Math.max(0, round2(targetAsset.currentValue - newTx.amount));
+            if (targetAsset.currentUnitPrice && remainingUnits > 0) {
+              newCurrentVal = round2(remainingUnits * targetAsset.currentUnitPrice);
+            } else if (remainingUnits === 0 && (targetAsset.totalUnits || 0) > 0) {
+              newCurrentVal = 0;
+            }
+
+            const newTranche: AssetTranche = {
+              id: trancheId,
+              date: newTx.date,
+              amount: newTx.amount,
+              units: trancheUnits,
+              unitPrice: trancheUnitPrice,
+              type: 'sell',
+              transactionId: newTx.id,
+              note: newTx.note || 'Asset Sale / Redemption',
+            };
+
+            const updatedAsset: Asset = {
+              ...targetAsset,
+              tranches: [...(targetAsset.tranches || []), newTranche],
+              totalUnits: remainingUnits > 0 ? remainingUnits : undefined,
+              currentValue: newCurrentVal,
+              purchasePrice: Math.max(0, round2((targetAsset.purchasePrice || 0) - newTx.amount)),
+              updatedAt: new Date().toISOString(),
+            };
+
+            assetsRef.current = assetsRef.current.map((a) => (a.id === updatedAsset.id ? updatedAsset : a));
+            setAssets(assetsRef.current);
+            await saveEncryptedRecord('asset', updatedAsset, sessionKey);
+          } else {
+            // Asset Purchase / Investment: ADD to currentValue and purchasePrice
+            const newTranche: AssetTranche = {
+              id: trancheId,
+              date: newTx.date,
+              amount: newTx.amount,
+              units: trancheUnits,
+              unitPrice: trancheUnitPrice,
+              transactionId: newTx.id,
+              note: newTx.note,
+            };
+
+            const updatedTranches = [...(targetAsset.tranches || []), newTranche];
+            const newTotalUnits = (targetAsset.totalUnits || 0) + (trancheUnits || 0);
+            let newCurrentVal = round2(targetAsset.currentValue + newTx.amount);
+            if (targetAsset.currentUnitPrice && newTotalUnits > 0) {
+              newCurrentVal = round2(newTotalUnits * targetAsset.currentUnitPrice);
+            }
+
+            const updatedAsset: Asset = {
+              ...targetAsset,
+              tranches: updatedTranches,
+              totalUnits: newTotalUnits > 0 ? newTotalUnits : undefined,
+              currentValue: newCurrentVal,
+              purchasePrice: round2((targetAsset.purchasePrice || 0) + newTx.amount),
+              updatedAt: new Date().toISOString(),
+            };
+
+            assetsRef.current = assetsRef.current.map((a) => (a.id === updatedAsset.id ? updatedAsset : a));
+            setAssets(assetsRef.current);
+            await saveEncryptedRecord('asset', updatedAsset, sessionKey);
+          }
         }
-
-        const updatedAsset: Asset = {
-          ...targetAsset,
-          tranches: updatedTranches,
-          totalUnits: newTotalUnits > 0 ? newTotalUnits : undefined,
-          currentValue: newCurrentVal,
-          purchasePrice: round2((targetAsset.purchasePrice || 0) + newTx.amount),
-          updatedAt: new Date().toISOString(),
-        };
-
-        assetsRef.current = assetsRef.current.map((a) => (a.id === updatedAsset.id ? updatedAsset : a));
-        setAssets(assetsRef.current);
-        await saveEncryptedRecord('asset', updatedAsset, sessionKey);
       }
     }
 
@@ -761,17 +902,36 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       // If linked to an Asset, remove the tranche and adjust valuation/units
       if (txToDel.linkedAssetId) {
-        const targetAsset = assets.find((a) => a.id === txToDel.linkedAssetId);
+        const targetAsset = assetsRef.current.find((a) => a.id === txToDel.linkedAssetId);
         if (targetAsset && targetAsset.tranches) {
+          const isSale =
+            txToDel.type === 'income' ||
+            (txToDel as any).subType === 'asset_sale' ||
+            (txToDel.tags && txToDel.tags.includes('asset-sale'));
           const trancheToRemove = targetAsset.tranches.find(
             (t) => t.id === txToDel.trancheId || t.transactionId === txToDel.id
           );
           const updatedTranches = targetAsset.tranches.filter(
             (t) => t.id !== txToDel.trancheId && t.transactionId !== txToDel.id
           );
-          const unitsToSubtract = trancheToRemove?.units || 0;
-          const newTotalUnits = Math.max(0, (targetAsset.totalUnits || 0) - unitsToSubtract);
-          let newCurrentVal = Math.max(0, round2(targetAsset.currentValue - txToDel.amount));
+          const unitsDiff = trancheToRemove?.units || 0;
+
+          let newTotalUnits = targetAsset.totalUnits || 0;
+          let newCurrentVal = targetAsset.currentValue;
+          let newPurchasePrice = targetAsset.purchasePrice || 0;
+
+          if (isSale) {
+            // Deleting a sale: restore units and add proceeds back to asset
+            newTotalUnits = newTotalUnits + unitsDiff;
+            newCurrentVal = round2(targetAsset.currentValue + txToDel.amount);
+            newPurchasePrice = round2((targetAsset.purchasePrice || 0) + txToDel.amount);
+          } else {
+            // Deleting a purchase: remove units and subtract amount
+            newTotalUnits = Math.max(0, newTotalUnits - unitsDiff);
+            newCurrentVal = Math.max(0, round2(targetAsset.currentValue - txToDel.amount));
+            newPurchasePrice = Math.max(0, round2((targetAsset.purchasePrice || 0) - txToDel.amount));
+          }
+
           if (targetAsset.currentUnitPrice && newTotalUnits > 0) {
             newCurrentVal = round2(newTotalUnits * targetAsset.currentUnitPrice);
           }
@@ -781,11 +941,12 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             tranches: updatedTranches,
             totalUnits: newTotalUnits > 0 ? newTotalUnits : undefined,
             currentValue: newCurrentVal,
-            purchasePrice: Math.max(0, round2((targetAsset.purchasePrice || 0) - txToDel.amount)),
+            purchasePrice: newPurchasePrice,
             updatedAt: new Date().toISOString(),
           };
 
-          setAssets((prev) => prev.map((a) => (a.id === updatedAsset.id ? updatedAsset : a)));
+          assetsRef.current = assetsRef.current.map((a) => (a.id === updatedAsset.id ? updatedAsset : a));
+          setAssets(assetsRef.current);
           await saveEncryptedRecord('asset', updatedAsset, sessionKey);
         }
       }
@@ -940,14 +1101,42 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (tx.linkedAssetId) {
         const asset = assetsRef.current.find((a) => a.id === tx.linkedAssetId);
         if (asset && asset.tranches) {
+          const isSale =
+            tx.type === 'income' ||
+            (tx as any).subType === 'asset_sale' ||
+            (tx.tags && tx.tags.includes('asset-sale'));
+          const trancheToRemove = asset.tranches.find(
+            (tr) => tr.transactionId === tx.id || tr.id === tx.trancheId
+          );
           const updatedTranches = asset.tranches.filter(
             (tr) => tr.transactionId !== tx.id && tr.id !== tx.trancheId
           );
+          const unitsDiff = trancheToRemove?.units || 0;
+
+          let newTotalUnits = asset.totalUnits || 0;
+          let newCurrentVal = asset.currentValue;
+          let newPurchasePrice = asset.purchasePrice || 0;
+
+          if (isSale) {
+            newTotalUnits = newTotalUnits + unitsDiff;
+            newCurrentVal = round2(asset.currentValue + tx.amount);
+            newPurchasePrice = round2((asset.purchasePrice || 0) + tx.amount);
+          } else {
+            newTotalUnits = Math.max(0, newTotalUnits - unitsDiff);
+            newCurrentVal = Math.max(0, round2(asset.currentValue - tx.amount));
+            newPurchasePrice = Math.max(0, round2((asset.purchasePrice || 0) - tx.amount));
+          }
+
+          if (asset.currentUnitPrice && newTotalUnits > 0) {
+            newCurrentVal = round2(newTotalUnits * asset.currentUnitPrice);
+          }
+
           const updatedAsset: Asset = {
             ...asset,
             tranches: updatedTranches,
-            currentValue: Math.max(0, round2(asset.currentValue - tx.amount)),
-            purchasePrice: Math.max(0, round2((asset.purchasePrice || 0) - tx.amount)),
+            totalUnits: newTotalUnits > 0 ? newTotalUnits : undefined,
+            currentValue: newCurrentVal,
+            purchasePrice: newPurchasePrice,
             updatedAt: new Date().toISOString(),
           };
           assetsRef.current = assetsRef.current.map((a) => (a.id === updatedAsset.id ? updatedAsset : a));
@@ -1213,14 +1402,121 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!target) return;
 
     const validSettlementAmt = round2(Math.abs(Number(settlement.amount)));
-    const newSettlement: SettlementRecord = {
-      ...settlement,
-      amount: validSettlementAmt,
-      id: generateUUID(),
-    };
+    if (validSettlementAmt <= 0) return;
 
-    const newSettlements = [...target.settlements, newSettlement];
-    const totalSettled = round2(newSettlements.reduce((sum, s) => sum + s.amount, 0));
+    const targetSettled = round2((target.settlements || []).reduce((sum, s) => sum + s.amount, 0));
+    const targetNeeded = Math.max(0, round2(target.amount - targetSettled));
+
+    const targetAssign = Math.min(targetNeeded, validSettlementAmt);
+    let remainder = round2(validSettlementAmt - targetAssign);
+
+    const modifiedEntries: PeopleLedgerEntry[] = [];
+
+    // 1. Update target entry
+    const targetNewSettlements = [...(target.settlements || [])];
+    const applyToTarget = targetAssign > 0 ? targetAssign : (remainder === validSettlementAmt ? validSettlementAmt : 0);
+    if (applyToTarget > 0) {
+      targetNewSettlements.push({
+        ...settlement,
+        amount: applyToTarget,
+        id: generateUUID(),
+      });
+      if (targetAssign === 0) {
+        remainder = 0;
+      }
+    }
+
+    const newTargetTotal = round2(targetNewSettlements.reduce((sum, s) => sum + s.amount, 0));
+    const updatedTarget: PeopleLedgerEntry = {
+      ...target,
+      settlements: targetNewSettlements,
+      status: newTargetTotal >= target.amount ? 'closed' : newTargetTotal > 0 ? 'partially_settled' : 'open',
+      updatedAt: new Date().toISOString(),
+    };
+    modifiedEntries.push(updatedTarget);
+
+    // 2. If remainder > 0, cascade FIFO to other open entries for same contact & type
+    if (remainder > 0) {
+      const cNameLower = target.contactName.trim().toLowerCase();
+      const otherOpenEntries = peopleLedgerRef.current
+        .filter(
+          (p) =>
+            p.id !== target.id &&
+            p.contactName.trim().toLowerCase() === cNameLower &&
+            p.type === target.type &&
+            p.status !== 'closed'
+        )
+        .sort((a, b) => a.date.localeCompare(b.date)); // FIFO
+
+      for (const other of otherOpenEntries) {
+        if (remainder <= 0) break;
+        const otherSettled = round2((other.settlements || []).reduce((sum, s) => sum + s.amount, 0));
+        const otherNeeded = Math.max(0, round2(other.amount - otherSettled));
+        if (otherNeeded <= 0) continue;
+
+        const otherAssign = Math.min(otherNeeded, remainder);
+        const otherNewSettlements = [
+          ...(other.settlements || []),
+          {
+            ...settlement,
+            amount: otherAssign,
+            id: generateUUID(),
+            note: settlement.note ? `${settlement.note} (Cascaded)` : `Cascaded settlement`,
+          },
+        ];
+        remainder = round2(remainder - otherAssign);
+        const newOtherTotal = round2(otherNewSettlements.reduce((sum, s) => sum + s.amount, 0));
+        modifiedEntries.push({
+          ...other,
+          settlements: otherNewSettlements,
+          status: newOtherTotal >= other.amount ? 'closed' : newOtherTotal > 0 ? 'partially_settled' : 'open',
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      // If there is still an excess remainder, add it to the last modified entry
+      if (remainder > 0 && modifiedEntries.length > 0) {
+        const lastEntry = modifiedEntries[modifiedEntries.length - 1];
+        const lastS = lastEntry.settlements[lastEntry.settlements.length - 1];
+        if (lastS) {
+          lastS.amount = round2(lastS.amount + remainder);
+        }
+      }
+    }
+
+    // Update peopleLedgerRef and state
+    const modifiedMap = new Map(modifiedEntries.map((e) => [e.id, e]));
+    peopleLedgerRef.current = peopleLedgerRef.current.map((p) => modifiedMap.get(p.id) || p);
+    setPeopleLedger(peopleLedgerRef.current);
+
+    // Save modified entries
+    for (const entry of modifiedEntries) {
+      await saveEncryptedRecord('people', entry, sessionKey);
+    }
+
+    // Adjust account balance ONCE for the FULL settlement amount
+    if (settlement.accountId) {
+      const acc = accountsRef.current.find((a) => a.id === settlement.accountId);
+      if (acc && isTxAfterBaseline(settlement.date, acc.balanceAsOfDate)) {
+        const delta = target.type === 'lent' ? validSettlementAmt : -validSettlementAmt;
+        const updatedAcc = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
+        accountsRef.current = accountsRef.current.map((a) => (a.id === updatedAcc.id ? updatedAcc : a));
+        setAccounts(accountsRef.current);
+        await saveEncryptedRecord('account', updatedAcc, sessionKey);
+      }
+    }
+  };
+
+  const deleteSettlement = async (entryId: string, settlementId: string): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const target = peopleLedgerRef.current.find((p) => p.id === entryId);
+    if (!target) return;
+
+    const settlementToDelete = (target.settlements || []).find((s) => s.id === settlementId);
+    if (!settlementToDelete) return;
+
+    const remainingSettlements = (target.settlements || []).filter((s) => s.id !== settlementId);
+    const totalSettled = round2(remainingSettlements.reduce((sum, s) => sum + s.amount, 0));
 
     let newStatus: PeopleLedgerEntry['status'] = 'open';
     if (totalSettled >= target.amount) {
@@ -1231,7 +1527,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const updatedEntry: PeopleLedgerEntry = {
       ...target,
-      settlements: newSettlements,
+      settlements: remainingSettlements,
       status: newStatus,
       updatedAt: new Date().toISOString(),
     };
@@ -1240,13 +1536,12 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setPeopleLedger(peopleLedgerRef.current);
     await saveEncryptedRecord('people', updatedEntry, sessionKey);
 
-    // If account was linked, adjust account balance (strictly after baseline opening date)
-    if (settlement.accountId) {
-      const acc = accountsRef.current.find((a) => a.id === settlement.accountId);
-      if (acc && isTxAfterBaseline(settlement.date, acc.balanceAsOfDate)) {
-        // If lent money returned: +balance. If borrowed/held money paid back: -balance.
-        const delta = target.type === 'lent' ? validSettlementAmt : -validSettlementAmt;
-        const updatedAcc = { ...acc, balance: round2(acc.balance + delta), updatedAt: new Date().toISOString() };
+    // Reverse account balance if settlement had an account linked
+    if (settlementToDelete.accountId) {
+      const acc = accountsRef.current.find((a) => a.id === settlementToDelete.accountId);
+      if (acc && isTxAfterBaseline(settlementToDelete.date, acc.balanceAsOfDate)) {
+        const revDelta = target.type === 'lent' ? -settlementToDelete.amount : settlementToDelete.amount;
+        const updatedAcc = { ...acc, balance: round2(acc.balance + revDelta), updatedAt: new Date().toISOString() };
         accountsRef.current = accountsRef.current.map((a) => (a.id === updatedAcc.id ? updatedAcc : a));
         setAccounts(accountsRef.current);
         await saveEncryptedRecord('account', updatedAcc, sessionKey);
@@ -1580,7 +1875,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   ): Promise<void> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-    const targetAsset = assets.find((a) => a.id === assetId);
+    const targetAsset = assetsRef.current.find((a) => a.id === assetId);
     if (!targetAsset) throw new Error('Asset not found');
 
     const unitsSold = Number(params.unitsSold) || 0;
@@ -1623,7 +1918,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updatedAt: new Date().toISOString(),
     };
 
-    setAssets((prev) => prev.map((a) => (a.id === updatedAsset.id ? updatedAsset : a)));
+    assetsRef.current = assetsRef.current.map((a) => (a.id === updatedAsset.id ? updatedAsset : a));
+    setAssets(assetsRef.current);
     await saveEncryptedRecord('asset', updatedAsset, sessionKey);
 
     // Credit selected bank/cash account with sale proceeds
@@ -1635,9 +1931,11 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       accountId: params.accountId,
       note: `Asset Sale / Redemption: ${targetAsset.name}${params.note ? ` (${params.note})` : ''}`,
       linkedAssetId: targetAsset.id,
-      subType: 'investment',
+      trancheId: sellTrancheId,
+      subType: 'asset_sale',
       realizedGain,
       tags: ['asset-sale', 'redemption'],
+      isSaleTrancheHandled: true,
     } as any);
   };
 
@@ -1789,6 +2087,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updatePeopleEntry,
         updateContactProfile,
         addSettlement,
+        deleteSettlement,
         deletePeopleEntry,
         addBudget,
         updateBudget,

@@ -643,13 +643,33 @@ export const ImportView: React.FC = () => {
             note: `Statement settlement: ${t.description}`,
             importBatchId: batchId,
           });
-          matchedEntry.settlements = [
-            ...(matchedEntry.settlements || []),
-            { id: 'import-settle', amount: t.amount, date: t.date, importBatchId: batchId },
-          ];
-          const totalSettled = matchedEntry.settlements.reduce((s, x) => s + x.amount, 0);
-          if (totalSettled >= matchedEntry.amount) {
-            matchedEntry.status = 'closed';
+
+          // Update in-memory references across all open entries of this contact to reflect FIFO cascade
+          let remainingToSimulate = t.amount;
+          const candidateEntries = [...newlyCreatedPeopleEntries, ...peopleLedger]
+            .filter(
+              (e) =>
+                (e.type === targetType || (targetType === 'holding' && e.type === 'lent') || (targetType === 'lent' && e.type === 'holding')) &&
+                e.contactName.trim().toLowerCase() === cNameLower &&
+                e.status !== 'closed'
+            )
+            .sort((a, b) => a.date.localeCompare(b.date));
+
+          for (const ent of candidateEntries) {
+            if (remainingToSimulate <= 0) break;
+            const curSettled = (ent.settlements || []).reduce((s, x) => s + x.amount, 0);
+            const needed = Math.max(0, ent.amount - curSettled);
+            const alloc = Math.min(needed, remainingToSimulate);
+            ent.settlements = [
+              ...(ent.settlements || []),
+              { id: 'import-settle', amount: alloc, date: t.date, importBatchId: batchId },
+            ];
+            remainingToSimulate -= alloc;
+            if (curSettled + alloc >= ent.amount) {
+              ent.status = 'closed';
+            } else if (curSettled + alloc > 0) {
+              ent.status = 'partially_settled';
+            }
           }
         } else {
           // No open record exists to settle: create a closed record with this transaction

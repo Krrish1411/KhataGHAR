@@ -88,7 +88,8 @@ export interface Transaction {
   linkedAssetId?: string;
   linkedLiabilityId?: string;
   trancheId?: string;
-  subType?: 'investment' | 'debt_payment' | 'regular';
+  subType?: 'investment' | 'debt_payment' | 'regular' | 'asset_sale' | 'loan_received';
+  isSaleTrancheHandled?: boolean;
   // Split Transaction Support
   splits?: TransactionSplit[];
   // Import Batch Rollback Tag

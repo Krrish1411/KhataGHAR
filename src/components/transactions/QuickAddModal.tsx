@@ -40,7 +40,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   onClose,
   initialType = 'expense',
 }) => {
-  const { activeVault, accounts, categories, assets, liabilities, addTransaction, addCategory, addPeopleEntry, peopleLedger, sellAsset, updateLiability } = useVault();
+  const { activeVault, accounts, categories, assets, liabilities, addTransaction, addCategory, addPeopleEntry, addSettlement, peopleLedger, sellAsset, updateLiability } = useVault();
 
   const [entryMode, setEntryMode] = useState<TransactionEntryMode>(initialType);
   const [amount, setAmount] = useState('');
@@ -49,7 +49,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   const [categoryId, setCategoryId] = useState<string>('');
   const [selectedAssetId, setSelectedAssetId] = useState('');
   const [selectedLiabilityId, setSelectedLiabilityId] = useState('');
-  const [peopleType, setPeopleType] = useState<'lent' | 'borrowed' | 'holding'>('lent');
+  const [peopleType, setPeopleType] = useState<'lent' | 'borrowed' | 'holding' | 'holding_returned' | 'lent_repaid' | 'borrowed_repaid'>('lent');
   const [contactName, setContactName] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [units, setUnits] = useState('');
@@ -273,16 +273,56 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       setIsSubmitting(true);
       setError('');
       try {
-        await addPeopleEntry({
-          contactName: contactName.trim(),
-          type: peopleType,
-          amount: numAmount,
-          currency: activeVault?.currency || 'INR',
-          date,
-          accountId: accountId || undefined,
-          dueDate: dueDate || undefined,
-          notes: note.trim() || undefined,
-        });
+        const cName = contactName.trim();
+        const cNameLower = cName.toLowerCase();
+        const isSettlement = ['holding_returned', 'lent_repaid', 'borrowed_repaid'].includes(peopleType);
+
+        if (isSettlement) {
+          const targetType = peopleType === 'holding_returned' ? 'holding' : peopleType === 'lent_repaid' ? 'lent' : 'borrowed';
+          // Find open entry of this contact and type
+          const openEntry = peopleLedger.find(
+            (p) =>
+              p.contactName.trim().toLowerCase() === cNameLower &&
+              (p.type === targetType || (targetType === 'holding' && p.type === 'lent') || (targetType === 'lent' && p.type === 'holding')) &&
+              p.status !== 'closed'
+          );
+
+          if (openEntry) {
+            await addSettlement(openEntry.id, {
+              amount: numAmount,
+              date,
+              accountId: accountId || undefined,
+              note: note.trim() || undefined,
+            });
+          } else {
+            // No existing open entry: record as new closed entry
+            const created = await addPeopleEntry({
+              contactName: cName,
+              type: targetType,
+              amount: numAmount,
+              currency: activeVault?.currency || 'INR',
+              date,
+              notes: note.trim() || undefined,
+            });
+            await addSettlement(created.id, {
+              amount: numAmount,
+              date,
+              accountId: accountId || undefined,
+              note: note.trim() || undefined,
+            });
+          }
+        } else {
+          await addPeopleEntry({
+            contactName: cName,
+            type: peopleType as 'lent' | 'borrowed' | 'holding',
+            amount: numAmount,
+            currency: activeVault?.currency || 'INR',
+            date,
+            accountId: accountId || undefined,
+            dueDate: dueDate || undefined,
+            notes: note.trim() || undefined,
+          });
+        }
         onClose();
         return;
       } catch (err: any) {
@@ -809,9 +849,12 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
               </label>
               <div className="grid grid-cols-3 gap-1.5 p-1 bg-card rounded-xl border border-line">
                 {[
-                  { id: 'lent', label: '🤝 Lent' },
-                  { id: 'borrowed', label: '📥 Borrowed' },
-                  { id: 'holding', label: '🛡️ Holding' },
+                  { id: 'lent', label: '🤝 Lent (Out)' },
+                  { id: 'borrowed', label: '📥 Borrowed (In)' },
+                  { id: 'holding', label: '🛡️ Holding (In)' },
+                  { id: 'lent_repaid', label: '📥 Lent Repaid (In)' },
+                  { id: 'borrowed_repaid', label: '📤 Repaid (Out)' },
+                  { id: 'holding_returned', label: '📤 Returned (Out)' },
                 ].map((pt) => {
                   const isSel = peopleType === pt.id;
                   return (
@@ -1074,7 +1117,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
             <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1 flex items-center gap-1">
               <Wallet className="w-3 h-3 text-pine-600" />
               <span>
-                {entryMode === 'income' || (entryMode === 'people' && (peopleType === 'borrowed' || peopleType === 'holding'))
+                {entryMode === 'income' || (entryMode === 'people' && (peopleType === 'borrowed' || peopleType === 'holding' || peopleType === 'lent_repaid'))
                   ? 'Received / Deposited Into'
                   : 'Paid From Account'}
               </span>
