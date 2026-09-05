@@ -25,6 +25,10 @@ import {
   Calendar,
   Layers,
   Zap,
+  Users,
+  Eye,
+  EyeOff,
+  ChevronRight,
 } from 'lucide-react';
 
 const ASSET_CLASS_COLORS: Record<AssetType, string> = {
@@ -41,7 +45,7 @@ const ASSET_CLASS_COLORS: Record<AssetType, string> = {
 };
 
 export const AssetsLiabilitiesView: React.FC = () => {
-  const { assets, liabilities, activeVault, deleteAsset, deleteLiability } = useVault();
+  const { assets, liabilities, peopleLedger, activeVault, deleteAsset, deleteLiability, updateVaultSettings } = useVault();
   const { isPrivacyMode } = usePrivacy();
 
   const [activeTab, setActiveTab] = useState<'assets' | 'liabilities'>('assets');
@@ -580,6 +584,94 @@ export const AssetsLiabilitiesView: React.FC = () => {
               ))}
             </div>
           )}
+
+          {/* Personal Borrowings (from People Ledger) */}
+          {(() => {
+            const showPersonal = activeVault?.showPersonalBorrowingsInLiabilities !== false;
+            const openBorrowings = peopleLedger.filter((e) => e.type === 'borrowed' && e.status !== 'closed');
+            const totalPersonalBorrowed = openBorrowings.reduce((sum, e) => {
+              const settled = (e.settlements || []).reduce((s, x) => s + x.amount, 0);
+              return sum + Math.max(0, e.amount - settled);
+            }, 0);
+            return (
+              <div className="rounded-2xl border border-violet-200/60 dark:border-violet-800/50 bg-violet-50/30 dark:bg-violet-950/10 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-violet-200/60 dark:border-violet-800/50">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-violet-600" />
+                    <h3 className="font-bold text-sm text-ink">Personal Borrowings (Udhar Taken)</h3>
+                    <span className="px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 text-[11px] font-bold">
+                      {openBorrowings.length}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {showPersonal && totalPersonalBorrowed > 0 && (
+                      <span className="text-xs font-bold text-flare-600">
+                        {formatCurrency(totalPersonalBorrowed, activeVault?.currency || 'INR', activeVault?.numberFormat || 'indian', false)}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => updateVaultSettings({ showPersonalBorrowingsInLiabilities: !showPersonal })}
+                      className="p-1.5 rounded-lg text-ink/40 hover:text-violet-600 hover:bg-violet-100 dark:hover:bg-violet-900/40 transition-all cursor-pointer"
+                      title={showPersonal ? 'Hide Personal Borrowings' : 'Show Personal Borrowings'}
+                    >
+                      {showPersonal ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+                {!showPersonal ? (
+                  <div className="px-4 py-3 text-xs text-ink/40 italic">Personal borrowings hidden. Click 👁 to show.</div>
+                ) : openBorrowings.length === 0 ? (
+                  <div className="px-4 py-5 text-center text-xs text-ink/50">
+                    No open personal borrowings. Records from the People Ledger (Borrowed type) will appear here.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-violet-100 dark:divide-violet-900/30">
+                    {openBorrowings.map((entry) => {
+                      const settled = (entry.settlements || []).reduce((s, x) => s + x.amount, 0);
+                      const remaining = Math.max(0, entry.amount - settled);
+                      const pct = entry.amount > 0 ? Math.round((settled / entry.amount) * 100) : 0;
+                      return (
+                        <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
+                          <div className="w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/50 flex items-center justify-center shrink-0 text-violet-700 dark:text-violet-300 font-bold text-xs">
+                            {entry.contactName.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-xs text-ink truncate">{entry.contactName}</div>
+                            <div className="text-[11px] text-ink/50">
+                              {formatReadableDate(entry.date)}
+                              {entry.dueDate && <span className="ml-1.5 text-flare-500">due {formatReadableDate(entry.dueDate)}</span>}
+                            </div>
+                            {settled > 0 && (
+                              <div className="mt-1 h-1 rounded-full bg-violet-100 dark:bg-violet-900/50 overflow-hidden w-20">
+                                <div className="h-full bg-violet-500 rounded-full" style={{ width: `${pct}%` }} />
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="font-bold text-xs text-flare-600">
+                              {formatCurrency(remaining, activeVault?.currency || 'INR', activeVault?.numberFormat || 'indian', isPrivacyMode)}
+                            </div>
+                            {settled > 0 && (
+                              <div className="text-[10px] text-ink/40">
+                                {pct}% settled
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="flex items-center justify-between px-4 py-2.5 bg-violet-100/60 dark:bg-violet-900/30">
+                      <span className="text-[11px] font-bold text-violet-700 dark:text-violet-300">Total Remaining</span>
+                      <span className="text-xs font-bold text-flare-600">
+                        {formatCurrency(totalPersonalBorrowed, activeVault?.currency || 'INR', activeVault?.numberFormat || 'indian', isPrivacyMode)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 

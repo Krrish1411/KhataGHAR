@@ -6,6 +6,8 @@ import { Modal } from '../components/common/Modal';
 import { Select } from '../components/common/Select';
 import { Badge } from '../components/common/Badge';
 import { SearchableTargetPicker } from '../components/import/SearchableTargetPicker';
+import { AssetModal } from '../components/assets/AssetModal';
+import { LiabilityModal } from '../components/liabilities/LiabilityModal';
 import {
   parseCSV,
   guessColumnMappings,
@@ -22,6 +24,7 @@ import { formatReadableDate, isTxAfterBaseline } from '../utils/dates';
 import type { Account, PeopleLedgerEntry } from '../types';
 import {
   TrendingUp,
+  TrendingDown,
   Landmark,
   FileSpreadsheet,
   MessageSquare,
@@ -40,6 +43,9 @@ import {
   Square,
   Filter,
   Layers,
+  X,
+  AlertCircle,
+  Plus,
 } from 'lucide-react';
 
 export const ImportView: React.FC = () => {
@@ -54,6 +60,8 @@ export const ImportView: React.FC = () => {
     addPeopleEntry,
     addSettlement,
     addAsset,
+    sellAsset,
+    updateLiability,
     bulkAddTransactions,
     undoImport,
     activeVault,
@@ -102,6 +110,10 @@ export const ImportView: React.FC = () => {
   const [splitPart1Type, setSplitPart1Type] = useState<StagedEntryType>('expense');
   const [splitPart2CatId, setSplitPart2CatId] = useState('');
   const [splitPart2Type, setSplitPart2Type] = useState<StagedEntryType>('expense');
+
+  // Inline modals — open without losing import state
+  const [isImportAssetModalOpen, setIsImportAssetModalOpen] = useState(false);
+  const [isImportLiabilityModalOpen, setIsImportLiabilityModalOpen] = useState(false);
 
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
@@ -234,7 +246,7 @@ export const ImportView: React.FC = () => {
         if (t.id !== id) return t;
         const otherAccs = accounts.filter((a) => a.id !== selectedAccountId);
         let nextFlow = t.rawFlow;
-        if (['income', 'borrowed', 'holding', 'lent_repaid'].includes(newType)) nextFlow = 'inflow';
+        if (['income', 'borrowed', 'holding', 'lent_repaid', 'asset_sale', 'loan_received'].includes(newType)) nextFlow = 'inflow';
         else if (['expense', 'invest', 'debt_payment', 'lent', 'borrowed_repaid', 'holding_returned'].includes(newType)) nextFlow = 'outflow';
         // If transfer, keep previous nextFlow (so inflow stays incoming transfer, outflow stays outgoing transfer)
 
@@ -245,8 +257,8 @@ export const ImportView: React.FC = () => {
           type: newType,
           rawFlow: nextFlow,
           toAccountId: newType === 'transfer' ? (t.toAccountId || (otherAccs.length > 0 ? otherAccs[0].id : undefined)) : undefined,
-          linkedAssetId: newType === 'invest' ? (t.linkedAssetId || (assets.length > 0 ? assets[0].id : undefined)) : undefined,
-          linkedLiabilityId: newType === 'debt_payment' ? (t.linkedLiabilityId || (liabilities.length > 0 ? liabilities[0].id : undefined)) : undefined,
+          linkedAssetId: (newType === 'invest' || newType === 'asset_sale') ? (t.linkedAssetId || (assets.length > 0 ? assets[0].id : undefined)) : undefined,
+          linkedLiabilityId: (newType === 'debt_payment' || newType === 'loan_received') ? (t.linkedLiabilityId || (liabilities.length > 0 ? liabilities[0].id : undefined)) : undefined,
           contactName: isPeople ? (t.contactName || t.description.slice(0, 30)) : undefined,
         };
       })
@@ -286,7 +298,7 @@ export const ImportView: React.FC = () => {
       prev.map((t) => {
         if (!t.selected) return t;
         let nextFlow = t.rawFlow;
-        if (['income', 'borrowed', 'holding', 'lent_repaid'].includes(newType)) nextFlow = 'inflow';
+        if (['income', 'borrowed', 'holding', 'lent_repaid', 'asset_sale', 'loan_received'].includes(newType)) nextFlow = 'inflow';
         else if (['expense', 'invest', 'debt_payment', 'lent', 'borrowed_repaid', 'holding_returned'].includes(newType)) nextFlow = 'outflow';
 
         const isPeople = ['lent', 'lent_repaid', 'borrowed', 'borrowed_repaid', 'holding', 'holding_returned'].includes(newType);
@@ -296,8 +308,8 @@ export const ImportView: React.FC = () => {
           type: newType,
           rawFlow: nextFlow,
           toAccountId: newType === 'transfer' ? (t.toAccountId || (otherAccs.length > 0 ? otherAccs[0].id : undefined)) : undefined,
-          linkedAssetId: newType === 'invest' ? (t.linkedAssetId || (assets.length > 0 ? assets[0].id : undefined)) : undefined,
-          linkedLiabilityId: newType === 'debt_payment' ? (t.linkedLiabilityId || (liabilities.length > 0 ? liabilities[0].id : undefined)) : undefined,
+          linkedAssetId: (newType === 'invest' || newType === 'asset_sale') ? (t.linkedAssetId || (assets.length > 0 ? assets[0].id : undefined)) : undefined,
+          linkedLiabilityId: (newType === 'debt_payment' || newType === 'loan_received') ? (t.linkedLiabilityId || (liabilities.length > 0 ? liabilities[0].id : undefined)) : undefined,
           contactName: isPeople ? (t.contactName || t.description.slice(0, 30)) : undefined,
         };
       })
@@ -510,6 +522,27 @@ export const ImportView: React.FC = () => {
         });
       }
 
+      // 3b. Asset Sales / Redemptions
+      const assetSaleTxs = toImport.filter((t) => t.type === 'asset_sale');
+      const assetSaleSkipped: string[] = [];
+      for (const t of assetSaleTxs) {
+        const finalAssetId = t.linkedAssetId;
+        if (!finalAssetId || !assets.find((a) => a.id === finalAssetId)) {
+          assetSaleSkipped.push(t.description.slice(0, 40));
+          continue; // Skip rows without a valid asset — user must assign
+        }
+        await sellAsset(finalAssetId, {
+          unitsSold: 0,  // 0 = value-based redemption (no unit tracking)
+          totalProceeds: t.amount,
+          accountId: selectedAccountId,
+          date: t.date,
+          note: `Imported: ${t.description}`,
+        });
+      }
+      if (assetSaleSkipped.length > 0) {
+        console.warn(`Skipped ${assetSaleSkipped.length} asset sale rows (no asset selected):`, assetSaleSkipped);
+      }
+
       // 4. Loan EMIs & Debt Paydowns
       const debtTxs = toImport.filter((t) => t.type === 'debt_payment');
       for (const t of debtTxs) {
@@ -525,6 +558,34 @@ export const ImportView: React.FC = () => {
           isRecurring: false,
           importBatchId: batchId,
         });
+      }
+
+      // 4b. Loan Disbursements Received (credit account + increase outstanding)
+      const loanReceivedTxs = toImport.filter((t) => t.type === 'loan_received');
+      for (const t of loanReceivedTxs) {
+        await addTransaction({
+          accountId: selectedAccountId,
+          type: 'income',
+          amount: t.amount,
+          currency: t.currency || baseCurrency,
+          date: t.date,
+          note: t.description,
+          linkedLiabilityId: t.linkedLiabilityId || undefined,
+          tags: ['statement-import', 'loan-disbursement'],
+          isRecurring: false,
+          importBatchId: batchId,
+        });
+        // Increase liability outstanding balance if linked
+        if (t.linkedLiabilityId) {
+          const liab = liabilities.find((l) => l.id === t.linkedLiabilityId);
+          if (liab) {
+            await updateLiability({
+              ...liab,
+              outstandingBalance: Math.round((liab.outstandingBalance + t.amount) * 100) / 100,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        }
       }
 
       // 5. People Ledger Entries (New Lent, Borrowed, Custodial Holding)
@@ -615,7 +676,9 @@ export const ImportView: React.FC = () => {
       if (regularTxs.length > 0) summaryParts.push(`${regularTxs.length} transactions`);
       if (transferTxs.length > 0) summaryParts.push(`${transferTxs.length} self-transfers`);
       if (investTxs.length > 0) summaryParts.push(`${investTxs.length} SIP/Asset tranches`);
+      if (assetSaleTxs.length > 0) summaryParts.push(`${assetSaleTxs.length - assetSaleSkipped.length} asset sales`);
       if (debtTxs.length > 0) summaryParts.push(`${debtTxs.length} loan EMIs`);
+      if (loanReceivedTxs.length > 0) summaryParts.push(`${loanReceivedTxs.length} loan disbursements`);
       if (peopleNewTxs.length > 0) summaryParts.push(`${peopleNewTxs.length} people loans/holdings`);
       if (peopleSettlementTxs.length > 0) summaryParts.push(`${peopleSettlementTxs.length} people repayments/returns`);
 
@@ -1003,7 +1066,7 @@ export const ImportView: React.FC = () => {
                     )}
                   </div>
                   <p className="text-[11px] text-ink/50 mt-0.5">
-                    Batch assign categories, adjust types (Self-Transfer, Loan EMI, Asset SIP), or split multi-item expenses.
+                    Assign categories, change types (Transfer, Loan EMI, Asset Buy/Sell, Loan Received, People Ledger), or split multi-item expenses.
                   </p>
                 </div>
 
@@ -1014,6 +1077,22 @@ export const ImportView: React.FC = () => {
                       <span>Skip Duplicates</span>
                     </Button>
                   )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (window.confirm('Cancel this import? Your staged rows will be discarded.')) {
+                        setStep('upload');
+                        setCsvRows([]);
+                        setStagedTxs([]);
+                        setCsvFileName('');
+                      }
+                    }}
+                    className="text-xs text-flare-600 border-flare-200 hover:bg-flare-50"
+                  >
+                    <X className="w-3.5 h-3.5 mr-1" />
+                    Cancel Import
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => toggleSelectAllStaged(true)}>
                     Select All
                   </Button>
@@ -1092,8 +1171,14 @@ export const ImportView: React.FC = () => {
                         <option value="expense">🔴 Expense (Outflow)</option>
                         <option value="income">🟢 Income (Inflow)</option>
                         <option value="transfer">🔄 Self-Transfer</option>
-                        <option value="invest">📈 Invest in Asset / SIP</option>
-                        <option value="debt_payment">🏛️ Loan EMI / Debt</option>
+                        <optgroup label="Assets">
+                          <option value="invest">📈 Asset Buy / SIP (Outflow)</option>
+                          <option value="asset_sale">📤 Asset Sale / Redemption (Inflow)</option>
+                        </optgroup>
+                        <optgroup label="Loans & Debt">
+                          <option value="debt_payment">🏛️ Loan EMI / Debt Payment</option>
+                          <option value="loan_received">🏦 Loan Disbursement Received (Inflow)</option>
+                        </optgroup>
                         <optgroup label="People & Custody">
                           <option value="lent">🤝 Lent (Given Out)</option>
                           <option value="lent_repaid">📥 Lent Repaid (Recovery)</option>
@@ -1180,8 +1265,14 @@ export const ImportView: React.FC = () => {
                             <option value="transfer">
                               {t.rawFlow === 'inflow' ? '🔄 Transfer (Received From)' : '🔄 Transfer (Sent To)'}
                             </option>
-                            <option value="invest">📈 Invest in Asset / SIP</option>
-                            <option value="debt_payment">🏛️ Loan EMI / Debt Paydown</option>
+                            <optgroup label="Assets">
+                              <option value="invest">📈 Asset Buy / SIP (Outflow)</option>
+                              <option value="asset_sale">📤 Asset Sale / Redemption (Inflow)</option>
+                            </optgroup>
+                            <optgroup label="Loans & Debt">
+                              <option value="debt_payment">🏛️ Loan EMI / Debt Paydown</option>
+                              <option value="loan_received">🏦 Loan Disbursement Received (Inflow)</option>
+                            </optgroup>
                             <optgroup label="People & Custody">
                               <option value="lent">🤝 Lent (Udhar Given - Outflow)</option>
                               <option value="lent_repaid">📥 Lent Repaid (Recovery - Inflow)</option>
@@ -1194,15 +1285,41 @@ export const ImportView: React.FC = () => {
                         </td>
                         <td className="py-2.5 px-3 min-w-[210px]">
                           {/* Searchable Combobox Selector for Category / Destination / Person / Asset */}
+                          {/* Inline prompt if asset_sale but no assets */}
+                          {t.type === 'asset_sale' && assets.length === 0 ? (
+                            <div className="flex items-center gap-1.5 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200/70 text-xs text-amber-800">
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                              <span className="flex-1 leading-tight">No assets.</span>
+                              <button
+                                type="button"
+                                onClick={() => setIsImportAssetModalOpen(true)}
+                                className="flex items-center gap-0.5 px-1.5 py-1 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold cursor-pointer shrink-0"
+                              >
+                                <Plus className="w-2.5 h-2.5" /> Add
+                              </button>
+                            </div>
+                          ) : t.type === 'loan_received' && liabilities.length === 0 ? (
+                            <div className="flex items-center gap-1.5 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200/70 text-xs text-amber-800">
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                              <span className="flex-1 leading-tight">No liabilities.</span>
+                              <button
+                                type="button"
+                                onClick={() => setIsImportLiabilityModalOpen(true)}
+                                className="flex items-center gap-0.5 px-1.5 py-1 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold cursor-pointer shrink-0"
+                              >
+                                <Plus className="w-2.5 h-2.5" /> Add
+                              </button>
+                            </div>
+                          ) : (
                           <SearchableTargetPicker
                             type={t.type}
                             rawFlow={t.rawFlow}
                             value={
                               t.type === 'transfer'
                                 ? (t.toAccountId || '')
-                                : t.type === 'invest'
+                                : (t.type === 'invest' || t.type === 'asset_sale')
                                 ? (t.linkedAssetId || '')
-                                : t.type === 'debt_payment'
+                                : (t.type === 'debt_payment' || t.type === 'loan_received')
                                 ? (t.linkedLiabilityId || '')
                                 : ['lent', 'lent_repaid', 'borrowed', 'borrowed_repaid', 'holding', 'holding_returned'].includes(t.type)
                                 ? (t.contactName || '')
@@ -1210,8 +1327,8 @@ export const ImportView: React.FC = () => {
                             }
                             onChange={(newVal) => {
                               if (t.type === 'transfer') updateStagedToAccount(t.id, newVal);
-                              else if (t.type === 'invest') updateStagedAsset(t.id, newVal);
-                              else if (t.type === 'debt_payment') updateStagedLiability(t.id, newVal);
+                              else if (t.type === 'invest' || t.type === 'asset_sale') updateStagedAsset(t.id, newVal);
+                              else if (t.type === 'debt_payment' || t.type === 'loan_received') updateStagedLiability(t.id, newVal);
                               else if (['lent', 'lent_repaid', 'borrowed', 'borrowed_repaid', 'holding', 'holding_returned'].includes(t.type)) updateStagedContact(t.id, newVal);
                               else updateStagedCategory(t.id, newVal);
                             }}
@@ -1225,6 +1342,7 @@ export const ImportView: React.FC = () => {
                             numberFormat={numberFormat}
                             isPrivacyMode={isPrivacyMode}
                           />
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1.5">
@@ -1641,6 +1759,16 @@ Sent Rs.450.00 from HDFC Bank AC **1234 to Swiggy on 02-09-26 Ref 4245678912`}
           )}
         </div>
       )}
+
+      {/* Inline modals — open without losing import state */}
+      <AssetModal
+        isOpen={isImportAssetModalOpen}
+        onClose={() => setIsImportAssetModalOpen(false)}
+      />
+      <LiabilityModal
+        isOpen={isImportLiabilityModalOpen}
+        onClose={() => setIsImportLiabilityModalOpen(false)}
+      />
     </div>
   );
 };

@@ -23,7 +23,9 @@ export type StagedEntryType =
   | 'income'
   | 'transfer'
   | 'invest'
+  | 'asset_sale'      // Sell / Redeem an asset — credits account
   | 'debt_payment'
+  | 'loan_received'   // Loan disbursement received — credits account, increases liability outstanding
   | 'lent'
   | 'lent_repaid'
   | 'borrowed'

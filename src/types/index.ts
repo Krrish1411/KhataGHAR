@@ -29,6 +29,7 @@ export interface VaultMeta {
   exchangeRates: Record<CurrencyCode, number>; // e.g. { USD: 86.5, EUR: 92.0, GBP: 110.0 }
   decoyConfig?: DecoyVaultConfig;
   isDemo?: boolean;
+  showPersonalBorrowingsInLiabilities?: boolean; // Default: true — show People-Ledger borrowed entries in Liabilities tab
 }
 
 export type AccountType = 'bank' | 'cash' | 'credit_card' | 'wallet' | 'upi' | 'investment' | 'other';
@@ -106,6 +107,7 @@ export interface Category {
   color?: string;
   isEssential: boolean; // Essential vs Discretionary
   isStarter?: boolean;
+  hidden?: boolean; // If true, category won't show in dropdowns
   updatedAt: string;
 }
 

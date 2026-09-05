@@ -103,35 +103,38 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
       }));
     }
 
-    if (type === 'invest') {
+    if (type === 'invest' || type === 'asset_sale') {
+      const label = type === 'asset_sale' ? 'Sell from: ' : '';
       const list: DisplayItem[] = assets.map((a) => ({
         id: a.id,
-        label: a.name,
+        label: `${label}${a.name}`,
         subLabel: `${a.type.replace('_', ' ')} • ${formatCurrency(a.currentValue, a.currency, numberFormat, isPrivacyMode)}`,
-        icon: <TrendingUp className="w-3.5 h-3.5 text-pine-600 shrink-0" />,
+        icon: <TrendingUp className={`w-3.5 h-3.5 shrink-0 ${type === 'asset_sale' ? 'text-flare-600' : 'text-pine-600'}`} />,
       }));
 
-      // Allow creating a new asset on the fly
-      const q = searchQuery.trim();
-      if (q && !assets.some((a) => a.name.toLowerCase() === q.toLowerCase())) {
-        list.unshift({
-          id: `new-asset:${q}`,
-          label: `+ Create Asset: "${q}"`,
-          subLabel: 'New Investment Asset (Click to create)',
-          icon: <Plus className="w-3.5 h-3.5 text-pine-600 shrink-0" />,
-          isCustom: true,
-        });
+      // Allow creating a new asset on the fly (only for invest, not asset_sale)
+      if (type === 'invest') {
+        const q = searchQuery.trim();
+        if (q && !assets.some((a) => a.name.toLowerCase() === q.toLowerCase())) {
+          list.unshift({
+            id: `new-asset:${q}`,
+            label: `+ Create Asset: "${q}"`,
+            subLabel: 'New Investment Asset (Click to create)',
+            icon: <Plus className="w-3.5 h-3.5 text-pine-600 shrink-0" />,
+            isCustom: true,
+          });
+        }
       }
 
       return list;
     }
 
-    if (type === 'debt_payment') {
+    if (type === 'debt_payment' || type === 'loan_received') {
       return liabilities.map((l) => ({
         id: l.id,
         label: l.name,
-        subLabel: `Bal: ${formatCurrency(l.outstandingBalance, l.currency, numberFormat, isPrivacyMode)}`,
-        icon: <Landmark className="w-3.5 h-3.5 text-flare-600 shrink-0" />,
+        subLabel: `${type === 'loan_received' ? 'Principal: ' : 'Bal: '}${formatCurrency(l.outstandingBalance, l.currency, numberFormat, isPrivacyMode)}`,
+        icon: <Landmark className={`w-3.5 h-3.5 shrink-0 ${type === 'loan_received' ? 'text-pine-600' : 'text-flare-600'}`} />,
       }));
     }
 
@@ -157,8 +160,8 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
       return list;
     }
 
-    // Default: Categories (for expense or income)
-    return categories.map((c) => ({
+    // Default: Categories (for expense or income) — exclude hidden ones
+    return categories.filter((c) => !c.hidden).map((c) => ({
       id: c.id,
       label: c.name,
       subLabel: c.type,
@@ -216,7 +219,9 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
   const searchPlaceholder = useMemo(() => {
     if (type === 'transfer') return 'Search bank or wallet…';
     if (type === 'invest') return 'Search mutual fund, stock…';
+    if (type === 'asset_sale') return 'Search asset to sell/redeem…';
     if (type === 'debt_payment') return 'Search loan, credit card…';
+    if (type === 'loan_received') return 'Search loan that was disbursed…';
     if (isPeopleType(type)) return 'Search or type person name…';
     return 'Search categories…';
   }, [type]);

@@ -34,7 +34,12 @@ import {
   ShieldCheck,
   ShieldAlert,
   EyeOff,
+  Eye,
   Lock,
+  Tags,
+  X,
+  Check,
+  Edit2,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -51,6 +56,9 @@ export const SettingsView: React.FC = () => {
     liabilities,
     documents,
     updateVaultSettings,
+    addCategory,
+    updateCategory,
+    deleteCategory,
     loadDemoData,
   } = useVault();
   const { theme, setTheme } = useTheme();
@@ -58,6 +66,13 @@ export const SettingsView: React.FC = () => {
   const [isNewVaultOpen, setIsNewVaultOpen] = useState(false);
   const [isLoadingDemo, setIsLoadingDemo] = useState(false);
   const [demoSuccess, setDemoSuccess] = useState('');
+
+  // Category Management state
+  const [catNewName, setCatNewName] = useState('');
+  const [catNewType, setCatNewType] = useState<'expense' | 'income'>('expense');
+  const [catEditId, setCatEditId] = useState<string | null>(null);
+  const [catEditName, setCatEditName] = useState('');
+  const [catFilter, setCatFilter] = useState<'all' | 'expense' | 'income'>('all');
 
   const handleLoadDemo = async () => {
     setIsLoadingDemo(true);
@@ -885,7 +900,170 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
+        </div>
+      </div>
+
+      {/* ── CATEGORY MANAGEMENT ─────────────────────────────────── */}
+      <div className="rounded-2xl border border-line bg-card p-5 sm:p-6 space-y-4 shadow-sm lift">
+        <div className="flex items-center gap-2 pb-2 border-b border-line">
+          <Tags className="w-4 h-4 text-pine-600" />
+          <h3 className="font-display font-bold text-sm text-ink">Category Management</h3>
+          <span className="ml-auto text-[11px] text-ink/40">{categories.length} categories</span>
+        </div>
+
+        {/* Add New Category */}
+        <div className="p-3.5 rounded-2xl bg-moss/50 border border-line space-y-2.5">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-ink/50">Add Custom Category</p>
+          <div className="flex gap-2">
+            <select
+              value={catNewType}
+              onChange={(e) => setCatNewType(e.target.value as 'expense' | 'income')}
+              className="px-2 py-2 rounded-xl border border-line bg-card text-xs font-semibold text-ink outline-none focus:border-pine-500 cursor-pointer shrink-0"
+            >
+              <option value="expense">🔴 Expense</option>
+              <option value="income">🟢 Income</option>
+            </select>
+            <input
+              type="text"
+              placeholder="Category name…"
+              value={catNewName}
+              onChange={(e) => setCatNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && catNewName.trim()) {
+                  addCategory({ name: catNewName.trim(), type: catNewType, icon: catNewType === 'expense' ? '🔴' : '🟢', isEssential: false });
+                  setCatNewName('');
+                }
+              }}
+              className="flex-1 px-3 py-2 rounded-xl border border-line bg-card text-xs text-ink outline-none focus:border-pine-500"
+            />
+            <button
+              type="button"
+              disabled={!catNewName.trim()}
+              onClick={() => {
+                if (!catNewName.trim()) return;
+                addCategory({ name: catNewName.trim(), type: catNewType, icon: catNewType === 'expense' ? '🔴' : '🟢', isEssential: false });
+                setCatNewName('');
+              }}
+              className="px-3 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 text-white text-xs font-bold flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none cursor-pointer transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Pills */}
+        <div className="flex items-center gap-1.5">
+          {(['all', 'expense', 'income'] as const).map((f) => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => setCatFilter(f)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer capitalize ${catFilter === f ? 'bg-pine-700 text-white' : 'bg-moss text-ink/60 hover:text-ink'}`}
+            >
+              {f === 'all' ? 'All' : f === 'expense' ? '🔴 Expense' : '🟢 Income'}
+            </button>
+          ))}
+        </div>
+
+        {/* Category List */}
+        <div className="space-y-1.5 max-h-72 overflow-y-auto custom-scrollbar pr-0.5">
+          {categories
+            .filter((c) => !c.parentId && (catFilter === 'all' || c.type === catFilter))
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((cat) => (
+              <div
+                key={cat.id}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-all ${cat.hidden ? 'opacity-40 border-dashed border-line' : 'border-line bg-card/60 hover:bg-moss/50'}`}
+              >
+                <span className="text-sm shrink-0">{cat.icon || (cat.type === 'expense' ? '🔴' : '🟢')}</span>
+
+                {catEditId === cat.id ? (
+                  <input
+                    type="text"
+                    value={catEditName}
+                    onChange={(e) => setCatEditName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && catEditName.trim()) {
+                        updateCategory({ ...cat, name: catEditName.trim() });
+                        setCatEditId(null);
+                      }
+                      if (e.key === 'Escape') setCatEditId(null);
+                    }}
+                    autoFocus
+                    className="flex-1 text-xs font-semibold bg-transparent border-b border-pine-500 outline-none text-ink"
+                  />
+                ) : (
+                  <span className="flex-1 text-xs font-semibold text-ink truncate">{cat.name}</span>
+                )}
+
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${cat.type === 'expense' ? 'bg-flare-100 text-flare-700 dark:bg-flare-900/30 dark:text-flare-300' : 'bg-pine-100 text-pine-700 dark:bg-pine-900/30 dark:text-pine-300'}`}>
+                  {cat.type}
+                </span>
+
+                <div className="flex items-center gap-0.5 shrink-0">
+                  {catEditId === cat.id ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => { if (catEditName.trim()) { updateCategory({ ...cat, name: catEditName.trim() }); setCatEditId(null); } }}
+                        className="p-1 rounded-lg text-pine-600 hover:bg-pine-100 cursor-pointer"
+                        title="Save"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCatEditId(null)}
+                        className="p-1 rounded-lg text-ink/40 hover:bg-moss cursor-pointer"
+                        title="Cancel"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => { setCatEditId(cat.id); setCatEditName(cat.name); }}
+                        className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-moss transition-all cursor-pointer"
+                        title="Rename"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateCategory({ ...cat, hidden: !cat.hidden })}
+                        className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-moss transition-all cursor-pointer"
+                        title={cat.hidden ? 'Show in dropdowns' : 'Hide from dropdowns'}
+                      >
+                        {cat.hidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Delete category "${cat.name}"? This cannot be undone.`)) {
+                            deleteCategory(cat.id);
+                          }
+                        }}
+                        className="p-1 rounded-lg text-ink/40 hover:text-flare-600 hover:bg-flare-50 dark:hover:bg-flare-900/20 transition-all cursor-pointer"
+                        title="Delete category"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
+            ))}
+          {categories.filter((c) => !c.parentId && (catFilter === 'all' || c.type === catFilter)).length === 0 && (
+            <p className="text-xs text-ink/40 text-center py-4">No categories found for this filter.</p>
+          )}
+        </div>
+
+        <p className="text-[11px] text-ink/40">
+          👁 Hidden categories are invisible in dropdowns but existing transactions keep their category. Deleted categories cascade to subcategories.
+        </p>
       </div>
 
 {/* Onboarding Modal */}

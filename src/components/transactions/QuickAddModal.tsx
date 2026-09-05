@@ -3,6 +3,8 @@ import { Modal } from '../common/Modal';
 import { useVault } from '../../context/VaultContext';
 import { formatDateISO } from '../../utils/dates';
 import type { TransactionType, RecurringFrequency, TransactionSplit } from '../../types';
+import { AssetModal } from '../assets/AssetModal';
+import { LiabilityModal } from '../liabilities/LiabilityModal';
 import {
   Users,
   ArrowDownLeft,
@@ -12,6 +14,7 @@ import {
   Repeat,
   Tag,
   TrendingUp,
+  TrendingDown,
   Landmark,
   Calendar,
   Wallet,
@@ -19,6 +22,7 @@ import {
   Split,
   Plus,
   Trash2,
+  AlertCircle,
 } from 'lucide-react';
 
 export type TransactionEntryMode = 'expense' | 'income' | 'transfer' | 'invest' | 'debt_payment' | 'people';
@@ -34,7 +38,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   onClose,
   initialType = 'expense',
 }) => {
-  const { activeVault, accounts, categories, assets, liabilities, addTransaction, addPeopleEntry, peopleLedger } = useVault();
+  const { activeVault, accounts, categories, assets, liabilities, addTransaction, addPeopleEntry, peopleLedger, sellAsset, updateLiability } = useVault();
 
   const [entryMode, setEntryMode] = useState<TransactionEntryMode>(initialType);
   const [amount, setAmount] = useState('');
@@ -55,6 +59,16 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('monthly');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Sub-mode states
+  const [investSubMode, setInvestSubMode] = useState<'buy' | 'sell'>('buy');
+  const [saleUnits, setSaleUnits] = useState('');
+  const [salePricePerUnit, setSalePricePerUnit] = useState('');
+  const [debtSubMode, setDebtSubMode] = useState<'emi' | 'received'>('emi');
+
+  // Inline modal states (open AssetModal/LiabilityModal without leaving QuickAdd)
+  const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
+  const [isLiabilityModalOpen, setIsLiabilityModalOpen] = useState(false);
 
   // Split Transaction State
   const [isSplitMode, setIsSplitMode] = useState(false);
@@ -85,6 +99,10 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
     setPeopleType('lent');
     setIsSplitMode(false);
     setSplits([]);
+    setInvestSubMode('buy');
+    setSaleUnits('');
+    setSalePricePerUnit('');
+    setDebtSubMode('emi');
 
     if (accounts.length > 0) {
       setAccountId(accounts[0].id);
@@ -103,7 +121,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   }, [isOpen, initialType, accounts, assets, liabilities]);
 
   const cats = useMemo(() => {
-    return categories.filter((c) => c.type === (entryMode === 'income' ? 'income' : 'expense') && !c.parentId);
+    return categories.filter((c) => c.type === (entryMode === 'income' ? 'income' : 'expense') && !c.parentId && !c.hidden);
   }, [categories, entryMode]);
 
   useEffect(() => {
@@ -251,13 +269,19 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       return;
     }
 
-    if (entryMode === 'invest' && !selectedAssetId) {
-      setError('Please select an asset to invest into');
-      return;
+    if (entryMode === 'invest') {
+      if (investSubMode === 'buy' && !selectedAssetId) {
+        setError('Please select an asset to invest into');
+        return;
+      }
+      if (investSubMode === 'sell' && !selectedAssetId) {
+        setError('Please select an asset to sell/redeem');
+        return;
+      }
     }
 
     if (entryMode === 'debt_payment' && !selectedLiabilityId) {
-      setError('Please select a loan/liability to pay down');
+      setError('Please select a loan/liability');
       return;
     }
 
@@ -289,6 +313,47 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
 
       const parsedUnits = units ? parseFloat(units) : undefined;
       const parsedUnitPrice = unitPrice ? parseFloat(unitPrice) : undefined;
+
+      // --- ASSET SELL / REDEEM ---
+      if (entryMode === 'invest' && investSubMode === 'sell') {
+        const unitsSold = saleUnits ? parseFloat(saleUnits) : 0;
+        const salePPU = salePricePerUnit ? parseFloat(salePricePerUnit) : undefined;
+        await sellAsset(selectedAssetId, {
+          unitsSold,
+          salePricePerUnit: salePPU,
+          totalProceeds: numAmount,
+          accountId,
+          date,
+          note: note.trim() || `Asset sale / redemption`,
+        });
+        onClose();
+        return;
+      }
+
+      // --- LOAN RECEIVED (DISBURSEMENT CREDIT) ---
+      if (entryMode === 'debt_payment' && debtSubMode === 'received') {
+        // Credit the bank account
+        await addTransaction({
+          date,
+          amount: numAmount,
+          type: 'income',
+          currency: activeVault?.currency || 'INR',
+          accountId,
+          note: note.trim() || 'Loan Disbursement Received',
+          tags: [...(parsedTags.length > 0 ? parsedTags : []), 'loan-disbursement'],
+          linkedLiabilityId: selectedLiabilityId || undefined,
+          subType: 'regular',
+        } as any);
+        // Increase liability outstanding balance
+        if (selectedLiabilityId) {
+          const liab = liabilities.find((l) => l.id === selectedLiabilityId);
+          if (liab) {
+            await updateLiability({ ...liab, outstandingBalance: Math.round((liab.outstandingBalance + numAmount) * 100) / 100, updatedAt: new Date().toISOString() });
+          }
+        }
+        onClose();
+        return;
+      }
 
       const txType: TransactionType =
         entryMode === 'income' ? 'income' : entryMode === 'transfer' ? 'transfer' : 'expense';
@@ -361,20 +426,30 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       btnText: 'Record Transfer',
     },
     invest: {
-      title: 'Invest into Asset / SIP',
-      desc: 'Debits bank and credits holding without fake expense loss',
-      icon: <TrendingUp className="w-4 h-4 text-emerald-600" />,
-      activeTab: 'bg-emerald-600 text-white shadow-sm shadow-emerald-900/20',
-      btnBg: 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/25',
-      btnText: 'Record Investment',
+      title: investSubMode === 'sell' ? 'Sell / Redeem Asset' : 'Invest into Asset / SIP',
+      desc: investSubMode === 'sell'
+        ? 'Credits bank with sale proceeds and reduces asset value'
+        : 'Debits bank and credits holding without fake expense loss',
+      icon: investSubMode === 'sell'
+        ? <TrendingDown className="w-4 h-4 text-flare-600" />
+        : <TrendingUp className="w-4 h-4 text-emerald-600" />,
+      activeTab: investSubMode === 'sell'
+        ? 'bg-flare-600 text-white shadow-sm shadow-flare-900/20'
+        : 'bg-emerald-600 text-white shadow-sm shadow-emerald-900/20',
+      btnBg: investSubMode === 'sell'
+        ? 'bg-flare-600 hover:bg-flare-500 shadow-flare-900/25'
+        : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/25',
+      btnText: investSubMode === 'sell' ? 'Record Asset Sale' : 'Record Investment',
     },
     debt_payment: {
-      title: 'Pay Down Loan / Debt',
-      desc: 'Debits bank and reduces outstanding loan principal',
+      title: debtSubMode === 'received' ? 'Record Loan Disbursement' : 'Pay Down Loan / Debt',
+      desc: debtSubMode === 'received'
+        ? 'Credits bank account with loan amount received and increases liability'
+        : 'Debits bank and reduces outstanding loan principal',
       icon: <Landmark className="w-4 h-4 text-amber-600" />,
       activeTab: 'bg-amber-600 text-white shadow-sm shadow-amber-900/20',
       btnBg: 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/20',
-      btnText: 'Record Loan Payment',
+      btnText: debtSubMode === 'received' ? 'Record Loan Received' : 'Record Loan Payment',
     },
     people: {
       title: 'People Ledger (Udhar / Holding)',
@@ -387,11 +462,12 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   }[entryMode];
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      maxWidth="xl"
-      title={
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        maxWidth="xl"
+        title={
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-moss border border-line grid place-items-center">
             {modeDetails.icon}
@@ -537,16 +613,43 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
             </div>
           </div>
         ) : entryMode === 'invest' ? (
-          /* Invest Section: Asset / SIP Fund + Units + NAV */
-          <div className="p-3.5 rounded-2xl bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/50 space-y-3">
+          /* Invest Section: Buy/Sell Sub-mode Toggle */
+          <div className={`p-3.5 rounded-2xl border space-y-3 ${investSubMode === 'sell' ? 'bg-flare-50/40 dark:bg-flare-950/20 border-flare-200/60 dark:border-flare-800/50' : 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200/60 dark:border-emerald-800/50'}`}>
+            {/* Sub-mode toggle: Buy vs Sell */}
+            <div className="flex items-center gap-1.5 p-1 bg-card/70 rounded-xl border border-line">
+              {[
+                { id: 'buy', label: '📈 Buy / Invest', color: 'bg-emerald-600 text-white' },
+                { id: 'sell', label: '📤 Sell / Redeem', color: 'bg-flare-600 text-white' },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setInvestSubMode(m.id as 'buy' | 'sell')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${investSubMode === m.id ? m.color : 'text-ink/60 hover:text-ink hover:bg-moss'}`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Asset Selector */}
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300 mb-1">
-                Target Asset / Mutual Fund / Gold
+              <label className={`block text-[11px] font-bold uppercase tracking-wider mb-1 ${investSubMode === 'sell' ? 'text-flare-700 dark:text-flare-300' : 'text-emerald-800 dark:text-emerald-300'}`}>
+                {investSubMode === 'sell' ? 'Asset to Sell / Redeem' : 'Target Asset / Mutual Fund / Gold'}
               </label>
               {assets.length === 0 ? (
-                <p className="text-xs text-flare-600">
-                  No assets registered yet. Please add an asset in the Assets tab first.
-                </p>
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-800/50 text-xs text-amber-800 dark:text-amber-200">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span className="flex-1">No assets added yet. Add an asset in the Assets tab first.</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsAssetModalOpen(true)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold transition-all cursor-pointer shrink-0"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Add Asset
+                  </button>
+                </div>
               ) : (
                 <select
                   value={selectedAssetId}
@@ -563,45 +666,80 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label className="block text-[10.5px] font-bold uppercase text-ink/50 mb-1">
-                  Units / Shares (Optional)
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  placeholder="e.g. 35.2"
-                  value={units}
-                  onChange={(e) => setUnits(e.target.value)}
-                  className="w-full rounded-xl border border-line bg-card px-3 py-1.5 text-xs font-mono text-ink outline-none focus:border-emerald-500"
-                />
+            {/* Buy: Units + NAV | Sell: Units Sold + Sale Price */}
+            {assets.length > 0 && (
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[10.5px] font-bold uppercase text-ink/50 mb-1">
+                    {investSubMode === 'sell' ? 'Units Sold (Optional)' : 'Units / Shares (Optional)'}
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="e.g. 35.2"
+                    value={investSubMode === 'sell' ? saleUnits : units}
+                    onChange={(e) => investSubMode === 'sell' ? setSaleUnits(e.target.value) : setUnits(e.target.value)}
+                    className="w-full rounded-xl border border-line bg-card px-3 py-1.5 text-xs font-mono text-ink outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-bold uppercase text-ink/50 mb-1">
+                    {investSubMode === 'sell' ? 'Sale Price / Unit (Optional)' : 'NAV / Unit Price (Optional)'}
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="e.g. 142.04"
+                    value={investSubMode === 'sell' ? salePricePerUnit : unitPrice}
+                    onChange={(e) => investSubMode === 'sell' ? setSalePricePerUnit(e.target.value) : setUnitPrice(e.target.value)}
+                    className="w-full rounded-xl border border-line bg-card px-3 py-1.5 text-xs font-mono text-ink outline-none focus:border-emerald-500"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-[10.5px] font-bold uppercase text-ink/50 mb-1">
-                  NAV / Unit Price (Optional)
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  placeholder="e.g. 142.04"
-                  value={unitPrice}
-                  onChange={(e) => setUnitPrice(e.target.value)}
-                  className="w-full rounded-xl border border-line bg-card px-3 py-1.5 text-xs font-mono text-ink outline-none focus:border-emerald-500"
-                />
-              </div>
-            </div>
+            )}
+
+            {investSubMode === 'sell' && (
+              <p className="text-[11px] text-flare-700 dark:text-flare-300 font-semibold">
+                ⚠️ The amount above is the total proceeds credited to your account. Realized gain/loss will be auto-calculated.
+              </p>
+            )}
           </div>
         ) : entryMode === 'debt_payment' ? (
-          /* Debt Payment Section: Loan Target */
-          <div className="p-3.5 rounded-2xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/50 space-y-2">
+          /* Debt Payment Section: EMI / Loan Received Toggle */
+          <div className="p-3.5 rounded-2xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/50 space-y-3">
+            {/* Sub-mode toggle */}
+            <div className="flex items-center gap-1.5 p-1 bg-card/70 rounded-xl border border-line">
+              {[
+                { id: 'emi', label: '💳 Pay EMI / Loan' },
+                { id: 'received', label: '🏦 Loan Received' },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setDebtSubMode(m.id as 'emi' | 'received')}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${debtSubMode === m.id ? 'bg-amber-600 text-white' : 'text-ink/60 hover:text-ink hover:bg-moss'}`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+
             <label className="block text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
-              Target Loan to Pay Down
+              {debtSubMode === 'received' ? 'Loan / Liability Record' : 'Target Loan to Pay Down'}
             </label>
             {liabilities.length === 0 ? (
-              <p className="text-xs text-flare-600">
-                No liabilities registered yet. Add a loan in the Liabilities tab first.
-              </p>
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-800/50 text-xs text-amber-800 dark:text-amber-200">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span className="flex-1">No liabilities added yet. Add a loan in the Liabilities tab first.</span>
+                <button
+                  type="button"
+                  onClick={() => setIsLiabilityModalOpen(true)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold transition-all cursor-pointer shrink-0"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add Loan
+                </button>
+              </div>
             ) : (
               <select
                 value={selectedLiabilityId}
@@ -615,6 +753,12 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                   </option>
                 ))}
               </select>
+            )}
+
+            {debtSubMode === 'received' && (
+              <p className="text-[11px] text-amber-700 dark:text-amber-300 font-semibold">
+                🏦 This will CREDIT your selected account and INCREASE the loan outstanding balance.
+              </p>
             )}
           </div>
         ) : entryMode === 'people' ? (
@@ -978,5 +1122,28 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
         </div>
       </form>
     </Modal>
+
+    {/* Inline Asset Modal — opens without leaving QuickAdd */}
+    <AssetModal
+      isOpen={isAssetModalOpen}
+      onClose={() => {
+        setIsAssetModalOpen(false);
+        if (assets.length > 0 && !selectedAssetId) {
+          setSelectedAssetId(assets[assets.length - 1].id);
+        }
+      }}
+    />
+
+    {/* Inline Liability Modal — opens without leaving QuickAdd */}
+    <LiabilityModal
+      isOpen={isLiabilityModalOpen}
+      onClose={() => {
+        setIsLiabilityModalOpen(false);
+        if (liabilities.length > 0 && !selectedLiabilityId) {
+          setSelectedLiabilityId(liabilities[liabilities.length - 1].id);
+        }
+      }}
+    />
+    </>
   );
 };
