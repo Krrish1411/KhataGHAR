@@ -32,53 +32,101 @@ export function computeFinancialRatios(params: RatioCalculatorParams): Financial
     return true;
   });
 
-  // Total Income, Expense, Investment in period
-  let totalIncome = 0;
-  let totalExpense = 0;
+  // Pure Operating Income vs Capital/Financing movements
+  let operatingIncome = 0;
+  let realizedCapitalGains = 0;
+  let operatingExpense = 0;
   let essentialExpense = 0;
   let discretionaryExpense = 0;
   let recurringExpense = 0;
-  let investedExpense = 0;
+  let investedCapital = 0;
+  let assetRedemptions = 0;
 
   const categoryMap = new Map<string, Category>(categories.map((c) => [c.id, c]));
 
   periodTxs.forEach((tx) => {
+    const isAssetSale =
+      tx.subType === 'asset_sale' ||
+      (Boolean(tx.linkedAssetId) && tx.type === 'income') ||
+      Boolean(tx.tags && tx.tags.includes('asset-sale'));
+
+    const isInvestment =
+      tx.subType === 'investment' ||
+      (Boolean(tx.linkedAssetId) && tx.type === 'expense') ||
+      Boolean(tx.tags && tx.tags.includes('investment'));
+
+    const isLoanInflow =
+      tx.subType === 'loan_received' ||
+      (Boolean(tx.linkedLiabilityId) && tx.type === 'income') ||
+      Boolean(tx.tags && tx.tags.includes('loan-disbursement'));
+
+    const isDebtPaydown =
+      tx.subType === 'debt_payment' ||
+      (Boolean(tx.linkedLiabilityId) && tx.type === 'expense');
+
     if (tx.type === 'income') {
-      totalIncome += tx.amount;
-    } else if (tx.type === 'expense') {
-      totalExpense += tx.amount;
-      if (tx.isRecurring) {
-        recurringExpense += tx.amount;
+      if (isAssetSale) {
+        assetRedemptions += tx.amount;
+        if (tx.realizedGain !== undefined) {
+          realizedCapitalGains += tx.realizedGain;
+        }
+      } else if (!isLoanInflow) {
+        // Pure operational income (Salary, Business, Freelance, Dividends, etc.)
+        operatingIncome += tx.amount;
       }
+    } else if (tx.type === 'expense') {
+      if (isInvestment) {
+        investedCapital += tx.amount;
+      } else if (!isDebtPaydown) {
+        // Pure operational expense
+        const cat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
+        const isCatInvestment = cat && (cat.name.toLowerCase().includes('invest') || cat.name.toLowerCase().includes('sip'));
 
-      const cat = tx.categoryId ? categoryMap.get(tx.categoryId) : undefined;
-      if (cat) {
-        if (cat.name.toLowerCase().includes('invest') || cat.name.toLowerCase().includes('saving')) {
-          investedExpense += tx.amount;
-        }
-
-        if (cat.isEssential) {
-          essentialExpense += tx.amount;
+        if (isCatInvestment) {
+          investedCapital += tx.amount;
         } else {
-          discretionaryExpense += tx.amount;
+          operatingExpense += tx.amount;
+          if (tx.isRecurring) {
+            recurringExpense += tx.amount;
+          }
+
+          if (cat) {
+            if (cat.isEssential) {
+              essentialExpense += tx.amount;
+            } else {
+              discretionaryExpense += tx.amount;
+            }
+          } else {
+            discretionaryExpense += tx.amount;
+          }
         }
-      } else {
-        discretionaryExpense += tx.amount;
       }
     }
   });
 
-  // Savings rate
-  const savingsRate = totalIncome > 0 ? ((totalIncome - totalExpense) / totalIncome) * 100 : 0;
-  const expenseToIncomeRatio = totalIncome > 0 ? totalExpense / totalIncome : totalExpense > 0 ? 1 : 0;
+  // Total economic income = Pure Operating Income + Net Realized Capital Gains
+  const totalEconomicIncome = Math.max(0, operatingIncome + realizedCapitalGains);
+  const totalOperatingExpense = operatingExpense;
 
-  // Monthly EMI Outflow from liabilities
+  // Savings rate based on pure operating performance
+  const netOperatingSavings = totalEconomicIncome - totalOperatingExpense;
+  const savingsRate = totalEconomicIncome > 0 ? (netOperatingSavings / totalEconomicIncome) * 100 : 0;
+  const expenseToIncomeRatio = totalEconomicIncome > 0 ? totalOperatingExpense / totalEconomicIncome : totalOperatingExpense > 0 ? 1 : 0;
+
+  // Liabilities & Debt Servicing
+  const totalDebtValue = liabilities.reduce((sum, l) => sum + l.outstandingBalance, 0);
   const totalMonthlyEMI = liabilities.reduce((sum, l) => sum + (l.emiAmount || 0), 0);
-  const debtToIncomeRatio = totalIncome > 0 ? totalMonthlyEMI / totalIncome : totalMonthlyEMI > 0 ? 1 : 0;
+
+  // When debt is 0, DTI is strictly 0 (Debt-Free)
+  const debtToIncomeRatio = totalDebtValue === 0 || totalMonthlyEMI === 0
+    ? 0
+    : totalEconomicIncome > 0
+    ? totalMonthlyEMI / totalEconomicIncome
+    : 1;
 
   // Essential vs Discretionary spend ratio
-  const essentialSpendRatio = totalExpense > 0 ? (essentialExpense / totalExpense) * 100 : 50;
-  const discretionarySpendRatio = totalExpense > 0 ? (discretionaryExpense / totalExpense) * 100 : 50;
+  const essentialSpendRatio = totalOperatingExpense > 0 ? (essentialExpense / totalOperatingExpense) * 100 : 50;
+  const discretionarySpendRatio = totalOperatingExpense > 0 ? (discretionaryExpense / totalOperatingExpense) * 100 : 50;
 
   // Days in period
   let daysInPeriod = 30;
@@ -88,36 +136,41 @@ export function computeFinancialRatios(params: RatioCalculatorParams): Financial
     daysInPeriod = Math.max(1, Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1);
   }
 
-  const averageDailySpend = totalExpense / daysInPeriod;
+  const averageDailySpend = totalOperatingExpense / daysInPeriod;
   const expenseTxs = periodTxs.filter((t) => t.type === 'expense');
-  const averageTransactionSize = expenseTxs.length > 0 ? totalExpense / expenseTxs.length : 0;
+  const averageTransactionSize = expenseTxs.length > 0 ? totalOperatingExpense / expenseTxs.length : 0;
 
-  // Liquid assets (bank accounts + cash + liquid wallets + gold/mutual funds)
+  // Liquid assets (bank accounts + cash + liquid wallets)
   const liquidAccountsBalance = accounts
     .filter((a) => ['bank', 'cash', 'wallet', 'upi'].includes(a.type))
     .reduce((sum, a) => sum + a.balance, 0);
 
-  // Burn rate (monthly average expense)
-  const monthlyBurnRate = (averageDailySpend * 30) || (totalExpense || 1);
-  const dailyBurnRate = averageDailySpend > 0 ? averageDailySpend : 1;
-  const runwayMonths = monthlyBurnRate > 0 ? liquidAccountsBalance / monthlyBurnRate : 0;
-  const emergencyFundCoverageMonths = monthlyBurnRate > 0 ? liquidAccountsBalance / monthlyBurnRate : 0;
+  // Net Burn Rate: Total monthly outlays minus monthly income
+  const monthlyGrossBurn = (averageDailySpend * 30) + totalMonthlyEMI;
+  const monthlyIncomeVelocity = (totalEconomicIncome / daysInPeriod) * 30;
+  const netMonthlyBurn = Math.max(0, monthlyGrossBurn - monthlyIncomeVelocity);
 
-  // Investment rate
-  const investmentRate = totalIncome > 0 ? (investedExpense / totalIncome) * 100 : 0;
+  // Runway: If cashflow positive (income >= outflows), runway is infinite (flagged as 999)
+  const runwayMonths = netMonthlyBurn === 0 ? 999 : (liquidAccountsBalance > 0 ? liquidAccountsBalance / netMonthlyBurn : 0);
+  const emergencyFundCoverageMonths = monthlyGrossBurn > 0 ? liquidAccountsBalance / monthlyGrossBurn : 999;
+
+  // Net Investment Rate = (Invested - Redemptions) / Income
+  const netInvested = Math.max(0, investedCapital - assetRedemptions);
+  const investmentRate = totalEconomicIncome > 0 ? (netInvested / totalEconomicIncome) * 100 : 0;
 
   // Short term liabilities (credit card balances + due EMIs next 3 months)
   const shortTermDebt = liabilities
     .filter((l) => l.type === 'credit_card')
     .reduce((sum, l) => sum + l.outstandingBalance, 0) + totalMonthlyEMI * 3;
 
-  const liquidityRatio = shortTermDebt > 0 ? liquidAccountsBalance / shortTermDebt : liquidAccountsBalance > 0 ? 99 : 1;
+  // Liquidity Ratio (-1 indicates Debt-Free / fully liquid)
+  const liquidityRatio = shortTermDebt === 0 ? -1 : (liquidAccountsBalance > 0 ? liquidAccountsBalance / shortTermDebt : 0);
 
   // People Ledger Net Position = Lent - Borrowed
   let totalLent = 0;
   let totalBorrowed = 0;
   peopleLedger.forEach((entry) => {
-    const settledAmount = entry.settlements.reduce((s, r) => s + r.amount, 0);
+    const settledAmount = (entry.settlements || []).reduce((s, r) => s + r.amount, 0);
     const outstanding = Math.max(0, entry.amount - settledAmount);
     if (entry.type === 'lent') totalLent += outstanding;
     else if (entry.type === 'borrowed') totalBorrowed += outstanding;
@@ -125,14 +178,12 @@ export function computeFinancialRatios(params: RatioCalculatorParams): Financial
   const peopleNetPosition = totalLent - totalBorrowed;
 
   // Recurring vs one-time expense ratio
-  const recurringExpenseRatio = totalExpense > 0 ? (recurringExpense / totalExpense) * 100 : 0;
+  const recurringExpenseRatio = totalOperatingExpense > 0 ? (recurringExpense / totalOperatingExpense) * 100 : 0;
 
-  // Asset-to-debt ratio
+  // Asset-to-debt ratio (-1 indicates Debt-Free / Infinite coverage)
   const totalAssetsValue =
     assets.reduce((sum, a) => sum + a.currentValue, 0) + liquidAccountsBalance;
-  const totalDebtValue = liabilities.reduce((sum, l) => sum + l.outstandingBalance, 0);
-  const assetToDebtRatio =
-    totalDebtValue > 0 ? totalAssetsValue / totalDebtValue : totalAssetsValue > 0 ? 10 : 1;
+  const assetToDebtRatio = totalDebtValue === 0 ? -1 : (totalAssetsValue / totalDebtValue);
 
   return {
     savingsRate: Math.max(-100, Math.min(100, savingsRate)),
@@ -142,10 +193,10 @@ export function computeFinancialRatios(params: RatioCalculatorParams): Financial
     discretionarySpendRatio,
     averageDailySpend,
     averageTransactionSize,
-    burnRateMonthly: monthlyBurnRate,
+    burnRateMonthly: monthlyGrossBurn,
     runwayMonths: Math.max(0, runwayMonths),
     emergencyFundCoverageMonths: Math.max(0, emergencyFundCoverageMonths),
-    netWorthGrowthMoM: 0, // Computed from historical logs if present
+    netWorthGrowthMoM: 0,
     netWorthGrowthYoY: 0,
     investmentRate,
     liquidityRatio,
@@ -201,7 +252,12 @@ export function computeHealthScore(params: RatioCalculatorParams): HealthScoreBr
   let dtiStatus = '';
   let dtiAdvice = '';
   const dtiPercent = ratios.debtToIncomeRatio * 100;
-  if (dtiPercent <= 15) {
+  if (dtiPercent === 0) {
+    dtiScore = 25;
+    dtiStatus = 'Debt-Free ✨';
+    dtiAdvice = 'Zero debt obligations maximize your cashflow flexibility.';
+    strengths.push('100% Debt-Free financial structure');
+  } else if (dtiPercent <= 15) {
     dtiScore = 25;
     dtiStatus = 'Very Low Debt';
     dtiAdvice = 'Minimal debt burden provides strong financial flexibility.';
@@ -231,8 +287,10 @@ export function computeHealthScore(params: RatioCalculatorParams): HealthScoreBr
   if (ratios.emergencyFundCoverageMonths >= 6) {
     efScore = 20;
     efStatus = 'Fully Secured';
-    efAdvice = `You have ${ratios.emergencyFundCoverageMonths.toFixed(1)} months of expenses saved in liquid funds.`;
-    strengths.push(`${ratios.emergencyFundCoverageMonths.toFixed(1)} months emergency buffer`);
+    efAdvice = ratios.emergencyFundCoverageMonths >= 999
+      ? 'Outstanding liquid cushion covering all planned expenses.'
+      : `You have ${ratios.emergencyFundCoverageMonths.toFixed(1)} months of expenses saved in liquid funds.`;
+    strengths.push(ratios.emergencyFundCoverageMonths >= 999 ? 'Fully funded liquid buffer' : `${ratios.emergencyFundCoverageMonths.toFixed(1)} months emergency buffer`);
   } else if (ratios.emergencyFundCoverageMonths >= 3) {
     efScore = 14;
     efStatus = 'Adequate';
@@ -297,7 +355,12 @@ export function computeHealthScore(params: RatioCalculatorParams): HealthScoreBr
   let nwScore = 0;
   let nwStatus = '';
   let nwAdvice = '';
-  if (netWorth > totalLiabilities * 2 && netWorth > 0) {
+  if (totalLiabilities === 0 && totalAssets > 0) {
+    nwScore = 10;
+    nwStatus = 'Debt-Free & Solvent';
+    nwAdvice = 'Clean balance sheet with zero debt liabilities.';
+    strengths.push('100% Debt-free positive net worth');
+  } else if (netWorth > totalLiabilities * 2 && netWorth > 0) {
     nwScore = 10;
     nwStatus = 'Strong Positive';
     nwAdvice = 'Assets comfortably exceed all obligations.';

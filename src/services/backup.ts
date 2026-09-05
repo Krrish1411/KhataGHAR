@@ -108,12 +108,14 @@ export async function importVaultEncrypted(
   }
 
   const { salt, iv } = backupObj.header;
-  const key = await deriveKey(backupSecret, salt);
   const ivBytes = hexToBuffer(iv);
   const ciphertextBytes = base64ToBuffer(backupObj.ciphertext);
 
-  let decryptedBuffer: ArrayBuffer;
+  let decryptedBuffer: ArrayBuffer | null = null;
+  let effectiveSecret = backupSecret;
+
   try {
+    const key = await deriveKey(backupSecret, salt);
     decryptedBuffer = await crypto.subtle.decrypt(
       {
         name: 'AES-GCM',
@@ -123,6 +125,29 @@ export async function importVaultEncrypted(
       ciphertextBytes
     );
   } catch (err) {
+    // If decryption fails, try normalizing whitespace & casing (crucial for 12-word recovery phrases)
+    const normalized = backupSecret.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (normalized !== backupSecret) {
+      try {
+        const altKey = await deriveKey(normalized, salt);
+        decryptedBuffer = await crypto.subtle.decrypt(
+          {
+            name: 'AES-GCM',
+            iv: ivBytes,
+          },
+          altKey,
+          ciphertextBytes
+        );
+        effectiveSecret = normalized;
+      } catch (altErr) {
+        throw new Error('Incorrect backup password or passphrase. Decryption failed.');
+      }
+    } else {
+      throw new Error('Incorrect backup password or passphrase. Decryption failed.');
+    }
+  }
+
+  if (!decryptedBuffer) {
     throw new Error('Incorrect backup password or passphrase. Decryption failed.');
   }
 
@@ -138,9 +163,9 @@ export async function importVaultEncrypted(
     createdAt: new Date().toISOString(),
   };
 
-  // Re-key vault with the user's backupSecret so it can be unlocked with the same secret
+  // Re-key vault with the user's effectiveSecret so it can be unlocked with the same secret
   const newVaultSalt = generateSalt();
-  const newVaultKey = await deriveKey(backupSecret, newVaultSalt);
+  const newVaultKey = await deriveKey(effectiveSecret, newVaultSalt);
   restoredVault.salt = newVaultSalt;
   restoredVault.verifier = await generateVerifier(newVaultKey);
 

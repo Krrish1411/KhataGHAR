@@ -40,6 +40,7 @@ export const PlansView: React.FC = () => {
   const [payingPlan, setPayingPlan] = useState<PlannedExpense | null>(null);
   const [payAccountId, setPayAccountId] = useState('');
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
+  const [payAttribution, setPayAttribution] = useState<'due' | 'payment'>('due');
   const [isPaying, setIsPaying] = useState(false);
 
   const baseCurrency = activeVault?.currency || 'INR';
@@ -119,13 +120,15 @@ export const PlansView: React.FC = () => {
     setPayingPlan(plan);
     setPayAccountId(plan.accountId || (accounts[0] ? accounts[0].id : ''));
     setPayDate(todayStr);
+    setPayAttribution('due');
   };
 
   const handleConfirmPay = async () => {
     if (!payingPlan || !payAccountId) return;
     setIsPaying(true);
     try {
-      await markPlanPaid(payingPlan.id, payAccountId, payDate);
+      const accrualMonth = payAttribution === 'due' ? payingPlan.dueDate.slice(0, 7) : payDate.slice(0, 7);
+      await markPlanPaid(payingPlan.id, payAccountId, payDate, accrualMonth);
       setPayingPlan(null);
     } finally {
       setIsPaying(false);
@@ -422,6 +425,42 @@ export const PlansView: React.FC = () => {
                 className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-mono font-semibold text-ink outline-none focus:border-pine-500 cursor-pointer"
                 required
               />
+            </div>
+
+            {/* Attribution Month (Accrual Accounting) */}
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                Expense Attribution (Accrual Accounting)
+              </label>
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-moss/80 rounded-xl border border-line">
+                <button
+                  type="button"
+                  onClick={() => setPayAttribution('due')}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                    payAttribution === 'due'
+                      ? 'bg-card text-ink shadow-xs border border-line'
+                      : 'text-ink/60 hover:text-ink'
+                  }`}
+                >
+                  📅 Due Month ({formatMonthTitle(payingPlan.dueDate.slice(0, 7))})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPayAttribution('payment')}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                    payAttribution === 'payment'
+                      ? 'bg-card text-ink shadow-xs border border-line'
+                      : 'text-ink/60 hover:text-ink'
+                  }`}
+                >
+                  💳 Pay Date ({formatMonthTitle(payDate.slice(0, 7))})
+                </button>
+              </div>
+              <p className="text-[10.5px] text-ink/45 mt-1 leading-relaxed">
+                {payAttribution === 'due'
+                  ? `Attributes cost to ${formatMonthTitle(payingPlan.dueDate.slice(0, 7))}'s budget & reports (e.g. rent/milk for last month paid today).`
+                  : `Attributes cost to current month (${formatMonthTitle(payDate.slice(0, 7))}) when money actually left the account.`}
+              </p>
             </div>
 
             <div className="pt-2 flex items-center gap-2">

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { Card } from '../components/common/Card';
@@ -27,6 +27,7 @@ import {
   UserPlus,
   AlertCircle,
   Search,
+  History,
 } from 'lucide-react';
 
 export const PeopleLedgerView: React.FC = () => {
@@ -37,6 +38,12 @@ export const PeopleLedgerView: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'lent' | 'borrowed' | 'holding' | 'contacts'>('lent');
   const [statusFilter, setStatusFilter] = useState<'active' | 'settled' | 'all'>('active');
+  const [settledPage, setSettledPage] = useState(1);
+  const SETTLED_PER_PAGE = 15;
+
+  useEffect(() => {
+    setSettledPage(1);
+  }, [activeTab, statusFilter]);
   const [contactSearch, setContactSearch] = useState('');
   const [selectedContactForDetail, setSelectedContactForDetail] = useState<string | null>(null);
   const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
@@ -131,6 +138,13 @@ export const PeopleLedgerView: React.FC = () => {
     }
     return entriesOfType;
   }, [peopleLedger, activeTab, statusFilter]);
+
+  const totalSettledPages = Math.max(1, Math.ceil(filteredEntries.length / SETTLED_PER_PAGE));
+  const paginatedSettledEntries = useMemo(() => {
+    if (statusFilter !== 'settled') return filteredEntries;
+    const start = (settledPage - 1) * SETTLED_PER_PAGE;
+    return filteredEntries.slice(start, start + SETTLED_PER_PAGE);
+  }, [filteredEntries, statusFilter, settledPage]);
 
   // Aggregate by contact for the Contacts tab
   const contactAggregates = useMemo(() => {
@@ -469,6 +483,122 @@ export const PeopleLedgerView: React.FC = () => {
                 </button>
               )}
             </Card>
+          ) : statusFilter === 'settled' ? (
+            <div className="rounded-2xl border border-line bg-card overflow-hidden shadow-sm lift">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-line bg-moss/50 text-[11px] font-bold text-ink/50 uppercase tracking-wider">
+                      <th className="py-3 px-4">Contact</th>
+                      <th className="py-3 px-4">Date</th>
+                      <th className="py-3 px-4">Original Amount</th>
+                      <th className="py-3 px-4">Settled Amount</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Note / Reason</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line text-xs">
+                    {paginatedSettledEntries.map((entry) => {
+                      const totalSettled = entry.settlements.reduce((sum, s) => sum + s.amount, 0);
+                      return (
+                        <tr key={entry.id} className="hover:bg-moss/40 transition-colors">
+                          <td className="py-3 px-4 font-semibold text-ink">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedContactForDetail(entry.contactName)}
+                              className="hover:text-pine-600 hover:underline flex items-center gap-2 cursor-pointer text-left"
+                            >
+                              <span className="w-6 h-6 rounded-lg bg-pine-50 dark:bg-pine-950/40 text-pine-600 border border-pine-200/60 dark:border-pine-800/40 flex items-center justify-center font-bold text-[10px] shrink-0">
+                                {getInitials(entry.contactName)}
+                              </span>
+                              <span className="truncate">{entry.contactName}</span>
+                            </button>
+                          </td>
+                          <td className="py-3 px-4 text-ink/60 num font-mono text-[11.5px]">
+                            {formatReadableDate(entry.date)}
+                          </td>
+                          <td className="py-3 px-4 font-mono font-medium text-ink/70 num">
+                            {formatCurrency(entry.amount, entry.currency, numberFormat, isPrivacyMode)}
+                          </td>
+                          <td className="py-3 px-4 font-mono font-bold text-pine-700 dark:text-pine-400 num">
+                            {formatCurrency(totalSettled, entry.currency, numberFormat, isPrivacyMode)}
+                          </td>
+                          <td className="py-3 px-4">
+                            <Badge tone="pine" size="xs">Settled (₹0)</Badge>
+                          </td>
+                          <td className="py-3 px-4 text-ink/60 max-w-[200px] truncate text-[11.5px]">
+                            {entry.notes || '—'}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedContactForDetail(entry.contactName)}
+                                className="p-1 rounded-lg text-ink/50 hover:text-ink hover:bg-moss cursor-pointer"
+                                title="View Contact History"
+                              >
+                                <History className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEntryToEdit(entry);
+                                  setIsEntryModalOpen(true);
+                                }}
+                                className="p-1 rounded-lg text-ink/50 hover:text-ink hover:bg-moss cursor-pointer"
+                                title="Edit Entry"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(entry.id, entry.contactName)}
+                                className="p-1 rounded-lg text-ink/40 hover:text-flare-600 hover:bg-flare-50 dark:hover:bg-flare-900/20 cursor-pointer"
+                                title="Delete Entry"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination controls */}
+              {totalSettledPages > 1 && (
+                <div className="p-3 border-t border-line flex items-center justify-between text-xs bg-moss/30">
+                  <span className="text-ink/60">
+                    Showing {(settledPage - 1) * SETTLED_PER_PAGE + 1} to{' '}
+                    {Math.min(settledPage * SETTLED_PER_PAGE, filteredEntries.length)} of {filteredEntries.length} settled records
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={settledPage <= 1}
+                      onClick={() => setSettledPage((p) => Math.max(1, p - 1))}
+                      className="px-2.5 py-1 rounded-lg border border-line bg-card hover:bg-moss disabled:opacity-40 disabled:pointer-events-none font-semibold text-ink cursor-pointer"
+                    >
+                      Previous
+                    </button>
+                    <span className="font-mono font-bold text-ink px-2">
+                      {settledPage} / {totalSettledPages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={settledPage >= totalSettledPages}
+                      onClick={() => setSettledPage((p) => Math.min(totalSettledPages, p + 1))}
+                      className="px-2.5 py-1 rounded-lg border border-line bg-card hover:bg-moss disabled:opacity-40 disabled:pointer-events-none font-semibold text-ink cursor-pointer"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {filteredEntries.map((entry) => {

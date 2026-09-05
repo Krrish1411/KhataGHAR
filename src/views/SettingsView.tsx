@@ -42,6 +42,7 @@ import {
   Edit2,
   Keyboard,
   RotateCcw,
+  Copy,
 } from 'lucide-react';
 import { IconRenderer } from '../components/common/IconRenderer';
 import { APP_SHORTCUTS, formatKeyDisplay } from '../services/shortcuts';
@@ -75,6 +76,7 @@ export const SettingsView: React.FC = () => {
   // Category Management state
   const [catNewName, setCatNewName] = useState('');
   const [catNewType, setCatNewType] = useState<'expense' | 'income'>('expense');
+  const [catNewEssential, setCatNewEssential] = useState<boolean>(false);
   const [catEditId, setCatEditId] = useState<string | null>(null);
   const [catEditName, setCatEditName] = useState('');
   const [catFilter, setCatFilter] = useState<'all' | 'expense' | 'income'>('all');
@@ -147,6 +149,7 @@ export const SettingsView: React.FC = () => {
   const [backupSecret, setBackupSecret] = useState('');
   const [use12WordPhrase, setUse12WordPhrase] = useState(false);
   const [generatedPhrase, setGeneratedPhrase] = useState('');
+  const [copiedPhrase, setCopiedPhrase] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
   // Backup Restore State
@@ -656,10 +659,42 @@ export const SettingsView: React.FC = () => {
 
             {use12WordPhrase && generatedPhrase ? (
               <div className="p-3.5 rounded-xl bg-moss/70 border border-line space-y-2">
-                <span className="text-[11px] font-bold text-pine-700 dark:text-pine-400 block">
-                  Write down these 12 words in order:
-                </span>
-                <div className="p-2.5 rounded-lg bg-card border border-line font-mono text-xs font-bold text-ink tracking-wide">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-pine-700 dark:text-pine-400 block">
+                    Write down these 12 words in order:
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(generatedPhrase);
+                        setCopiedPhrase(true);
+                        setTimeout(() => setCopiedPhrase(false), 2000);
+                      }}
+                      className="px-2 py-1 rounded-lg border border-line bg-card hover:bg-moss text-[10.5px] font-semibold text-ink flex items-center gap-1 cursor-pointer transition-all"
+                    >
+                      {copiedPhrase ? <Check className="w-3 h-3 text-pine-600" /> : <Copy className="w-3 h-3 text-pine-600" />}
+                      <span>{copiedPhrase ? 'Copied' : 'Copy'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const blob = new Blob([`KhataGHAR 12-Word Recovery Key\nCreated: ${new Date().toLocaleString()}\nVault: ${activeVault?.name}\n\nRecovery Words:\n${generatedPhrase}\n\nKeep this file private and secure!`], { type: 'text/plain' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${(activeVault?.name || 'khataghar').toLowerCase().replace(/\s+/g, '_')}_recovery_key.txt`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="px-2 py-1 rounded-lg border border-line bg-card hover:bg-moss text-[10.5px] font-semibold text-ink flex items-center gap-1 cursor-pointer transition-all"
+                    >
+                      <Download className="w-3 h-3 text-pine-600" />
+                      <span>Download .txt</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-lg bg-card border border-line font-mono text-xs font-bold text-ink tracking-wide select-all">
                   {generatedPhrase}
                 </div>
               </div>
@@ -980,15 +1015,33 @@ export const SettingsView: React.FC = () => {
         {/* Add New Category */}
         <div className="p-3.5 rounded-2xl bg-moss/50 border border-line space-y-2.5">
           <p className="text-[11px] font-bold uppercase tracking-wider text-ink/50">Add Custom Category</p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <select
               value={catNewType}
-              onChange={(e) => setCatNewType(e.target.value as 'expense' | 'income')}
+              onChange={(e) => {
+                const t = e.target.value as 'expense' | 'income';
+                setCatNewType(t);
+                if (t === 'income') setCatNewEssential(true);
+              }}
               className="px-2 py-2 rounded-xl border border-line bg-card text-xs font-semibold text-ink outline-none focus:border-pine-500 cursor-pointer shrink-0"
             >
               <option value="expense">🔴 Expense</option>
               <option value="income">🟢 Income</option>
             </select>
+            {catNewType === 'expense' && (
+              <button
+                type="button"
+                onClick={() => setCatNewEssential(!catNewEssential)}
+                className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-all shrink-0 cursor-pointer ${
+                  catNewEssential
+                    ? 'bg-pine-100 border-pine-300 text-pine-800 dark:bg-pine-950/60 dark:border-pine-700 dark:text-pine-300'
+                    : 'bg-moss border-line text-ink/60 hover:text-ink'
+                }`}
+                title="Toggle Essential (Need) vs Discretionary (Want)"
+              >
+                {catNewEssential ? '⭐ Essential (Need)' : '🎯 Discretionary (Want)'}
+              </button>
+            )}
             <input
               type="text"
               placeholder="Category name…"
@@ -996,18 +1049,28 @@ export const SettingsView: React.FC = () => {
               onChange={(e) => setCatNewName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && catNewName.trim()) {
-                  addCategory({ name: catNewName.trim(), type: catNewType, icon: catNewType === 'expense' ? '🔴' : '🟢', isEssential: false });
+                  addCategory({
+                    name: catNewName.trim(),
+                    type: catNewType,
+                    icon: catNewType === 'expense' ? '🔴' : '🟢',
+                    isEssential: catNewType === 'expense' ? catNewEssential : true,
+                  });
                   setCatNewName('');
                 }
               }}
-              className="flex-1 px-3 py-2 rounded-xl border border-line bg-card text-xs text-ink outline-none focus:border-pine-500"
+              className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-line bg-card text-xs text-ink outline-none focus:border-pine-500"
             />
             <button
               type="button"
               disabled={!catNewName.trim()}
               onClick={() => {
                 if (!catNewName.trim()) return;
-                addCategory({ name: catNewName.trim(), type: catNewType, icon: catNewType === 'expense' ? '🔴' : '🟢', isEssential: false });
+                addCategory({
+                  name: catNewName.trim(),
+                  type: catNewType,
+                  icon: catNewType === 'expense' ? '🔴' : '🟢',
+                  isEssential: catNewType === 'expense' ? catNewEssential : true,
+                });
                 setCatNewName('');
               }}
               className="px-3 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 text-white text-xs font-bold flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none cursor-pointer transition-all"
@@ -1069,6 +1132,21 @@ export const SettingsView: React.FC = () => {
                   />
                 ) : (
                   <span className="flex-1 text-xs font-semibold text-ink truncate">{cat.name}</span>
+                )}
+
+                {cat.type === 'expense' && (
+                  <button
+                    type="button"
+                    onClick={() => updateCategory({ ...cat, isEssential: !cat.isEssential })}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 transition-all cursor-pointer border ${
+                      cat.isEssential
+                        ? 'bg-pine-100 border-pine-300 text-pine-700 dark:bg-pine-900/40 dark:border-pine-800 dark:text-pine-300 hover:bg-pine-200'
+                        : 'bg-moss border-line text-ink/60 hover:text-ink'
+                    }`}
+                    title="Click to toggle Essential (Need) vs Discretionary (Want)"
+                  >
+                    {cat.isEssential ? '⭐ Essential' : 'Discretionary'}
+                  </button>
                 )}
 
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${cat.type === 'expense' ? 'bg-flare-100 text-flare-700 dark:bg-flare-900/30 dark:text-flare-300' : 'bg-pine-100 text-pine-700 dark:bg-pine-900/30 dark:text-pine-300'}`}>

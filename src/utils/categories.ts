@@ -119,7 +119,7 @@ export const STARTER_CATEGORY_DEFINITIONS: StarterCategoryDef[] = [
     name: 'Investments & SIP',
     type: 'expense',
     icon: 'TrendingUp',
-    isEssential: true,
+    isEssential: false,
     color: '#059669',
   },
   {

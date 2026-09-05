@@ -60,6 +60,9 @@ export const DashboardView: React.FC = () => {
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
 
+  // Visible accounts on dashboard (excludes accounts where isVisibleOnDashboard === false)
+  const visibleAccounts = useMemo(() => accounts.filter((a) => a.isVisibleOnDashboard !== false), [accounts]);
+
   // Compute all derived financials & 8-month series via unified PaisaBook engine
   const d = useMemo(
     () => computeDerivedFinancials(accounts, transactions, peopleLedger, budgets, assets, liabilities),
@@ -497,7 +500,7 @@ export const DashboardView: React.FC = () => {
           </button>
         </div>
 
-        {accounts.length === 0 ? (
+        {visibleAccounts.length === 0 ? (
           <Card className="p-6 text-center space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 grid place-items-center mx-auto text-pine-600">
               <Landmark className="w-6 h-6" />
@@ -537,7 +540,7 @@ export const DashboardView: React.FC = () => {
           </Card>
         ) : (
           <div className="flex gap-2.5 overflow-x-auto no-scrollbar pb-1 -mx-1 px-1">
-            {accounts.map((acc) => {
+            {visibleAccounts.map((acc) => {
               const held = accountHeldMap.get(acc.id) || 0;
               const isCredit = acc.type === 'credit_card';
 

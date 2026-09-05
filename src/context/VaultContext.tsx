@@ -95,7 +95,7 @@ interface VaultContextType {
   addPlannedExpense: (plan: Omit<PlannedExpense, 'id' | 'vaultId' | 'updatedAt'>) => Promise<PlannedExpense>;
   updatePlannedExpense: (id: string, updates: Partial<PlannedExpense>) => Promise<void>;
   deletePlannedExpense: (id: string) => Promise<void>;
-  markPlanPaid: (planId: string, accountId: string, date: string) => Promise<void>;
+  markPlanPaid: (planId: string, accountId: string, date: string, accrualMonth?: string) => Promise<void>;
 
   // Asset & Liability Operations
   addAsset: (asset: Omit<Asset, 'id' | 'vaultId' | 'updatedAt' | 'valuationHistory'>) => Promise<Asset>;
@@ -650,7 +650,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             (newTx as any).subType === 'asset_sale' ||
             (newTx.tags && newTx.tags.includes('asset-sale'));
 
-          const trancheId = generateUUID();
+          const trancheId = newTx.trancheId || generateUUID();
           newTx.trancheId = trancheId;
           const trancheUnits = (newTx as any).units || undefined;
           const trancheUnitPrice = (newTx as any).unitPrice || undefined;
@@ -658,11 +658,25 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (isSale) {
             // Asset Sale / Redemption: DEDUCT from currentValue and purchasePrice
             const unitsSold = trancheUnits || 0;
-            const remainingUnits = Math.max(0, (targetAsset.totalUnits || 0) - unitsSold);
+            const totalUnits = targetAsset.totalUnits || 0;
+            const remainingUnits = Math.max(0, totalUnits - unitsSold);
+            const currentCostBasis = targetAsset.purchasePrice || targetAsset.currentValue;
+
+            // Proportional cost basis if units tracked, or proportional to value sold if untracked
+            const costBasis = totalUnits > 0
+              ? round2((unitsSold / totalUnits) * currentCostBasis)
+              : targetAsset.currentValue > 0
+                ? round2((newTx.amount / targetAsset.currentValue) * currentCostBasis)
+                : newTx.amount;
+            const realizedGain = newTx.realizedGain !== undefined
+              ? newTx.realizedGain
+              : round2(newTx.amount - costBasis);
+            newTx.realizedGain = realizedGain;
+
             let newCurrentVal = Math.max(0, round2(targetAsset.currentValue - newTx.amount));
             if (targetAsset.currentUnitPrice && remainingUnits > 0) {
               newCurrentVal = round2(remainingUnits * targetAsset.currentUnitPrice);
-            } else if (remainingUnits === 0 && (targetAsset.totalUnits || 0) > 0) {
+            } else if (remainingUnits === 0 && totalUnits > 0) {
               newCurrentVal = 0;
             }
 
@@ -670,9 +684,10 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               id: trancheId,
               date: newTx.date,
               amount: newTx.amount,
-              units: trancheUnits,
+              units: unitsSold > 0 ? unitsSold : undefined,
               unitPrice: trancheUnitPrice,
               type: 'sell',
+              realizedGain,
               transactionId: newTx.id,
               note: newTx.note || 'Asset Sale / Redemption',
             };
@@ -682,7 +697,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               tranches: [...(targetAsset.tranches || []), newTranche],
               totalUnits: remainingUnits > 0 ? remainingUnits : undefined,
               currentValue: newCurrentVal,
-              purchasePrice: Math.max(0, round2((targetAsset.purchasePrice || 0) - newTx.amount)),
+              purchasePrice: Math.max(0, round2(currentCostBasis - costBasis)),
               updatedAt: new Date().toISOString(),
             };
 
@@ -725,11 +740,19 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
 
-    // If linked to a Liability (Debt payment / EMI / Prepayment)
+    // If linked to a Liability (Debt payment / EMI OR Loan Inflow Received)
     if (newTx.linkedLiabilityId) {
       const targetLiab = liabilitiesRef.current.find((l) => l.id === newTx.linkedLiabilityId);
       if (targetLiab) {
-        const newOutstanding = Math.max(0, round2(targetLiab.outstandingBalance - newTx.amount));
+        const isLoanReceived =
+          newTx.type === 'income' ||
+          (newTx as any).subType === 'loan_received' ||
+          (newTx.tags && newTx.tags.includes('loan-disbursement'));
+
+        const newOutstanding = isLoanReceived
+          ? round2(targetLiab.outstandingBalance + newTx.amount)
+          : Math.max(0, round2(targetLiab.outstandingBalance - newTx.amount));
+
         const updatedLiab: Liability = {
           ...targetLiab,
           outstandingBalance: newOutstanding,
@@ -854,6 +877,208 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
         setAccounts(accountsRef.current);
       }
+
+      // 4. Synchronize linked Asset if changed or updated
+      const oldAssetId = oldTx.linkedAssetId;
+      const newAssetId = updated.linkedAssetId;
+
+      if (oldAssetId) {
+        const oldAsset = assetsRef.current.find((a) => a.id === oldAssetId);
+        if (oldAsset && oldAsset.tranches) {
+          const oldIsSale =
+            oldTx.type === 'income' ||
+            (oldTx as any).subType === 'asset_sale' ||
+            (oldTx.tags && oldTx.tags.includes('asset-sale'));
+          const trancheToRemove = oldAsset.tranches.find(
+            (t) => t.id === oldTx.trancheId || t.transactionId === oldTx.id
+          );
+          const updatedTranches = oldAsset.tranches.filter(
+            (t) => t.id !== oldTx.trancheId && t.transactionId !== oldTx.id
+          );
+          const unitsDiff = trancheToRemove?.units || oldTx.units || 0;
+
+          let newTotalUnits = oldAsset.totalUnits || 0;
+          let newCurrentVal = oldAsset.currentValue;
+          let newPurchasePrice = oldAsset.purchasePrice || 0;
+
+          if (oldIsSale) {
+            // Reversing sale: restore units and cost basis
+            newTotalUnits = newTotalUnits + unitsDiff;
+            const costBasisRestored = trancheToRemove
+              ? (trancheToRemove.amount - (trancheToRemove.realizedGain || 0))
+              : (oldTx.realizedGain !== undefined ? (oldTx.amount - oldTx.realizedGain) : oldTx.amount);
+            newPurchasePrice = round2((oldAsset.purchasePrice || 0) + costBasisRestored);
+            newCurrentVal = oldAsset.currentUnitPrice && newTotalUnits > 0
+              ? round2(newTotalUnits * oldAsset.currentUnitPrice)
+              : round2(oldAsset.currentValue + oldTx.amount);
+          } else {
+            // Reversing purchase: remove units and purchase price
+            newTotalUnits = Math.max(0, newTotalUnits - unitsDiff);
+            newPurchasePrice = Math.max(0, round2((oldAsset.purchasePrice || 0) - oldTx.amount));
+            newCurrentVal = oldAsset.currentUnitPrice && newTotalUnits > 0
+              ? round2(newTotalUnits * oldAsset.currentUnitPrice)
+              : Math.max(0, round2(oldAsset.currentValue - oldTx.amount));
+          }
+
+          const revertedAsset: Asset = {
+            ...oldAsset,
+            tranches: updatedTranches,
+            totalUnits: newTotalUnits > 0 ? newTotalUnits : undefined,
+            currentValue: newCurrentVal,
+            purchasePrice: newPurchasePrice,
+            updatedAt: new Date().toISOString(),
+          };
+
+          assetsRef.current = assetsRef.current.map((a) => (a.id === revertedAsset.id ? revertedAsset : a));
+          setAssets(assetsRef.current);
+          await saveEncryptedRecord('asset', revertedAsset, sessionKey);
+        }
+      }
+
+      if (newAssetId) {
+        const targetAsset = assetsRef.current.find((a) => a.id === newAssetId);
+        if (targetAsset) {
+          const isSale =
+            updated.type === 'income' ||
+            (updated as any).subType === 'asset_sale' ||
+            (updated.tags && updated.tags.includes('asset-sale'));
+
+          const trancheId = updated.trancheId || generateUUID();
+          updated.trancheId = trancheId;
+          const trancheUnits = updated.units || (updated as any).units || undefined;
+          const trancheUnitPrice = updated.unitPrice || (updated as any).unitPrice || undefined;
+
+          if (isSale) {
+            const unitsSold = trancheUnits || 0;
+            const totalUnits = targetAsset.totalUnits || 0;
+            const remainingUnits = Math.max(0, totalUnits - unitsSold);
+            const currentCostBasis = targetAsset.purchasePrice || targetAsset.currentValue;
+
+            const costBasis = totalUnits > 0
+              ? round2((unitsSold / totalUnits) * currentCostBasis)
+              : targetAsset.currentValue > 0
+                ? round2((updated.amount / targetAsset.currentValue) * currentCostBasis)
+                : updated.amount;
+            const realizedGain = updated.realizedGain !== undefined
+              ? updated.realizedGain
+              : round2(updated.amount - costBasis);
+            updated.realizedGain = realizedGain;
+
+            let newCurrentVal = Math.max(0, round2(targetAsset.currentValue - updated.amount));
+            if (targetAsset.currentUnitPrice && remainingUnits > 0) {
+              newCurrentVal = round2(remainingUnits * targetAsset.currentUnitPrice);
+            } else if (remainingUnits === 0 && totalUnits > 0) {
+              newCurrentVal = 0;
+            }
+
+            const newTranche: AssetTranche = {
+              id: trancheId,
+              date: updated.date,
+              amount: updated.amount,
+              units: unitsSold > 0 ? unitsSold : undefined,
+              unitPrice: trancheUnitPrice,
+              type: 'sell',
+              realizedGain,
+              transactionId: updated.id,
+              note: updated.note || 'Asset Sale / Redemption',
+            };
+
+            const updatedAsset: Asset = {
+              ...targetAsset,
+              tranches: [...(targetAsset.tranches || []).filter((t) => t.id !== trancheId && t.transactionId !== updated.id), newTranche],
+              totalUnits: remainingUnits > 0 ? remainingUnits : undefined,
+              currentValue: newCurrentVal,
+              purchasePrice: Math.max(0, round2(currentCostBasis - costBasis)),
+              updatedAt: new Date().toISOString(),
+            };
+
+            assetsRef.current = assetsRef.current.map((a) => (a.id === updatedAsset.id ? updatedAsset : a));
+            setAssets(assetsRef.current);
+            await saveEncryptedRecord('asset', updatedAsset, sessionKey);
+          } else {
+            const newTranche: AssetTranche = {
+              id: trancheId,
+              date: updated.date,
+              amount: updated.amount,
+              units: trancheUnits,
+              unitPrice: trancheUnitPrice,
+              transactionId: updated.id,
+              note: updated.note,
+            };
+
+            const updatedTranches = [
+              ...(targetAsset.tranches || []).filter((t) => t.id !== trancheId && t.transactionId !== updated.id),
+              newTranche,
+            ];
+            const newTotalUnits = (targetAsset.totalUnits || 0) + (trancheUnits || 0);
+            let newCurrentVal = round2(targetAsset.currentValue + updated.amount);
+            if (targetAsset.currentUnitPrice && newTotalUnits > 0) {
+              newCurrentVal = round2(newTotalUnits * targetAsset.currentUnitPrice);
+            }
+
+            const updatedAsset: Asset = {
+              ...targetAsset,
+              tranches: updatedTranches,
+              totalUnits: newTotalUnits > 0 ? newTotalUnits : undefined,
+              currentValue: newCurrentVal,
+              purchasePrice: round2((targetAsset.purchasePrice || 0) + updated.amount),
+              updatedAt: new Date().toISOString(),
+            };
+
+            assetsRef.current = assetsRef.current.map((a) => (a.id === updatedAsset.id ? updatedAsset : a));
+            setAssets(assetsRef.current);
+            await saveEncryptedRecord('asset', updatedAsset, sessionKey);
+          }
+        }
+      }
+
+      // 5. Synchronize linked Liability if changed or updated
+      const oldLiabId = oldTx.linkedLiabilityId;
+      const newLiabId = updated.linkedLiabilityId;
+
+      if (oldLiabId) {
+        const oldLiab = liabilitiesRef.current.find((l) => l.id === oldLiabId);
+        if (oldLiab) {
+          const oldIsLoanReceived =
+            oldTx.type === 'income' ||
+            (oldTx as any).subType === 'loan_received' ||
+            (oldTx.tags && oldTx.tags.includes('loan-disbursement'));
+          const restoredBalance = oldIsLoanReceived
+            ? Math.max(0, round2(oldLiab.outstandingBalance - oldTx.amount))
+            : round2(oldLiab.outstandingBalance + oldTx.amount);
+
+          const revertedLiab: Liability = {
+            ...oldLiab,
+            outstandingBalance: restoredBalance,
+            updatedAt: new Date().toISOString(),
+          };
+          liabilitiesRef.current = liabilitiesRef.current.map((l) => (l.id === revertedLiab.id ? revertedLiab : l));
+          setLiabilities(liabilitiesRef.current);
+          await saveEncryptedRecord('liability', revertedLiab, sessionKey);
+        }
+      }
+
+      if (newLiabId) {
+        const newLiab = liabilitiesRef.current.find((l) => l.id === newLiabId);
+        if (newLiab) {
+          const newIsLoanReceived =
+            updated.type === 'income' ||
+            (updated as any).subType === 'loan_received' ||
+            (updated.tags && updated.tags.includes('loan-disbursement'));
+          const adjustedBalance = newIsLoanReceived
+            ? round2(newLiab.outstandingBalance + updated.amount)
+            : Math.max(0, round2(newLiab.outstandingBalance - updated.amount));
+
+          const updatedLiab: Liability = {
+            ...newLiab,
+            outstandingBalance: adjustedBalance,
+            updatedAt: new Date().toISOString(),
+          };
+          liabilitiesRef.current = liabilitiesRef.current.map((l) => (l.id === updatedLiab.id ? updatedLiab : l));
+          setLiabilities(liabilitiesRef.current);
+          await saveEncryptedRecord('liability', updatedLiab, sessionKey);
+        }
+      }
     }
 
     transactionsRef.current = transactionsRef.current
@@ -919,26 +1144,29 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const updatedTranches = targetAsset.tranches.filter(
             (t) => t.id !== txToDel.trancheId && t.transactionId !== txToDel.id
           );
-          const unitsDiff = trancheToRemove?.units || 0;
+          const unitsDiff = trancheToRemove?.units || txToDel.units || 0;
 
           let newTotalUnits = targetAsset.totalUnits || 0;
           let newCurrentVal = targetAsset.currentValue;
           let newPurchasePrice = targetAsset.purchasePrice || 0;
 
           if (isSale) {
-            // Deleting a sale: restore units and add proceeds back to asset
+            // Deleting a sale: restore units and add cost basis back to asset
             newTotalUnits = newTotalUnits + unitsDiff;
-            newCurrentVal = round2(targetAsset.currentValue + txToDel.amount);
-            newPurchasePrice = round2((targetAsset.purchasePrice || 0) + txToDel.amount);
+            const costBasisRestored = trancheToRemove
+              ? (trancheToRemove.amount - (trancheToRemove.realizedGain || 0))
+              : (txToDel.realizedGain !== undefined ? (txToDel.amount - txToDel.realizedGain) : txToDel.amount);
+            newPurchasePrice = round2((targetAsset.purchasePrice || 0) + costBasisRestored);
+            newCurrentVal = targetAsset.currentUnitPrice && newTotalUnits > 0
+              ? round2(newTotalUnits * targetAsset.currentUnitPrice)
+              : round2(targetAsset.currentValue + txToDel.amount);
           } else {
             // Deleting a purchase: remove units and subtract amount
             newTotalUnits = Math.max(0, newTotalUnits - unitsDiff);
-            newCurrentVal = Math.max(0, round2(targetAsset.currentValue - txToDel.amount));
+            newCurrentVal = targetAsset.currentUnitPrice && newTotalUnits > 0
+              ? round2(newTotalUnits * targetAsset.currentUnitPrice)
+              : Math.max(0, round2(targetAsset.currentValue - txToDel.amount));
             newPurchasePrice = Math.max(0, round2((targetAsset.purchasePrice || 0) - txToDel.amount));
-          }
-
-          if (targetAsset.currentUnitPrice && newTotalUnits > 0) {
-            newCurrentVal = round2(newTotalUnits * targetAsset.currentUnitPrice);
           }
 
           const updatedAsset: Asset = {
@@ -958,15 +1186,25 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       // If linked to a Liability, restore the debt balance
       if (txToDel.linkedLiabilityId) {
-        const targetLiab = liabilities.find((l) => l.id === txToDel.linkedLiabilityId);
+        const targetLiab =
+          liabilitiesRef.current.find((l) => l.id === txToDel.linkedLiabilityId) ||
+          liabilities.find((l) => l.id === txToDel.linkedLiabilityId);
         if (targetLiab) {
+          const isLoanReceived =
+            txToDel.type === 'income' ||
+            (txToDel as any).subType === 'loan_received' ||
+            (txToDel.tags && txToDel.tags.includes('loan-disbursement'));
+
           const updatedLiab: Liability = {
             ...targetLiab,
-            outstandingBalance: round2(targetLiab.outstandingBalance + txToDel.amount),
+            outstandingBalance: isLoanReceived
+              ? Math.max(0, round2(targetLiab.outstandingBalance - txToDel.amount))
+              : round2(targetLiab.outstandingBalance + txToDel.amount),
             updatedAt: new Date().toISOString(),
           };
 
-          setLiabilities((prev) => prev.map((l) => (l.id === updatedLiab.id ? updatedLiab : l)));
+          liabilitiesRef.current = liabilitiesRef.current.map((l) => (l.id === updatedLiab.id ? updatedLiab : l));
+          setLiabilities(liabilitiesRef.current);
           await saveEncryptedRecord('liability', updatedLiab, sessionKey);
         }
       }
@@ -1828,7 +2066,12 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await deleteRecord(id);
   };
 
-  const markPlanPaid = async (planId: string, accountId: string, date: string): Promise<void> => {
+  const markPlanPaid = async (
+    planId: string,
+    accountId: string,
+    date: string,
+    accrualMonth?: string
+  ): Promise<void> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
     const plan = plannedExpenses.find((p) => p.id === planId);
     if (!plan) return;
@@ -1842,6 +2085,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       accountId,
       categoryId: plan.categoryId || undefined,
       note: `Paid: ${plan.name}`,
+      accrualMonth: accrualMonth || date.slice(0, 7),
     });
 
     // 2. Advance recurrence or mark paid
@@ -2026,8 +2270,12 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const totalUnits = targetAsset.totalUnits || 0;
     const currentCostBasis = targetAsset.purchasePrice || targetAsset.currentValue;
 
-    // Cost basis of sold units: proportional if units tracked, else total proceeds
-    const costBasis = totalUnits > 0 ? round2((unitsSold / totalUnits) * currentCostBasis) : totalProceeds;
+    // Cost basis of sold units: proportional if units tracked, else proportional to value redeemed
+    const costBasis = totalUnits > 0
+      ? round2((unitsSold / totalUnits) * currentCostBasis)
+      : targetAsset.currentValue > 0
+        ? round2((totalProceeds / targetAsset.currentValue) * currentCostBasis)
+        : totalProceeds;
     const realizedGain = round2(totalProceeds - costBasis);
 
     const remainingUnits = Math.max(0, totalUnits - unitsSold);
@@ -2077,6 +2325,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       trancheId: sellTrancheId,
       subType: 'asset_sale',
       realizedGain,
+      units: unitsSold > 0 ? unitsSold : undefined,
+      unitPrice: params.salePricePerUnit,
       tags: ['asset-sale', 'redemption'],
       isSaleTrancheHandled: true,
     } as any);

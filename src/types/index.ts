@@ -96,6 +96,9 @@ export interface Transaction {
   importBatchId?: string;
   // Asset Realized Capital Gain/Loss
   realizedGain?: number;
+  units?: number;
+  unitPrice?: number;
+  accrualMonth?: string; // e.g. '2026-08' for budget month matching
   updatedAt: string;
 }
 
@@ -254,6 +257,7 @@ export type LiabilityType =
   | 'education_loan'
   | 'credit_card'
   | 'gold_loan'
+  | 'family_peer'
   | 'other';
 
 export interface Liability {

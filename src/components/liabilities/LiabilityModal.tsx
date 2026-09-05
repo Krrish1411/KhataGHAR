@@ -174,12 +174,20 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
           <Select
             label="Liability Category"
             value={type}
-            onChange={(e) => setType(e.target.value as LiabilityType)}
+            onChange={(e) => {
+              const newType = e.target.value as LiabilityType;
+              setType(newType);
+              if (newType === 'family_peer') {
+                setInterestRate('0');
+                setInterestType('fixed');
+              }
+            }}
             options={[
               { value: 'home_loan', label: 'Home Loan / Mortgage' },
               { value: 'car_loan', label: 'Car / Auto Loan' },
               { value: 'personal_loan', label: 'Personal Loan' },
               { value: 'education_loan', label: 'Education Loan' },
+              { value: 'family_peer', label: 'Family / Relative / Personal Debt' },
               { value: 'credit_card', label: 'Credit Card Outstanding' },
               { value: 'gold_loan', label: 'Gold Loan' },
               { value: 'other', label: 'Other Institutional Debt' },
@@ -187,8 +195,8 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
           />
 
           <Input
-            label="Lender / Financial Institution"
-            placeholder="e.g. HDFC Bank, SBI, Tata Capital"
+            label={type === 'family_peer' ? 'Person / Lender (e.g. Sister)' : 'Lender / Financial Institution'}
+            placeholder={type === 'family_peer' ? 'e.g. Sister, Father, Friend' : 'e.g. HDFC Bank, SBI, Tata Capital'}
             value={lender}
             onChange={(e) => setLender(e.target.value)}
           />
@@ -319,8 +327,8 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
           <Input
             type="number"
             step="any"
-            label="Monthly EMI Amount"
-            placeholder="0.00"
+            label={type === 'family_peer' ? 'Monthly Repayment (Optional)' : 'Monthly EMI Amount'}
+            placeholder={type === 'family_peer' ? '0.00 (Flexible / On-Demand)' : '0.00'}
             value={emiAmount}
             onChange={(e) => setEmiAmount(e.target.value)}
             tabularNums

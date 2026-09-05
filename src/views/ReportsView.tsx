@@ -115,53 +115,145 @@ export const ReportsView: React.FC = () => {
     return transactions.filter((t: Transaction) => t.date >= priorRange.start && t.date <= priorRange.end);
   }, [transactions, priorRange]);
 
-  // Current Summary Metrics
+  // Current Summary Metrics (Pure P&L vs Capital Movements)
   const currentSummary = useMemo(() => {
-    let totalIncome = 0;
-    let totalExpense = 0;
+    let operatingIncome = 0;
+    let grossInflow = 0;
+    let operatingExpense = 0;
+    let grossOutflow = 0;
+    let realizedCapitalGains = 0;
+    let investedCapital = 0;
+    let assetRedemptions = 0;
+
+    const catMap = new Map<string, Category>(categories.map((c) => [c.id, c]));
 
     currentPeriodTxs.forEach((t: Transaction) => {
-      if (t.type === 'income') totalIncome += t.amount;
-      else if (t.type === 'expense') totalExpense += t.amount;
+      const isAssetSale =
+        t.subType === 'asset_sale' ||
+        (Boolean(t.linkedAssetId) && t.type === 'income') ||
+        Boolean(t.tags && t.tags.includes('asset-sale'));
+
+      const isInvestment =
+        t.subType === 'investment' ||
+        (Boolean(t.linkedAssetId) && t.type === 'expense') ||
+        Boolean(t.tags && t.tags.includes('investment'));
+
+      const isLoanInflow =
+        t.subType === 'loan_received' ||
+        (Boolean(t.linkedLiabilityId) && t.type === 'income') ||
+        Boolean(t.tags && t.tags.includes('loan-disbursement'));
+
+      const isDebtPaydown =
+        t.subType === 'debt_payment' ||
+        (Boolean(t.linkedLiabilityId) && t.type === 'expense');
+
+      if (t.type === 'income') {
+        grossInflow += t.amount;
+        if (isAssetSale) {
+          assetRedemptions += t.amount;
+          if (t.realizedGain !== undefined) {
+            realizedCapitalGains += t.realizedGain;
+          }
+        } else if (!isLoanInflow) {
+          // Pure operational income (Salary, Business, Freelance, Dividends, etc.)
+          operatingIncome += t.amount;
+        }
+      } else if (t.type === 'expense') {
+        grossOutflow += t.amount;
+        if (isInvestment) {
+          investedCapital += t.amount;
+        } else if (!isDebtPaydown) {
+          const cat = t.categoryId ? catMap.get(t.categoryId) : undefined;
+          const isCatInvest = cat && (cat.name.toLowerCase().includes('invest') || cat.name.toLowerCase().includes('sip'));
+          if (isCatInvest) {
+            investedCapital += t.amount;
+          } else {
+            operatingExpense += t.amount;
+          }
+        }
+      }
     });
 
-    const netSavings = totalIncome - totalExpense;
-    const savingsRate = totalIncome > 0 ? (netSavings / totalIncome) * 100 : 0;
+    const totalEconomicIncome = operatingIncome + Math.max(0, realizedCapitalGains);
+    const netSavings = totalEconomicIncome - operatingExpense;
+    const savingsRate = totalEconomicIncome > 0 ? (netSavings / totalEconomicIncome) * 100 : 0;
 
     const totalAssets =
       assets.reduce((sum, a) => sum + a.currentValue, 0) +
-      accounts.reduce((sum, a) => sum + a.balance, 0);
+      accounts.filter((a) => a.isVisibleOnDashboard !== false).reduce((sum, a) => sum + a.balance, 0);
     const totalLiabilities = liabilities.reduce((sum, l) => sum + l.outstandingBalance, 0);
 
     return {
-      totalIncome,
-      totalExpense,
+      totalIncome: totalEconomicIncome,
+      pureOperatingIncome: operatingIncome,
+      realizedCapitalGains,
+      grossInflow,
+      totalExpense: operatingExpense,
+      grossOutflow,
+      investedCapital,
+      assetRedemptions,
       netSavings,
       savingsRate,
       netWorth: totalAssets - totalLiabilities,
     };
-  }, [currentPeriodTxs, assets, accounts, liabilities]);
+  }, [currentPeriodTxs, assets, accounts, liabilities, categories]);
 
   // Prior Summary Metrics
   const priorSummary = useMemo(() => {
-    let totalIncome = 0;
-    let totalExpense = 0;
+    let operatingIncome = 0;
+    let operatingExpense = 0;
+    let realizedCapitalGains = 0;
+
+    const catMap = new Map<string, Category>(categories.map((c) => [c.id, c]));
 
     priorPeriodTxs.forEach((t: Transaction) => {
-      if (t.type === 'income') totalIncome += t.amount;
-      else if (t.type === 'expense') totalExpense += t.amount;
+      const isAssetSale =
+        t.subType === 'asset_sale' ||
+        (Boolean(t.linkedAssetId) && t.type === 'income') ||
+        Boolean(t.tags && t.tags.includes('asset-sale'));
+
+      const isInvestment =
+        t.subType === 'investment' ||
+        (Boolean(t.linkedAssetId) && t.type === 'expense') ||
+        Boolean(t.tags && t.tags.includes('investment'));
+
+      const isLoanInflow =
+        t.subType === 'loan_received' ||
+        (Boolean(t.linkedLiabilityId) && t.type === 'income') ||
+        Boolean(t.tags && t.tags.includes('loan-disbursement'));
+
+      const isDebtPaydown =
+        t.subType === 'debt_payment' ||
+        (Boolean(t.linkedLiabilityId) && t.type === 'expense');
+
+      if (t.type === 'income') {
+        if (isAssetSale) {
+          if (t.realizedGain !== undefined) realizedCapitalGains += t.realizedGain;
+        } else if (!isLoanInflow) {
+          operatingIncome += t.amount;
+        }
+      } else if (t.type === 'expense') {
+        if (!isInvestment && !isDebtPaydown) {
+          const cat = t.categoryId ? catMap.get(t.categoryId) : undefined;
+          const isCatInvest = cat && (cat.name.toLowerCase().includes('invest') || cat.name.toLowerCase().includes('sip'));
+          if (!isCatInvest) {
+            operatingExpense += t.amount;
+          }
+        }
+      }
     });
 
-    const netSavings = totalIncome - totalExpense;
-    const savingsRate = totalIncome > 0 ? (netSavings / totalIncome) * 100 : 0;
+    const totalEconomicIncome = operatingIncome + Math.max(0, realizedCapitalGains);
+    const netSavings = totalEconomicIncome - operatingExpense;
+    const savingsRate = totalEconomicIncome > 0 ? (netSavings / totalEconomicIncome) * 100 : 0;
 
     return {
-      totalIncome,
-      totalExpense,
+      totalIncome: totalEconomicIncome,
+      totalExpense: operatingExpense,
       netSavings,
       savingsRate,
     };
-  }, [priorPeriodTxs]);
+  }, [priorPeriodTxs, categories]);
 
   // Full 16-Ratio Engine for selected period
   const ratios = useMemo(
@@ -280,6 +372,7 @@ export const ReportsView: React.FC = () => {
         if (ratios.expenseToIncomeRatio <= 0.85) return { tone: 'mari' as const, label: 'Elevated' };
         return { tone: 'flare' as const, label: 'Deficit Risk' };
       case 'debtToIncome':
+        if (ratios.debtToIncomeRatio === 0) return { tone: 'pine' as const, label: 'Debt-Free ✨' };
         if (ratios.debtToIncomeRatio <= 0.3) return { tone: 'pine' as const, label: 'Safe Zone' };
         if (ratios.debtToIncomeRatio <= 0.45) return { tone: 'mari' as const, label: 'Moderate' };
         return { tone: 'flare' as const, label: 'High Debt' };
@@ -288,15 +381,21 @@ export const ReportsView: React.FC = () => {
         if (ratios.essentialSpendRatio <= 70) return { tone: 'mari' as const, label: 'Standard' };
         return { tone: 'flare' as const, label: 'High Fixed' };
       case 'liquidRunway':
-      case 'emergencyBuffer':
+        if (ratios.runwayMonths >= 999) return { tone: 'pine' as const, label: 'Self-Sustaining' };
         if (ratios.runwayMonths >= 6) return { tone: 'pine' as const, label: 'Resilient' };
         if (ratios.runwayMonths >= 3) return { tone: 'mari' as const, label: 'Moderate' };
+        return { tone: 'flare' as const, label: 'Low Buffer' };
+      case 'emergencyBuffer':
+        if (ratios.emergencyFundCoverageMonths >= 999) return { tone: 'pine' as const, label: 'Fully Funded ✨' };
+        if (ratios.emergencyFundCoverageMonths >= 6) return { tone: 'pine' as const, label: 'Resilient' };
+        if (ratios.emergencyFundCoverageMonths >= 3) return { tone: 'mari' as const, label: 'Moderate' };
         return { tone: 'flare' as const, label: 'Low Buffer' };
       case 'investmentRate':
         if (ratios.investmentRate >= 20) return { tone: 'pine' as const, label: 'Aggressive' };
         if (ratios.investmentRate >= 10) return { tone: 'mari' as const, label: 'Active' };
         return { tone: 'flare' as const, label: 'Dormant' };
       case 'liquidityRatio':
+        if (ratios.liquidityRatio === -1) return { tone: 'pine' as const, label: 'Debt-Free' };
         if (ratios.liquidityRatio >= 2) return { tone: 'pine' as const, label: 'Solvent' };
         if (ratios.liquidityRatio >= 1) return { tone: 'mari' as const, label: 'Tight' };
         return { tone: 'flare' as const, label: 'Illiquid' };
@@ -309,6 +408,7 @@ export const ReportsView: React.FC = () => {
         if (ratios.recurringExpenseRatio <= 45) return { tone: 'mari' as const, label: 'Moderate' };
         return { tone: 'flare' as const, label: 'Sticky Costs' };
       case 'assetCoverage':
+        if (ratios.assetToDebtRatio === -1) return { tone: 'pine' as const, label: 'Debt-Free (∞)' };
         if (ratios.assetToDebtRatio >= 3) return { tone: 'pine' as const, label: 'Super-Solvent' };
         if (ratios.assetToDebtRatio >= 1.5) return { tone: 'mari' as const, label: 'Covered' };
         return { tone: 'flare' as const, label: 'Leveraged' };
@@ -325,10 +425,10 @@ export const ReportsView: React.FC = () => {
     }
   };
 
-  // Cashflow Forecast & Burn Radar Calculations
+  // Cashflow Forecast & Net Burn Radar Calculations
   const cashflowStats = useMemo(() => {
     const liquidCash = accounts
-      .filter((a) => a.type === 'bank' || a.type === 'wallet' || a.type === 'cash' || a.type === 'upi')
+      .filter((a) => a.isVisibleOnDashboard !== false && (a.type === 'bank' || a.type === 'wallet' || a.type === 'cash' || a.type === 'upi'))
       .reduce((s, a) => s + a.balance, 0);
 
     const monthlyEMIs = liabilities.reduce((s, l) => s + (l.emiAmount || 0), 0);
@@ -336,29 +436,46 @@ export const ReportsView: React.FC = () => {
       1,
       Math.round((new Date(selectedRange.end).getTime() - new Date(selectedRange.start).getTime()) / 86400000)
     );
-    const dailyBurn = currentSummary.totalExpense / daysInPeriod;
-    const monthlyBurn = dailyBurn * 30 + monthlyEMIs;
-    const runwayMonths = monthlyBurn > 0 ? liquidCash / monthlyBurn : 99;
+    const dailyOutflow = currentSummary.totalExpense / daysInPeriod;
+    const monthlyGrossOutlay = dailyOutflow * 30 + monthlyEMIs;
+    const monthlyIncome = (currentSummary.totalIncome / daysInPeriod) * 30;
+    const isCashflowPositive = monthlyIncome >= monthlyGrossOutlay;
+    const netSurplusMonthly = monthlyIncome - monthlyGrossOutlay;
+    const monthlyNetBurn = Math.max(0, monthlyGrossOutlay - monthlyIncome);
 
-    const proj30 = liquidCash - monthlyBurn;
-    const proj60 = liquidCash - monthlyBurn * 2;
-    const proj90 = liquidCash - monthlyBurn * 3;
+    const runwayMonths = isCashflowPositive
+      ? 999
+      : monthlyNetBurn > 0
+      ? liquidCash / monthlyNetBurn
+      : 999;
+
+    const proj30 = liquidCash + (isCashflowPositive ? netSurplusMonthly : -monthlyNetBurn);
+    const proj60 = liquidCash + (isCashflowPositive ? netSurplusMonthly * 2 : -monthlyNetBurn * 2);
+    const proj90 = liquidCash + (isCashflowPositive ? netSurplusMonthly * 3 : -monthlyNetBurn * 3);
 
     let radarTone: 'pine' | 'mari' | 'flare' = 'pine';
-    let radarStatus = 'Resilient Buffer';
-    if (runwayMonths < 3) {
-      radarTone = 'flare';
-      radarStatus = 'Critical Runway Alert';
-    } else if (runwayMonths < 6) {
-      radarTone = 'mari';
-      radarStatus = 'Moderate Runway';
+    let radarStatus = isCashflowPositive
+      ? 'Cashflow Positive ✨ (Self-Sustaining)'
+      : 'Resilient Buffer';
+
+    if (!isCashflowPositive) {
+      if (runwayMonths < 3) {
+        radarTone = 'flare';
+        radarStatus = 'Critical Runway Alert';
+      } else if (runwayMonths < 6) {
+        radarTone = 'mari';
+        radarStatus = 'Moderate Runway';
+      }
     }
 
     return {
       liquidCash,
       monthlyEMIs,
-      dailyBurn,
-      monthlyBurn,
+      dailyBurn: dailyOutflow,
+      monthlyBurn: monthlyGrossOutlay,
+      netBurn: monthlyNetBurn,
+      isCashflowPositive,
+      netSurplusMonthly,
       runwayMonths,
       proj30,
       proj60,
@@ -414,7 +531,13 @@ export const ReportsView: React.FC = () => {
     const netSav = inc - exp;
     const savRate = inc > 0 ? (netSav / inc) * 100 : 0;
 
+    // Filter out Investments & SIP from expense leakages!
     const sortedCats = Array.from(catMap.entries())
+      .filter(([cid]) => {
+        const c = categories.find((cat) => cat.id === cid);
+        if (c && (c.name.toLowerCase().includes('invest') || c.name.toLowerCase().includes('sip'))) return false;
+        return true;
+      })
       .sort((a, b) => b[1] - a[1])
       .map(([cid, amt]) => ({
         name: categories.find((c) => c.id === cid)?.name || 'Category',
@@ -450,7 +573,7 @@ export const ReportsView: React.FC = () => {
     if (savRate < 10 && inc > 0) {
       wrongs.push(`Sub-optimal savings rate of ${savRate.toFixed(1)}% (fell below safety threshold of 15%).`);
     }
-    if (cashflowStats.runwayMonths < 4) {
+    if (cashflowStats.runwayMonths < 4 && !cashflowStats.isCashflowPositive) {
       wrongs.push(`Compressed liquid runway of only ${cashflowStats.runwayMonths.toFixed(1)} months leaves vulnerability to cashflow shocks.`);
     }
     if (wrongs.length === 0) {
@@ -459,7 +582,7 @@ export const ReportsView: React.FC = () => {
 
     const prescriptions: string[] = [
       `Enforce a hard ceiling on "${sortedCats[0]?.name || 'Discretionary'}" spending to recapture ${formatCompactCurrency((sortedCats[0]?.amount || 5000) * 0.15, baseCurrency, numberFormat, false)} per month.`,
-      cashflowStats.runwayMonths < 6
+      cashflowStats.runwayMonths < 6 && !cashflowStats.isCashflowPositive
         ? 'Route next surplus income into liquid bank funds to attain the 6-month buffer threshold.'
         : 'Deploy surplus liquidity beyond 6-month runway into long-term diversified equity index SIPs.',
       totalLiabs > 0
@@ -485,12 +608,12 @@ export const ReportsView: React.FC = () => {
     return [
       { name: '1. Savings Rate', value: `${ratios.savingsRate.toFixed(1)}%`, status: getRatioMeta('savingsRate').label, benchmark: '≥ 30%' },
       { name: '2. Expense-to-Income', value: `${(ratios.expenseToIncomeRatio * 100).toFixed(0)}%`, status: getRatioMeta('expenseToIncome').label, benchmark: '≤ 70%' },
-      { name: '3. Debt-to-Income (DTI)', value: `${(ratios.debtToIncomeRatio * 100).toFixed(0)}%`, status: getRatioMeta('debtToIncome').label, benchmark: '≤ 30%' },
+      { name: '3. Debt-to-Income (DTI)', value: ratios.debtToIncomeRatio === 0 ? '0% (Debt-Free)' : `${(ratios.debtToIncomeRatio * 100).toFixed(0)}%`, status: getRatioMeta('debtToIncome').label, benchmark: '≤ 30%' },
       { name: '4. Essential Outflow %', value: `${ratios.essentialSpendRatio.toFixed(0)}%`, status: getRatioMeta('essentialSpend').label, benchmark: '≤ 50%' },
-      { name: '5. Liquid Runway', value: `${ratios.runwayMonths.toFixed(1)} mos`, status: getRatioMeta('liquidRunway').label, benchmark: '≥ 6 mos' },
+      { name: '5. Liquid Runway', value: ratios.runwayMonths >= 999 ? 'Self-Sustaining' : `${ratios.runwayMonths.toFixed(1)} mos`, status: getRatioMeta('liquidRunway').label, benchmark: '≥ 6 mos' },
       { name: '6. Investment Rate', value: `${ratios.investmentRate.toFixed(1)}%`, status: getRatioMeta('investmentRate').label, benchmark: '≥ 20%' },
-      { name: '7. Liquidity Ratio', value: `${ratios.liquidityRatio.toFixed(1)}x`, status: getRatioMeta('liquidityRatio').label, benchmark: '≥ 2.0x' },
-      { name: '8. Asset Coverage', value: `${ratios.assetToDebtRatio.toFixed(1)}x`, status: getRatioMeta('assetCoverage').label, benchmark: '≥ 3.0x' },
+      { name: '7. Liquidity Ratio', value: ratios.liquidityRatio === -1 ? 'Debt-Free' : `${ratios.liquidityRatio.toFixed(1)}x`, status: getRatioMeta('liquidityRatio').label, benchmark: '≥ 2.0x' },
+      { name: '8. Asset Coverage', value: ratios.assetToDebtRatio === -1 ? 'Debt-Free (∞)' : `${ratios.assetToDebtRatio.toFixed(1)}x`, status: getRatioMeta('assetCoverage').label, benchmark: '≥ 3.0x' },
     ];
   }, [ratios]);
 
@@ -764,25 +887,25 @@ export const ReportsView: React.FC = () => {
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-line">
             <div>
               <h3 className="font-display font-bold text-sm text-ink">
-                Monthly Inflow vs Outflow Velocity
+                Gross Inflow vs Outflow Velocity
               </h3>
               <p className="text-xs text-ink/50 mt-0.5">
-                Bars represent total volume; the gold spline depicts your net surplus trajectory
+                Bars represent monthly gross cash movements; the gold spline depicts your net cash trajectory
               </p>
             </div>
 
             <div className="flex items-center gap-4 text-xs font-semibold">
               <span className="flex items-center gap-1.5 text-pine-700 dark:text-pine-400">
                 <span className="w-2.5 h-2.5 rounded-sm bg-pine-600" />
-                Income
+                Gross Cash Inflow
               </span>
               <span className="flex items-center gap-1.5 text-flare-600">
                 <span className="w-2.5 h-2.5 rounded-sm bg-flare-500" />
-                Expense
+                Gross Cash Outflow
               </span>
               <span className="flex items-center gap-1.5 text-mari-600">
                 <span className="w-3 h-0.5 bg-mari-500 rounded-full" />
-                Net Margin
+                Net Cash Margin
               </span>
             </div>
           </div>
@@ -823,14 +946,14 @@ export const ReportsView: React.FC = () => {
                 />
                 <Bar
                   dataKey="Income"
-                  name="Income"
+                  name="Gross Cash Inflow"
                   fill="#12855a"
                   radius={[4, 4, 0, 0]}
                   maxBarSize={32}
                 />
                 <Bar
                   dataKey="Expense"
-                  name="Expense"
+                  name="Gross Cash Outflow"
                   fill="#e05252"
                   radius={[4, 4, 0, 0]}
                   maxBarSize={32}
@@ -838,7 +961,7 @@ export const ReportsView: React.FC = () => {
                 <Line
                   type="monotone"
                   dataKey="Savings"
-                  name="Net Margin"
+                  name="Net Cash Margin"
                   stroke="#d97706"
                   strokeWidth={2.5}
                   dot={{ fill: '#d97706', r: 4 }}
@@ -1181,7 +1304,11 @@ export const ReportsView: React.FC = () => {
                     <Badge tone={meta.tone} size="xs">{meta.label}</Badge>
                   </div>
                   <div className="font-display font-extrabold text-[24px] num text-mari-600 mt-1.5">
-                    <AnimatedNumber value={ratios.debtToIncomeRatio * 100} isPercent isPrivacyMode={isPrivacyMode} />
+                    {ratios.debtToIncomeRatio === 0 ? (
+                      <span className="text-[20px] text-pine-700 dark:text-pine-400 font-bold">0% (Debt-Free ✨)</span>
+                    ) : (
+                      <AnimatedNumber value={ratios.debtToIncomeRatio * 100} isPercent isPrivacyMode={isPrivacyMode} />
+                    )}
                   </div>
                 </div>
                 <p className="text-[11px] text-ink/45 mt-2 pt-2 border-t border-line/60">
@@ -1250,7 +1377,11 @@ export const ReportsView: React.FC = () => {
                     <Badge tone={meta.tone} size="xs">{meta.label}</Badge>
                   </div>
                   <div className="font-display font-extrabold text-[24px] num text-pine-700 dark:text-pine-400 mt-1.5">
-                    {ratios.runwayMonths.toFixed(1)} mo
+                    {ratios.runwayMonths >= 999 ? (
+                      <span className="text-[19px] font-bold">Self-Sustaining ✨</span>
+                    ) : (
+                      `${ratios.runwayMonths.toFixed(1)} mo`
+                    )}
                   </div>
                 </div>
                 <p className="text-[11px] text-ink/45 mt-2 pt-2 border-t border-line/60">
@@ -1273,7 +1404,11 @@ export const ReportsView: React.FC = () => {
                     <Badge tone={meta.tone} size="xs">{meta.label}</Badge>
                   </div>
                   <div className="font-display font-extrabold text-[24px] num text-pine-700 dark:text-pine-400 mt-1.5">
-                    {ratios.emergencyFundCoverageMonths.toFixed(1)} mo
+                    {ratios.emergencyFundCoverageMonths >= 999 ? (
+                      <span className="text-[19px] font-bold">Fully Funded ✨</span>
+                    ) : (
+                      `${ratios.emergencyFundCoverageMonths.toFixed(1)} mo`
+                    )}
                   </div>
                 </div>
                 <p className="text-[11px] text-ink/45 mt-2 pt-2 border-t border-line/60">
@@ -1365,7 +1500,11 @@ export const ReportsView: React.FC = () => {
                     <Badge tone={meta.tone} size="xs">{meta.label}</Badge>
                   </div>
                   <div className="font-display font-extrabold text-[24px] num text-ink mt-1.5">
-                    {ratios.liquidityRatio.toFixed(2)}x
+                    {ratios.liquidityRatio === -1 ? (
+                      <span className="text-[20px] text-pine-700 dark:text-pine-400 font-bold">Debt-Free ✨</span>
+                    ) : (
+                      `${ratios.liquidityRatio.toFixed(2)}x`
+                    )}
                   </div>
                 </div>
                 <p className="text-[11px] text-ink/45 mt-2 pt-2 border-t border-line/60">
@@ -1445,7 +1584,11 @@ export const ReportsView: React.FC = () => {
                     <Badge tone={meta.tone} size="xs">{meta.label}</Badge>
                   </div>
                   <div className="font-display font-extrabold text-[24px] num text-ink mt-1.5">
-                    {ratios.assetToDebtRatio.toFixed(1)}x
+                    {ratios.assetToDebtRatio === -1 ? (
+                      <span className="text-[20px] text-pine-700 dark:text-pine-400 font-bold">Debt-Free (∞) ✨</span>
+                    ) : (
+                      `${ratios.assetToDebtRatio.toFixed(1)}x`
+                    )}
                   </div>
                 </div>
                 <p className="text-[11px] text-ink/45 mt-2 pt-2 border-t border-line/60">
@@ -1557,9 +1700,11 @@ export const ReportsView: React.FC = () => {
               <span className={`font-display font-extrabold text-lg sm:text-xl num mt-0.5 block ${
                 cashflowStats.radarTone === 'pine' ? 'text-pine-700 dark:text-pine-400' : cashflowStats.radarTone === 'mari' ? 'text-mari-600' : 'text-flare-600'
               }`}>
-                {cashflowStats.runwayMonths >= 99 ? '∞' : cashflowStats.runwayMonths.toFixed(1)} mos
+                {cashflowStats.runwayMonths >= 99 ? '∞ (Self-Sustaining)' : `${cashflowStats.runwayMonths.toFixed(1)} mos`}
               </span>
-              <span className="text-[11px] text-ink/50 block mt-1">Zero-income endurance</span>
+              <span className="text-[11px] text-ink/50 block mt-1">
+                {cashflowStats.isCashflowPositive ? 'Surplus generating' : 'Zero-income endurance'}
+              </span>
             </div>
           </div>
 

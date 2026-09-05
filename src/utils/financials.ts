@@ -41,16 +41,18 @@ export function computeDerivedFinancials(
   const thisMonthKey = monthKey(now);
   const lastMonthKey = monthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1));
 
-  // 1. Account Balances
+  // 1. Account Balances (Dashboard only considers visible accounts)
+  const visibleAccounts = accounts.filter((a) => a.isVisibleOnDashboard !== false);
+
   // Overdraft on non-credit accounts (negative balances)
-  const overdraftDebt = accounts
+  const overdraftDebt = visibleAccounts
     .filter((a) => a.type !== 'credit_card' && a.balance < 0)
     .reduce((sum, a) => sum + Math.abs(a.balance), 0);
 
   // Net positive liquid money across non-credit accounts
   const liquidBalance = Math.max(
     0,
-    accounts
+    visibleAccounts
       .filter((a) => a.type !== 'credit_card')
       .reduce((sum, a) => sum + a.balance, 0)
   );
@@ -58,14 +60,14 @@ export function computeDerivedFinancials(
   // Credit card debt is negative balance on credit accounts
   const creditOutstanding = Math.max(
     0,
-    -accounts.filter((a) => a.type === 'credit_card').reduce((sum, a) => sum + Math.min(0, a.balance), 0)
+    -visibleAccounts.filter((a) => a.type === 'credit_card').reduce((sum, a) => sum + Math.min(0, a.balance), 0)
   );
 
   const extraAssetsVal = assets.reduce((sum, a) => sum + (a.currentValue || 0), 0);
   const extraLiabVal = liabilities.reduce((sum, l) => sum + (l.outstandingBalance || 0), 0);
   const monthlyEMIs = liabilities.reduce((sum, l) => sum + (l.emiAmount || 0), 0);
 
-  const totalAssets = accounts.reduce((sum, a) => sum + Math.max(0, a.balance), 0) + extraAssetsVal;
+  const totalAssets = visibleAccounts.reduce((sum, a) => sum + Math.max(0, a.balance), 0) + extraAssetsVal;
   const totalLiabilities = creditOutstanding + overdraftDebt + extraLiabVal;
 
   // 2. People Ledger ("Not Your Money")

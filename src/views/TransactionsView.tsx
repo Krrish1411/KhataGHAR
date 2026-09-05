@@ -658,16 +658,6 @@ export const TransactionsView: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={handleReconcile}
-            disabled={isReconciling}
-            className="px-3.5 py-2 rounded-xl border border-line bg-card hover:bg-moss active:scale-[0.97] text-xs font-semibold text-ink flex items-center gap-1.5 cursor-pointer transition-all"
-            title="Recalculate and reconcile all account balances with the ledger"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-pine-600 ${isReconciling ? 'animate-spin' : ''}`} />
-            <span>{isReconciling ? 'Reconciling…' : 'Reconcile'}</span>
-          </button>
-
-          <button
             onClick={handleExportCSV}
             className="px-3.5 py-2 rounded-xl border border-line bg-card hover:bg-moss active:scale-[0.97] text-xs font-semibold text-ink flex items-center gap-1.5 cursor-pointer transition-all"
           >
