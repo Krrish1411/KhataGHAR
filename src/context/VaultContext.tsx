@@ -1565,6 +1565,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         await saveEncryptedRecord('account', updatedAcc, sessionKey);
       }
     }
+  };
+
   const updateSettlement = async (
     entryId: string,
     settlementId: string,
