@@ -13,6 +13,8 @@ interface BudgetModalProps {
   budgetToEdit?: Budget;
 }
 
+import { getCategoryEmoji } from '../common/IconRenderer';
+
 export const BudgetModal: React.FC<BudgetModalProps> = ({
   isOpen,
   onClose,
@@ -20,7 +22,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
 }) => {
   const { categories, addBudget, updateBudget } = useVault();
 
-  const expenseCategories = categories.filter((c) => c.type === 'expense' && !c.parentId);
+  const expenseCategories = categories.filter((c) => c.type === 'expense' && !c.parentId && !c.hidden);
 
   const [categoryId, setCategoryId] = useState(
     budgetToEdit?.categoryId || (expenseCategories.length > 0 ? expenseCategories[0].id : '')
@@ -98,7 +100,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
           onChange={(e) => setCategoryId(e.target.value)}
           options={expenseCategories.map((c) => ({
             value: c.id,
-            label: c.name,
+            label: `${getCategoryEmoji(c.icon, c.type)} ${c.name}`,
           }))}
         />
 

@@ -26,6 +26,7 @@ import {
 import { decryptData } from '../services/crypto';
 import { generateDemoDataset } from '../services/demoData';
 import { isTxAfterBaseline } from '../utils/dates';
+import { generateStarterCategories } from '../utils/categories';
 
 interface VaultContextType {
   // Active Vault Meta
@@ -51,7 +52,7 @@ interface VaultContextType {
   addAccount: (account: Omit<Account, 'id' | 'vaultId' | 'updatedAt'>) => Promise<Account>;
   updateAccount: (account: Account) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
-  reconcileAccounts: () => Promise<void>;
+  reconcileAccounts: (targetBalances?: Record<string, number>) => Promise<void>;
 
   // Transaction Operations
   addTransaction: (tx: Omit<Transaction, 'id' | 'vaultId' | 'updatedAt'>) => Promise<Transaction>;
@@ -64,6 +65,7 @@ interface VaultContextType {
   addCategory: (cat: Omit<Category, 'id' | 'vaultId' | 'updatedAt'>) => Promise<Category>;
   updateCategory: (cat: Category) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
+  resetCategoriesToDefault: () => Promise<void>;
 
   // People Ledger Operations
   addPeopleEntry: (entry: Omit<PeopleLedgerEntry, 'id' | 'vaultId' | 'updatedAt' | 'settlements' | 'status'>) => Promise<PeopleLedgerEntry>;
@@ -311,9 +313,34 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Sort transactions descending by date
       txs.sort((a, b) => b.date.localeCompare(a.date));
 
+      // Auto-purge legacy subcategories (_sub_ or parentId) from vault
+      let cleanCats = cats;
+      const legacySubCats = cats.filter((c) => Boolean(c.parentId) || c.id.includes('_sub_'));
+      if (legacySubCats.length > 0) {
+        const subToParentMap = new Map<string, string>();
+        legacySubCats.forEach((sc) => {
+          if (sc.parentId) subToParentMap.set(sc.id, sc.parentId);
+        });
+
+        // Reassign any transactions referencing a subcategory to its parent
+        for (const t of txs) {
+          if (t.categoryId && subToParentMap.has(t.categoryId)) {
+            t.categoryId = subToParentMap.get(t.categoryId)!;
+            await saveEncryptedRecord('transaction', t, sessionKey);
+          }
+        }
+
+        // Delete legacy subcategories from database
+        for (const sc of legacySubCats) {
+          await deleteRecord(sc.id);
+        }
+
+        cleanCats = cats.filter((c) => !c.parentId && !c.id.includes('_sub_'));
+      }
+
       setAccounts(accs);
       setTransactions(txs);
-      setCategories(cats);
+      setCategories(cleanCats);
       setPeopleLedger(people);
       setBudgets(bdgs);
       setGoals(gls);
@@ -1071,8 +1098,21 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const deleteCategory = async (id: string): Promise<void> => {
+    const toDelete = categories.filter((c) => c.id === id || c.parentId === id);
     setCategories((prev) => prev.filter((c) => c.id !== id && c.parentId !== id));
-    await deleteRecord(id);
+    for (const c of toDelete) {
+      await deleteRecord(c.id);
+    }
+  };
+
+  const resetCategoriesToDefault = async (): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    for (const c of categories) {
+      await deleteRecord(c.id);
+    }
+    const freshCats = generateStarterCategories(activeVault.id);
+    await bulkSaveEncryptedRecords('category', freshCats, sessionKey);
+    setCategories(freshCats);
   };
 
   // People Ledger Operations
@@ -1744,6 +1784,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addCategory,
         updateCategory,
         deleteCategory,
+        resetCategoriesToDefault,
         addPeopleEntry,
         updatePeopleEntry,
         updateContactProfile,

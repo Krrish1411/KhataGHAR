@@ -12,6 +12,8 @@ import {
 import type { Category, Account, Asset, Liability, NumberFormatType } from '../../types';
 import type { StagedEntryType } from '../../services/parser';
 import { formatCurrency } from '../../utils/formatters';
+import { IconRenderer } from '../common/IconRenderer';
+import { useVault } from '../../context/VaultContext';
 
 interface SearchableTargetPickerProps {
   type: StagedEntryType;
@@ -56,6 +58,7 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
   numberFormat,
   isPrivacyMode = false,
 }) => {
+  const { addCategory } = useVault();
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -160,18 +163,34 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
       return list;
     }
 
-    // Default: Categories (for expense or income) — exclude hidden ones
-    return categories.filter((c) => !c.hidden).map((c) => ({
-      id: c.id,
-      label: c.name,
-      subLabel: c.type,
-      color: c.color,
-      icon: (
-        <span className="w-4 h-4 flex items-center justify-center text-xs shrink-0">
-          {c.icon || '🏷️'}
-        </span>
-      ),
-    }));
+    // Default: Categories (for expense or income) — filter by flow, exclude hidden and subcategories
+    const targetType: 'expense' | 'income' = rawFlow === 'inflow' ? 'income' : 'expense';
+    const catList: DisplayItem[] = categories
+      .filter((c) => !c.hidden && !c.parentId && c.type === targetType)
+      .map((c) => ({
+        id: c.id,
+        label: c.name,
+        subLabel: c.type,
+        color: c.color,
+        icon: (
+          <span className="w-4 h-4 flex items-center justify-center text-xs shrink-0">
+            <IconRenderer name={c.icon} className="w-3.5 h-3.5" />
+          </span>
+        ),
+      }));
+
+    const q = searchQuery.trim();
+    if (q && !catList.some((c) => c.label.toLowerCase() === q.toLowerCase())) {
+      catList.unshift({
+        id: `new-category:${targetType}:${q}`,
+        label: `+ Create category "${q}"`,
+        subLabel: `New ${targetType} category`,
+        icon: <Plus className="w-3.5 h-3.5 text-pine-600 shrink-0" />,
+        isCustom: true,
+      });
+    }
+
+    return catList;
   }, [
     type,
     rawFlow,
@@ -211,9 +230,32 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
         icon: <Plus className="w-3.5 h-3.5 text-pine-600 shrink-0" />,
       };
     }
+    if (value.startsWith('new-category:')) {
+      const [, catType, name] = value.split(':');
+      return {
+        id: value,
+        label: `+ Create "${name}"`,
+        subLabel: `New ${catType} Category`,
+        icon: <Plus className="w-3.5 h-3.5 text-pine-600 shrink-0" />,
+      };
+    }
+    const cat = categories.find((c) => c.id === value);
+    if (cat) {
+      return {
+        id: cat.id,
+        label: cat.name,
+        subLabel: cat.type,
+        color: cat.color,
+        icon: (
+          <span className="w-4 h-4 flex items-center justify-center text-xs shrink-0">
+            <IconRenderer name={cat.icon} className="w-3.5 h-3.5" />
+          </span>
+        ),
+      };
+    }
     if (isPeopleType(type)) return { id: value, label: value };
     return null;
-  }, [items, value, type]);
+  }, [items, value, type, categories]);
 
   // Placeholders based on type
   const searchPlaceholder = useMemo(() => {
@@ -223,10 +265,27 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
     if (type === 'debt_payment') return 'Search loan, credit card…';
     if (type === 'loan_received') return 'Search loan that was disbursed…';
     if (isPeopleType(type)) return 'Search or type person name…';
-    return 'Search categories…';
+    return 'Search or type category name…';
   }, [type]);
 
-  const handleSelect = (itemId: string) => {
+  const handleSelect = async (itemId: string) => {
+    if (itemId.startsWith('new-category:')) {
+      const [, catType, catName] = itemId.split(':');
+      try {
+        const created = await addCategory({
+          name: catName,
+          type: catType as 'expense' | 'income',
+          icon: catType === 'expense' ? '🔴' : '🟢',
+          color: catType === 'income' ? '#10b981' : '#f43f5e',
+          isEssential: false,
+        });
+        onChange(created.id);
+      } catch (err) {
+        console.error('Failed to create category:', err);
+      }
+      setIsOpen(false);
+      return;
+    }
     onChange(itemId);
     setIsOpen(false);
   };
@@ -246,6 +305,9 @@ export const SearchableTargetPicker: React.FC<SearchableTargetPickerProps> = ({
         handleSelect(filteredItems[highlightedIndex].id);
       } else if (isPeopleType(type) && searchQuery.trim()) {
         handleSelect(searchQuery.trim());
+      } else if (searchQuery.trim() && (type === 'expense' || type === 'income')) {
+        const targetType = rawFlow === 'inflow' ? 'income' : 'expense';
+        handleSelect(`new-category:${targetType}:${searchQuery.trim()}`);
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();

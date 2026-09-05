@@ -7,6 +7,8 @@ import { Button } from '../common/Button';
 import type { Transaction, TransactionType, Account, Category } from '../../types';
 import { ArrowUpRight, ArrowDownLeft, ArrowLeftRight, Edit3 } from 'lucide-react';
 
+import { getCategoryEmoji } from '../common/IconRenderer';
+
 interface EditTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -43,7 +45,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     setError('');
   }, [transaction]);
 
-  const filteredCategories = categories.filter((c) => c.type === type);
+  const filteredCategories = categories.filter((c) => c.type === type && !c.hidden && !c.parentId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -223,7 +225,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
                 { value: '', label: 'Uncategorized' },
                 ...filteredCategories.map((c: Category) => ({
                   value: c.id,
-                  label: c.name,
+                  label: `${getCategoryEmoji(c.icon, c.type)} ${c.name}`,
                 })),
               ]}
             />

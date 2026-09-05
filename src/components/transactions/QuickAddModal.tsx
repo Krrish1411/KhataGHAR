@@ -23,7 +23,9 @@ import {
   Plus,
   Trash2,
   AlertCircle,
+  Search,
 } from 'lucide-react';
+import { IconRenderer, getCategoryEmoji } from '../common/IconRenderer';
 
 export type TransactionEntryMode = 'expense' | 'income' | 'transfer' | 'invest' | 'debt_payment' | 'people';
 
@@ -38,7 +40,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   onClose,
   initialType = 'expense',
 }) => {
-  const { activeVault, accounts, categories, assets, liabilities, addTransaction, addPeopleEntry, peopleLedger, sellAsset, updateLiability } = useVault();
+  const { activeVault, accounts, categories, assets, liabilities, addTransaction, addCategory, addPeopleEntry, peopleLedger, sellAsset, updateLiability } = useVault();
 
   const [entryMode, setEntryMode] = useState<TransactionEntryMode>(initialType);
   const [amount, setAmount] = useState('');
@@ -120,9 +122,35 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
     }
   }, [isOpen, initialType, accounts, assets, liabilities]);
 
+  const [categorySearch, setCategorySearch] = useState('');
+
   const cats = useMemo(() => {
     return categories.filter((c) => c.type === (entryMode === 'income' ? 'income' : 'expense') && !c.parentId && !c.hidden);
   }, [categories, entryMode]);
+
+  const visibleCats = useMemo(() => {
+    const q = categorySearch.trim().toLowerCase();
+    if (!q) return cats;
+    return cats.filter((c) => c.name.toLowerCase().includes(q));
+  }, [cats, categorySearch]);
+
+  const handleCreateCategory = async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    try {
+      const newCat = await addCategory({
+        name: trimmed,
+        type: entryMode === 'income' ? 'income' : 'expense',
+        icon: entryMode === 'income' ? '🟢' : '🔴',
+        color: entryMode === 'income' ? '#10b981' : '#f43f5e',
+        isEssential: false,
+      });
+      setCategoryId(newCat.id);
+      setCategorySearch('');
+    } catch (err) {
+      console.error('Failed to create category:', err);
+    }
+  };
 
   useEffect(() => {
     if ((entryMode === 'expense' || entryMode === 'income') && cats.length > 0) {
@@ -895,7 +923,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                           <option value="" disabled>Select Category...</option>
                           {cats.map((c) => (
                             <option key={c.id} value={c.id}>
-                              {c.name}
+                              {getCategoryEmoji(c.icon, c.type)} {c.name}
                             </option>
                           ))}
                         </select>
@@ -962,23 +990,69 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                 </div>
               </div>
             ) : (
-              /* Regular Category Buttons */
-              <div className="flex flex-wrap gap-2 py-1">
-                {cats.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setCategoryId(categoryId === c.id ? '' : c.id)}
-                    className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 cursor-pointer ${
-                      categoryId === c.id
-                        ? 'bg-pine-700 border-pine-700 text-white shadow-xs'
-                        : 'bg-card border-line text-ink/70 hover:border-pine-300 hover:text-ink hover:bg-moss'
-                    }`}
-                  >
-                    {categoryId === c.id && <Check className="w-3 h-3" />}
-                    <span>{c.name}</span>
-                  </button>
-                ))}
+              /* Regular Category Selector with Search & Inline Add */
+              <div className="space-y-2.5">
+                {/* Search / Type to Create input */}
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink/40" />
+                    <input
+                      type="text"
+                      placeholder="Search or type new category..."
+                      value={categorySearch}
+                      onChange={(e) => setCategorySearch(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && categorySearch.trim()) {
+                          e.preventDefault();
+                          const existing = cats.find((c) => c.name.toLowerCase() === categorySearch.trim().toLowerCase());
+                          if (existing) {
+                            setCategoryId(existing.id);
+                            setCategorySearch('');
+                          } else {
+                            handleCreateCategory(categorySearch);
+                          }
+                        }
+                      }}
+                      className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-line bg-card text-xs text-ink placeholder:text-ink/35 outline-none focus:border-pine-500"
+                    />
+                  </div>
+
+                  {categorySearch.trim() && !cats.some((c) => c.name.toLowerCase() === categorySearch.trim().toLowerCase()) && (
+                    <button
+                      type="button"
+                      onClick={() => handleCreateCategory(categorySearch)}
+                      className="px-3 py-1.5 rounded-xl bg-pine-700 hover:bg-pine-600 text-white text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer shadow-xs transition-all active:scale-95"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add &quot;{categorySearch.trim()}&quot;</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Pills */}
+                <div className="flex flex-wrap gap-2 py-1 max-h-44 overflow-y-auto custom-scrollbar">
+                  {visibleCats.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setCategoryId(categoryId === c.id ? '' : c.id)}
+                      className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 cursor-pointer ${
+                        categoryId === c.id
+                          ? 'bg-pine-700 border-pine-700 text-white shadow-xs'
+                          : 'bg-card border-line text-ink/70 hover:border-pine-300 hover:text-ink hover:bg-moss'
+                      }`}
+                    >
+                      <IconRenderer name={c.icon} className="w-3.5 h-3.5 shrink-0" />
+                      <span>{c.name}</span>
+                      {categoryId === c.id && <Check className="w-3 h-3 ml-0.5" />}
+                    </button>
+                  ))}
+                  {visibleCats.length === 0 && (
+                    <div className="text-xs text-ink/40 py-2">
+                      No category matches &quot;{categorySearch}&quot;. Press &quot;Add&quot; or hit Enter to create it.
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
