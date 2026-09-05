@@ -32,7 +32,7 @@ export type TransactionEntryMode = 'expense' | 'income' | 'transfer' | 'invest' 
 interface QuickAddModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialType?: TransactionType;
+  initialType?: TransactionEntryMode;
 }
 
 export const QuickAddModal: React.FC<QuickAddModalProps> = ({
@@ -535,7 +535,9 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                 type="button"
                 onClick={() => setEntryMode(tab.id as TransactionEntryMode)}
                 className={`flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  isActive ? modeDetails.activeTab : 'text-ink/60 hover:text-ink hover:bg-card/50'
+                  isActive
+                    ? `${modeDetails.activeTab} ring-2 ring-offset-1 ring-offset-card scale-[1.02] shadow-sm`
+                    : 'text-ink/60 hover:text-ink hover:bg-card/50'
                 }`}
               >
                 {tab.icon}
@@ -653,7 +655,11 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                   key={m.id}
                   type="button"
                   onClick={() => setInvestSubMode(m.id as 'buy' | 'sell')}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${investSubMode === m.id ? m.color : 'text-ink/60 hover:text-ink hover:bg-moss'}`}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                    investSubMode === m.id
+                      ? `${m.color} ring-2 ring-emerald-400 ring-offset-1 ring-offset-card shadow-sm scale-[1.02]`
+                      : 'text-ink/60 hover:text-ink hover:bg-moss'
+                  }`}
                 >
                   {m.label}
                 </button>
@@ -745,7 +751,11 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                   key={m.id}
                   type="button"
                   onClick={() => setDebtSubMode(m.id as 'emi' | 'received')}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${debtSubMode === m.id ? 'bg-amber-600 text-white' : 'text-ink/60 hover:text-ink hover:bg-moss'}`}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                    debtSubMode === m.id
+                      ? 'bg-amber-600 text-white ring-2 ring-amber-400 ring-offset-1 ring-offset-card shadow-sm scale-[1.02]'
+                      : 'text-ink/60 hover:text-ink hover:bg-moss'
+                  }`}
                 >
                   {m.label}
                 </button>
@@ -811,7 +821,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                       onClick={() => setPeopleType(pt.id as any)}
                       className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
                         isSel
-                          ? 'bg-violet-600 text-white shadow-xs'
+                          ? 'bg-violet-600 text-white shadow-sm ring-2 ring-violet-400 ring-offset-1 ring-offset-card scale-[1.02]'
                           : 'text-ink/60 hover:text-ink hover:bg-moss'
                       }`}
                     >
@@ -1038,7 +1048,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                       onClick={() => setCategoryId(categoryId === c.id ? '' : c.id)}
                       className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 cursor-pointer ${
                         categoryId === c.id
-                          ? 'bg-pine-700 border-pine-700 text-white shadow-xs'
+                          ? 'bg-pine-700 border-pine-700 text-white font-bold shadow-md ring-2 ring-pine-500 ring-offset-2 ring-offset-card scale-[1.03]'
                           : 'bg-card border-line text-ink/70 hover:border-pine-300 hover:text-ink hover:bg-moss'
                       }`}
                     >

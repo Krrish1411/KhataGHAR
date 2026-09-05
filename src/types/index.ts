@@ -30,6 +30,7 @@ export interface VaultMeta {
   decoyConfig?: DecoyVaultConfig;
   isDemo?: boolean;
   showPersonalBorrowingsInLiabilities?: boolean; // Default: true — show People-Ledger borrowed entries in Liabilities tab
+  customShortcuts?: Record<string, string>; // User customized keyboard shortcuts mapped by action ID
 }
 
 export type AccountType = 'bank' | 'cash' | 'credit_card' | 'wallet' | 'upi' | 'investment' | 'other';

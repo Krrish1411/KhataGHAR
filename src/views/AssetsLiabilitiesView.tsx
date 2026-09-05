@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { Card } from '../components/common/Card';
@@ -58,6 +58,8 @@ export const AssetsLiabilitiesView: React.FC = () => {
   const [liabilityToEdit, setLiabilityToEdit] = useState<Liability | undefined>(undefined);
   const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
   const [selectedLoanForSchedule, setSelectedLoanForSchedule] = useState<Liability | null>(null);
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [selectedLiabilityId, setSelectedLiabilityId] = useState<string | null>(null);
 
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
@@ -101,6 +103,64 @@ export const AssetsLiabilitiesView: React.FC = () => {
       await deleteLiability(id);
     }
   };
+
+  // Keyboard navigation & shortcuts for selected asset / liability card
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+      if (
+        activeTag === 'input' ||
+        activeTag === 'textarea' ||
+        activeTag === 'select' ||
+        (document.activeElement as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      if (activeTab === 'assets' && selectedAssetId) {
+        const idx = assets.findIndex((a) => a.id === selectedAssetId);
+        if (idx === -1) return;
+
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'j') {
+          e.preventDefault();
+          const nextIdx = Math.min(assets.length - 1, idx + 1);
+          setSelectedAssetId(assets[nextIdx].id);
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'k') {
+          e.preventDefault();
+          const prevIdx = Math.max(0, idx - 1);
+          setSelectedAssetId(assets[prevIdx].id);
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          setAssetToEdit(assets[idx]);
+          setIsAssetModalOpen(true);
+        } else if (e.key === 'Escape') {
+          setSelectedAssetId(null);
+        }
+      } else if (activeTab === 'liabilities' && selectedLiabilityId) {
+        const idx = liabilities.findIndex((l) => l.id === selectedLiabilityId);
+        if (idx === -1) return;
+
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'j') {
+          e.preventDefault();
+          const nextIdx = Math.min(liabilities.length - 1, idx + 1);
+          setSelectedLiabilityId(liabilities[nextIdx].id);
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'k') {
+          e.preventDefault();
+          const prevIdx = Math.max(0, idx - 1);
+          setSelectedLiabilityId(liabilities[prevIdx].id);
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          setLiabilityToEdit(liabilities[idx]);
+          setIsLiabilityModalOpen(true);
+        } else if (e.key === 'Escape') {
+          setSelectedLiabilityId(null);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTab, selectedAssetId, selectedLiabilityId, assets, liabilities]);
 
   return (
     <div className="space-y-5 w-full max-w-[1600px] mx-auto px-1 sm:px-2 pb-14 anim-fade">
@@ -325,7 +385,12 @@ export const AssetsLiabilitiesView: React.FC = () => {
                   return (
                     <div
                       key={asset.id}
-                      className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-3 shadow-sm lift flex flex-col justify-between"
+                      onClick={() => setSelectedAssetId(selectedAssetId === asset.id ? null : asset.id)}
+                      className={`rounded-2xl border p-4 sm:p-5 space-y-3 shadow-sm lift flex flex-col justify-between transition-all cursor-pointer ${
+                        selectedAssetId === asset.id || assetToEdit?.id === asset.id || detailAsset?.id === asset.id
+                          ? 'border-pine-500 ring-2 ring-pine-500 bg-pine-50/20 dark:bg-pine-950/20 shadow-md scale-[1.01]'
+                          : 'border-line bg-card hover:border-pine-300'
+                      }`}
                     >
                       <div>
                         <div className="flex items-start justify-between gap-2">
@@ -475,7 +540,12 @@ export const AssetsLiabilitiesView: React.FC = () => {
               {liabilities.map((loan) => (
                 <div
                   key={loan.id}
-                  className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-3.5 shadow-sm lift"
+                  onClick={() => setSelectedLiabilityId(selectedLiabilityId === loan.id ? null : loan.id)}
+                  className={`rounded-2xl border p-4 sm:p-5 space-y-3.5 shadow-sm lift transition-all cursor-pointer ${
+                    selectedLiabilityId === loan.id || liabilityToEdit?.id === loan.id
+                      ? 'border-amber-500 ring-2 ring-amber-500 bg-amber-50/20 dark:bg-amber-950/20 shadow-md scale-[1.01]'
+                      : 'border-line bg-card hover:border-amber-300'
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>

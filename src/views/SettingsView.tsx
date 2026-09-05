@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useVault } from '../context/VaultContext';
 import { useTheme } from '../context/ThemeContext';
@@ -40,8 +40,11 @@ import {
   X,
   Check,
   Edit2,
+  Keyboard,
+  RotateCcw,
 } from 'lucide-react';
 import { IconRenderer } from '../components/common/IconRenderer';
+import { APP_SHORTCUTS, formatKeyDisplay } from '../services/shortcuts';
 
 export const SettingsView: React.FC = () => {
   const { activeVault, sessionKey, lockVault, refreshVaultList, setActiveVaultMeta } =
@@ -75,6 +78,50 @@ export const SettingsView: React.FC = () => {
   const [catEditId, setCatEditId] = useState<string | null>(null);
   const [catEditName, setCatEditName] = useState('');
   const [catFilter, setCatFilter] = useState<'all' | 'expense' | 'income'>('all');
+
+  // Keyboard Shortcuts Customization state
+  const [recordingActionId, setRecordingActionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!recordingActionId) return;
+
+    const handleRecordKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (e.key === 'Escape') {
+        setRecordingActionId(null);
+        return;
+      }
+
+      // Ignore modifier-only key presses
+      if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) {
+        return;
+      }
+
+      const rawKey = e.key.toLowerCase();
+      const currentCustom = activeVault?.customShortcuts || {};
+      const updated = { ...currentCustom, [recordingActionId]: rawKey };
+
+      updateVaultSettings({ customShortcuts: updated });
+      setRecordingActionId(null);
+    };
+
+    window.addEventListener('keydown', handleRecordKey, { capture: true });
+    return () => window.removeEventListener('keydown', handleRecordKey, { capture: true });
+  }, [recordingActionId, activeVault?.customShortcuts, updateVaultSettings]);
+
+  const handleResetShortcut = (actionId: string) => {
+    const currentCustom = { ...(activeVault?.customShortcuts || {}) };
+    delete currentCustom[actionId];
+    updateVaultSettings({ customShortcuts: currentCustom });
+  };
+
+  const handleResetAllShortcuts = () => {
+    if (window.confirm('Reset all keyboard shortcuts to their factory defaults?')) {
+      updateVaultSettings({ customShortcuts: {} });
+    }
+  };
 
   const handleLoadDemo = async () => {
     setIsLoadingDemo(true);
@@ -427,7 +474,7 @@ export const SettingsView: React.FC = () => {
                   onClick={() => setTheme(t.id as any)}
                   className={`flex flex-col items-center justify-center p-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
                     theme === t.id
-                      ? 'border-pine-400 bg-pine-50/70 dark:bg-pine-950/50 text-pine-700 dark:text-pine-300 font-bold'
+                      ? 'border-pine-500 bg-pine-50/80 dark:bg-pine-950/60 text-pine-700 dark:text-pine-300 font-bold ring-2 ring-pine-500 ring-offset-1 ring-offset-card shadow-xs scale-[1.02]'
                       : 'border-line bg-moss/50 text-ink/70 hover:text-ink'
                   }`}
                 >
@@ -744,7 +791,7 @@ export const SettingsView: React.FC = () => {
                       onClick={() => setDecoyMode('mirror_scaled')}
                       className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                         decoyMode === 'mirror_scaled'
-                          ? 'border-pine-400 bg-pine-50/70 dark:bg-pine-950/50 text-ink'
+                          ? 'border-pine-500 bg-pine-50/80 dark:bg-pine-950/60 text-ink ring-2 ring-pine-500 ring-offset-1 ring-offset-card shadow-sm scale-[1.01]'
                           : 'border-line bg-moss/50 text-ink/65 hover:text-ink'
                       }`}
                     >
@@ -759,7 +806,7 @@ export const SettingsView: React.FC = () => {
                       onClick={() => setDecoyMode('full_dummy')}
                       className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                         decoyMode === 'full_dummy'
-                          ? 'border-pine-400 bg-pine-50/70 dark:bg-pine-950/50 text-ink'
+                          ? 'border-pine-500 bg-pine-50/80 dark:bg-pine-950/60 text-ink ring-2 ring-pine-500 ring-offset-1 ring-offset-card shadow-sm scale-[1.01]'
                           : 'border-line bg-moss/50 text-ink/65 hover:text-ink'
                       }`}
                     >
@@ -993,7 +1040,13 @@ export const SettingsView: React.FC = () => {
             .map((cat) => (
               <div
                 key={cat.id}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-all ${cat.hidden ? 'opacity-40 border-dashed border-line' : 'border-line bg-card/60 hover:bg-moss/50'}`}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-all ${
+                  catEditId === cat.id
+                    ? 'border-pine-500 bg-pine-50/80 dark:bg-pine-950/60 ring-2 ring-pine-500 shadow-md scale-[1.01]'
+                    : cat.hidden
+                    ? 'opacity-40 border-dashed border-line'
+                    : 'border-line bg-card/60 hover:bg-moss/50'
+                }`}
               >
                 <div className="w-7 h-7 rounded-xl bg-moss/80 border border-line flex items-center justify-center shrink-0 text-pine-700 dark:text-pine-300">
                   <IconRenderer name={cat.icon} className="w-3.5 h-3.5" />
@@ -1085,6 +1138,121 @@ export const SettingsView: React.FC = () => {
         <p className="text-[11px] text-ink/40">
           👁 Hidden categories are invisible in dropdowns but existing transactions keep their category. Deleted categories cascade to subcategories.
         </p>
+      </div>
+
+      {/* ── KEYBOARD SHORTCUTS CUSTOMIZATION ─────────────────────── */}
+      <div className="rounded-2xl border border-line bg-card p-5 sm:p-6 space-y-4 shadow-sm lift">
+        <div className="flex items-center justify-between pb-2 border-b border-line gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Keyboard className="w-4 h-4 text-pine-600" />
+            <h3 className="font-display font-bold text-sm text-ink">Keyboard Shortcuts</h3>
+            <span className="text-[11px] text-ink/50 bg-moss px-2 py-0.5 rounded-full font-medium">
+              Customizable Hotkeys
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleResetAllShortcuts}
+            className="px-2.5 py-1 rounded-lg bg-moss hover:bg-pine-100 dark:hover:bg-pine-950/40 text-pine-700 dark:text-pine-300 border border-line text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-all"
+            title="Reset all shortcuts to defaults"
+          >
+            <RotateCcw className="w-3 h-3" />
+            <span>Reset All to Defaults</span>
+          </button>
+        </div>
+
+        <p className="text-xs text-ink/60 leading-relaxed">
+          Navigate and record entries at lightning speed across KhataGHAR. Click any shortcut badge to rebind it to your preferred key.
+        </p>
+
+        {recordingActionId && (
+          <div className="p-3.5 rounded-xl bg-pine-50 dark:bg-pine-950/60 border-2 border-pine-500 animate-pulse flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-pine-800 dark:text-pine-200 font-semibold">
+              <Keyboard className="w-4 h-4 text-pine-600 animate-bounce" />
+              <span>
+                Press any key on your keyboard to assign to <b>{APP_SHORTCUTS.find((s) => s.id === recordingActionId)?.name}</b>... (or press <b>Esc</b> to cancel)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRecordingActionId(null)}
+              className="px-2.5 py-1 rounded-lg bg-card border border-line text-xs font-bold text-ink hover:bg-moss cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          {(['Actions', 'Navigation', 'General'] as const).map((cat) => {
+            const items = APP_SHORTCUTS.filter((s) => s.category === cat);
+            if (items.length === 0) return null;
+
+            return (
+              <div key={cat} className="space-y-2">
+                <h4 className="text-[11px] font-bold uppercase tracking-wider text-ink/45 px-1">
+                  {cat === 'Actions' ? '⚡ Quick Actions' : cat === 'Navigation' ? '🧭 View Navigation' : '🛠️ General'}
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {items.map((s) => {
+                    const customKey = activeVault?.customShortcuts?.[s.id];
+                    const activeKey = customKey || s.defaultKey;
+                    const isRecording = recordingActionId === s.id;
+                    const isCustomized = Boolean(customKey && customKey.toLowerCase() !== s.defaultKey.toLowerCase());
+
+                    return (
+                      <div
+                        key={s.id}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
+                          isRecording
+                            ? 'border-pine-500 ring-2 ring-pine-500 bg-pine-50/70 dark:bg-pine-950/50 shadow-sm'
+                            : 'border-line bg-card/60 hover:bg-moss/40'
+                        }`}
+                      >
+                        <div className="min-w-0 pr-2">
+                          <span className="block text-xs font-bold text-ink truncate">
+                            {s.name}
+                          </span>
+                          <span className="block text-[10.5px] text-ink/50 truncate">
+                            {s.description}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setRecordingActionId(isRecording ? null : s.id)}
+                            className={`px-2.5 py-1 rounded-lg border font-mono text-xs font-bold transition-all cursor-pointer ${
+                              isRecording
+                                ? 'bg-pine-600 text-white border-pine-600 ring-2 ring-pine-400 ring-offset-1 animate-pulse'
+                                : isCustomized
+                                ? 'bg-pine-100 dark:bg-pine-900/40 text-pine-800 dark:text-pine-200 border-pine-300 dark:border-pine-700 shadow-xs'
+                                : 'bg-moss border-line text-ink hover:border-pine-400 hover:bg-card'
+                            }`}
+                            title="Click to rebind this key"
+                          >
+                            {isRecording ? 'Press Key…' : formatKeyDisplay(activeKey)}
+                          </button>
+
+                          {isCustomized && (
+                            <button
+                              type="button"
+                              onClick={() => handleResetShortcut(s.id)}
+                              className="p-1 rounded-lg text-ink/40 hover:text-pine-600 hover:bg-moss transition-colors cursor-pointer"
+                              title="Reset to default key"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
 {/* Onboarding Modal */}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { Button } from '../components/common/Button';
@@ -38,6 +38,7 @@ export const TransactionsView: React.FC = () => {
   const [dateRangePreset, setDateRangePreset] = useState<string>('all-time');
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [txToEdit, setTxToEdit] = useState<Transaction | null>(null);
+  const [selectedTxId, setSelectedTxId] = useState<string | null>(null);
   const [isReconciling, setIsReconciling] = useState(false);
 
   const baseCurrency = activeVault?.currency || 'INR';
@@ -95,6 +96,51 @@ export const TransactionsView: React.FC = () => {
     });
     return { income, expense, net: income - expense };
   }, [filteredTransactions]);
+
+  // Keyboard navigation & quick actions for selected transaction row
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+      if (
+        activeTag === 'input' ||
+        activeTag === 'textarea' ||
+        activeTag === 'select' ||
+        (document.activeElement as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      if (!selectedTxId) return;
+
+      const currentIndex = filteredTransactions.findIndex((t) => t.id === selectedTxId);
+      if (currentIndex === -1) return;
+
+      if (e.key === 'ArrowDown' || e.key === 'j') {
+        e.preventDefault();
+        const nextIndex = Math.min(filteredTransactions.length - 1, currentIndex + 1);
+        setSelectedTxId(filteredTransactions[nextIndex].id);
+      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+        e.preventDefault();
+        const prevIndex = Math.max(0, currentIndex - 1);
+        setSelectedTxId(filteredTransactions[prevIndex].id);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        setTxToEdit(filteredTransactions[currentIndex]);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        const tx = filteredTransactions[currentIndex];
+        if (window.confirm(`Delete transaction "${tx.note || 'Entry'}" of ₹${tx.amount.toLocaleString('en-IN')}? The account balance will be reversed.`)) {
+          deleteTransaction(tx.id);
+          setSelectedTxId(null);
+        }
+      } else if (e.key === 'Escape') {
+        setSelectedTxId(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedTxId, filteredTransactions, deleteTransaction]);
 
   const handleDelete = async (id: string) => {
     if (window.confirm('Delete this transaction? The corresponding account balance will be reversed.')) {
@@ -317,7 +363,54 @@ export const TransactionsView: React.FC = () => {
             </button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            {selectedTxId && (
+              <div className="px-4 py-2.5 bg-pine-50 dark:bg-pine-950/70 border-b border-pine-200 dark:border-pine-800 flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2 text-pine-900 dark:text-pine-200 font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-pine-600 animate-pulse" />
+                  <span>Entry Selected</span>
+                  <span className="hidden sm:inline text-[11px] text-ink/50 font-normal">
+                    • Press <kbd className="px-1.5 py-0.5 rounded bg-card border border-line font-mono font-bold text-ink">Enter</kbd> to Edit, <kbd className="px-1.5 py-0.5 rounded bg-card border border-line font-mono font-bold text-ink">Del</kbd> to Delete, <kbd className="px-1.5 py-0.5 rounded bg-card border border-line font-mono font-bold text-ink">↑</kbd>/<kbd className="px-1.5 py-0.5 rounded bg-card border border-line font-mono font-bold text-ink">↓</kbd> to Navigate
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const t = filteredTransactions.find((x) => x.id === selectedTxId);
+                      if (t) setTxToEdit(t);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-pine-700 hover:bg-pine-600 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition-all shadow-xs"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    <span>Edit</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const t = filteredTransactions.find((x) => x.id === selectedTxId);
+                      if (t && window.confirm(`Delete transaction "${t.note || 'Entry'}" of ₹${t.amount.toLocaleString('en-IN')}?`)) {
+                        deleteTransaction(t.id);
+                        setSelectedTxId(null);
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-flare-100 dark:bg-flare-900/40 hover:bg-flare-200 text-flare-700 dark:text-flare-300 font-bold text-xs flex items-center gap-1 cursor-pointer transition-all"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Delete</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTxId(null)}
+                    className="px-1.5 py-1 rounded-lg text-ink/40 hover:text-ink hover:bg-moss cursor-pointer text-xs"
+                    title="Deselect (Esc)"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-moss/70 border-b border-line text-ink/50 font-bold uppercase tracking-wider text-[10px]">
@@ -340,7 +433,12 @@ export const TransactionsView: React.FC = () => {
                   return (
                     <tr
                       key={tx.id}
-                      className="hover:bg-moss/40 transition-colors"
+                      onClick={() => setSelectedTxId(selectedTxId === tx.id ? null : tx.id)}
+                      className={`transition-all cursor-pointer ${
+                        selectedTxId === tx.id || txToEdit?.id === tx.id
+                          ? 'bg-pine-50/90 dark:bg-pine-950/70 ring-2 ring-inset ring-pine-500 font-medium'
+                          : 'hover:bg-moss/40'
+                      }`}
                     >
                       {/* Date */}
                       <td className="py-3 px-4 text-ink/60 font-mono text-xs whitespace-nowrap">
@@ -454,6 +552,7 @@ export const TransactionsView: React.FC = () => {
               </tbody>
             </table>
           </div>
+        </>
         )}
       </div>
 

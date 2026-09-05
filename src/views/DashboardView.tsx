@@ -56,7 +56,6 @@ export const DashboardView: React.FC = () => {
   const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
   const [isLoadingDemo, setIsLoadingDemo] = useState(false);
   const [netWorthMode, setNetWorthMode] = useState<'total' | 'liquid'>('total');
-  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
@@ -72,46 +71,6 @@ export const DashboardView: React.FC = () => {
     return d.liquidBalance - d.creditOutstanding - d.reservedTotal + d.givenOutTotal;
   }, [d]);
 
-  // Global Keyboard Shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const activeTag = (document.activeElement?.tagName || '').toLowerCase();
-      if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') {
-        return;
-      }
-
-      if (e.key === 'n' || e.key === 'N') {
-        e.preventDefault();
-        setQuickAddType('expense');
-        setIsQuickAddOpen(true);
-      } else if (e.key === 'p' || e.key === 'P') {
-        e.preventDefault();
-        togglePrivacy();
-      } else if (e.key === '?') {
-        e.preventDefault();
-        setIsShortcutsOpen((prev) => !prev);
-      } else if (e.key >= '1' && e.key <= '9') {
-        const routes: Record<string, string> = {
-          '1': '#/dashboard',
-          '2': '#/transactions',
-          '3': '#/accounts',
-          '4': '#/assets',
-          '5': '#/people',
-          '6': '#/budgets',
-          '7': '#/reports',
-          '8': '#/documents',
-          '9': '#/settings',
-        };
-        if (routes[e.key]) {
-          e.preventDefault();
-          window.location.hash = routes[e.key];
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePrivacy]);
 
   // Delta net worth vs previous month
   const deltaNW = useMemo(() => {
@@ -458,7 +417,7 @@ export const DashboardView: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setIsShortcutsOpen(true)}
+              onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))}
               className="px-2.5 py-1 rounded-xl border border-line bg-moss/60 hover:bg-moss text-ink/70 hover:text-ink text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all"
               title="View Keyboard Shortcuts (?)"
             >
@@ -900,57 +859,6 @@ export const DashboardView: React.FC = () => {
         onClose={() => setIsQuickAddOpen(false)}
         initialType={quickAddType}
       />
-
-      {/* KEYBOARD SHORTCUTS CHEAT SHEET MODAL */}
-      <Modal
-        isOpen={isShortcutsOpen}
-        onClose={() => setIsShortcutsOpen(false)}
-        title={
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-pine-50 dark:bg-pine-950/40 text-pine-600 border border-pine-200/60 dark:border-pine-800/40">
-              <Keyboard className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="text-base sm:text-lg font-bold text-ink">
-                Smart Keyboard Navigation
-              </span>
-              <span className="block text-xs text-ink/50">
-                Speed shortcuts for rapid entry & navigation
-              </span>
-            </div>
-          </div>
-        }
-        maxWidth="md"
-      >
-        <div className="space-y-4">
-          <div className="divide-y divide-line text-xs">
-            <div className="py-2.5 flex items-center justify-between">
-              <span className="font-semibold text-ink">Record New Transaction</span>
-              <kbd className="px-2 py-1 rounded-lg bg-moss border border-line font-mono font-bold text-ink">N</kbd>
-            </div>
-            <div className="py-2.5 flex items-center justify-between">
-              <span className="font-semibold text-ink">Toggle Privacy Mask (Figures On/Off)</span>
-              <kbd className="px-2 py-1 rounded-lg bg-moss border border-line font-mono font-bold text-ink">P</kbd>
-            </div>
-            <div className="py-2.5 flex items-center justify-between">
-              <span className="font-semibold text-ink">Quick View Switch (Dashboard, Entries, etc.)</span>
-              <kbd className="px-2 py-1 rounded-lg bg-moss border border-line font-mono font-bold text-ink">1 – 9</kbd>
-            </div>
-            <div className="py-2.5 flex items-center justify-between">
-              <span className="font-semibold text-ink">Amount Shorthand in Inputs</span>
-              <span className="font-mono text-pine-600 font-semibold text-right">
-                10k → ₹10,000<br />2.5L → ₹2,50,000<br />1cr → ₹1,00,00,000
-              </span>
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <Button variant="primary" size="sm" onClick={() => setIsShortcutsOpen(false)}>
-              Got it
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 };

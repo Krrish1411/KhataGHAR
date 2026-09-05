@@ -1,6 +1,77 @@
 import React from 'react';
-import * as LucideIcons from 'lucide-react';
-import { Tag } from 'lucide-react';
+import {
+  Utensils,
+  ShoppingCart,
+  Home,
+  Zap,
+  Car,
+  Activity,
+  ShieldCheck,
+  GraduationCap,
+  Tv,
+  ShoppingBag,
+  Sparkles,
+  Plane,
+  Gift,
+  CreditCard,
+  TrendingUp,
+  TrendingDown,
+  Receipt,
+  UserCheck,
+  HelpCircle,
+  Briefcase,
+  Building,
+  Laptop,
+  KeyRound,
+  Coins,
+  PlusCircle,
+  Coffee,
+  Fuel,
+  Pill,
+  HeartPulse,
+  BookOpen,
+  Film,
+  Shirt,
+  Scissors,
+  Sun,
+  Banknote,
+  PieChart,
+  LineChart,
+  FileText,
+  Building2,
+  Scale,
+  Users,
+  Tag,
+  Wrench,
+  Hammer,
+  Lightbulb,
+  Droplets,
+  Flame,
+  Wifi,
+  Smartphone,
+  Train,
+  Stethoscope,
+  ClipboardCheck,
+  Shield,
+  Award,
+  Book,
+  PlaySquare,
+  Gamepad2,
+  Armchair,
+  Dumbbell,
+  Ticket,
+  Bed,
+  Camera,
+  Heart,
+  Lock,
+  Vault,
+  Clock,
+  Percent,
+  DollarSign,
+  Apple,
+  Milk,
+  Package,
+} from 'lucide-react';
 
 interface IconRendererProps {
   name?: string;
@@ -8,6 +79,81 @@ interface IconRendererProps {
   size?: number;
   fallback?: React.ReactNode;
 }
+
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string; size?: number }>> = {
+  Utensils,
+  ShoppingCart,
+  Home,
+  Zap,
+  Car,
+  Activity,
+  ShieldCheck,
+  GraduationCap,
+  Tv,
+  ShoppingBag,
+  Sparkles,
+  Sparkle: Sparkles,
+  Plane,
+  Gift,
+  CreditCard,
+  TrendingUp,
+  TrendingDown,
+  Receipt,
+  UserCheck,
+  HelpCircle,
+  Briefcase,
+  Building,
+  Laptop,
+  KeyRound,
+  Coins,
+  PlusCircle,
+  Coffee,
+  Fuel,
+  Pill,
+  HeartPulse,
+  BookOpen,
+  Film,
+  Shirt,
+  Scissors,
+  Sun,
+  Banknote,
+  PieChart,
+  LineChart,
+  FileText,
+  Building2,
+  Scale,
+  Users,
+  Tag,
+  Wrench,
+  Hammer,
+  Lightbulb,
+  Droplets,
+  Flame,
+  Wifi,
+  Smartphone,
+  Train,
+  Stethoscope,
+  ClipboardCheck,
+  Shield,
+  Award,
+  Book,
+  PlaySquare,
+  Gamepad2,
+  Armchair,
+  Dumbbell,
+  Ticket,
+  Bed,
+  Camera,
+  Heart,
+  Lock,
+  Vault,
+  Clock,
+  Percent,
+  DollarSign,
+  Apple,
+  Milk,
+  Package,
+};
 
 export const LUCIDE_TO_EMOJI: Record<string, string> = {
   Utensils: '🍽️',
@@ -77,20 +223,27 @@ export const IconRenderer: React.FC<IconRendererProps> = ({
     return fallback ? <>{fallback}</> : <Tag className={className} size={size} />;
   }
 
-  // Check if `name` is a valid Lucide component
-  const IconComponent = (LucideIcons as any)[name];
-  if (typeof IconComponent === 'function') {
+  // 1. Direct match in ICON_MAP (renders real SVG component)
+  const IconComponent = ICON_MAP[name];
+  if (IconComponent) {
     return <IconComponent className={className} size={size} />;
   }
 
-  // Otherwise treat as emoji or unicode string
-  return (
-    <span
-      className={`inline-flex items-center justify-center select-none leading-none ${className}`}
-      style={{ fontSize: size ? `${size}px` : undefined }}
-    >
-      {name}
-    </span>
-  );
+  // 2. Check if name is an emoji or unicode character
+  const isEmoji = name.length <= 4 || /[\u{1F300}-\u{1FAFF}]/u.test(name);
+  if (isEmoji) {
+    return (
+      <span
+        className={`inline-flex items-center justify-center select-none leading-none ${className}`}
+        style={{ fontSize: size ? `${size}px` : undefined }}
+      >
+        {name}
+      </span>
+    );
+  }
+
+  // 3. Unrecognized text string: NEVER print the raw word, fall back to Tag SVG icon!
+  return fallback ? <>{fallback}</> : <Tag className={className} size={size} />;
 };
+
 

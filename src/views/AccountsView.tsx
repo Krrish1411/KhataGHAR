@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { Button } from '../components/common/Button';
@@ -36,6 +36,7 @@ export const AccountsView: React.FC = () => {
 
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [accountToEdit, setAccountToEdit] = useState<Account | undefined>(undefined);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('all');
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>('all');
@@ -118,6 +119,44 @@ export const AccountsView: React.FC = () => {
       return true;
     });
   }, [accounts, selectedTypeFilter, selectedTagFilter]);
+
+  // Keyboard shortcuts for selected account card
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+      if (
+        activeTag === 'input' ||
+        activeTag === 'textarea' ||
+        activeTag === 'select' ||
+        (document.activeElement as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      if (!selectedAccountId) return;
+
+      const currentIndex = filteredAccounts.findIndex((a) => a.id === selectedAccountId);
+      if (currentIndex === -1) return;
+
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'j') {
+        e.preventDefault();
+        const nextIndex = Math.min(filteredAccounts.length - 1, currentIndex + 1);
+        setSelectedAccountId(filteredAccounts[nextIndex].id);
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'k') {
+        e.preventDefault();
+        const prevIndex = Math.max(0, currentIndex - 1);
+        setSelectedAccountId(filteredAccounts[prevIndex].id);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        handleEdit(filteredAccounts[currentIndex]);
+      } else if (e.key === 'Escape') {
+        setSelectedAccountId(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedAccountId, filteredAccounts]);
 
   const handleEdit = (account: Account) => {
     setAccountToEdit(account);
@@ -377,7 +416,12 @@ export const AccountsView: React.FC = () => {
             return (
               <div
                 key={account.id}
-                className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-3.5 flex flex-col justify-between shadow-sm lift"
+                onClick={() => setSelectedAccountId(selectedAccountId === account.id ? null : account.id)}
+                className={`rounded-2xl border p-4 sm:p-5 space-y-3.5 flex flex-col justify-between shadow-sm lift transition-all cursor-pointer ${
+                  selectedAccountId === account.id || accountToEdit?.id === account.id
+                    ? 'border-pine-500 ring-2 ring-pine-500 bg-pine-50/20 dark:bg-pine-950/20 shadow-md scale-[1.01]'
+                    : 'border-line bg-card hover:border-pine-300'
+                }`}
               >
                 <div>
                   <div className="flex items-start justify-between gap-2">
