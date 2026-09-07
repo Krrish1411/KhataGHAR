@@ -217,6 +217,8 @@ export async function unlockVault(
   return { vault, key, data };
 }
 
+export const loadAndDecryptVault = unlockVault;
+
 // Save single item encrypted to Dexie
 export async function saveEncryptedRecord<T extends { id: string; vaultId: string; updatedAt?: string }>(
   type: EncryptedRecord['type'],
@@ -316,4 +318,270 @@ export async function changeVaultPassword(
   });
 
   return { updatedVault, newKey };
+}
+
+// Rename any vault in IndexedDB
+export async function renameVault(vaultId: string, newName: string): Promise<void> {
+  await db.vaults.update(vaultId, { name: newName.trim() });
+}
+
+export interface CreateMergedVaultParams {
+  name: string;
+  password: string;
+  currency?: CurrencyCode;
+  numberFormat?: NumberFormatType;
+  sourceVaultsData: Array<{
+    vault: VaultMeta;
+    data: VaultData;
+  }>;
+}
+
+// Create an aggregated multi-vault enclave encrypted with its own master key
+export async function createMergedVault(
+  params: CreateMergedVaultParams
+): Promise<{ vault: VaultMeta; key: CryptoKey }> {
+  const vaultId = generateUUID();
+  const salt = generateSalt();
+  const key = await deriveKey(params.password, salt);
+  const verifier = await generateVerifier(key);
+
+  const mergedVault: VaultMeta = {
+    id: vaultId,
+    name: params.name || 'Consolidated Family Vault',
+    salt,
+    verifier,
+    createdAt: new Date().toISOString(),
+    currency: params.currency || 'INR',
+    numberFormat: params.numberFormat || 'indian',
+    fyStartMonth: 4,
+    isPrimary: false,
+    includeInFamilyOverview: true,
+    autoLockMinutes: 5,
+    exchangeRates: {
+      INR: 1,
+      USD: 86.5,
+      EUR: 92.0,
+      GBP: 110.0,
+      AED: 23.5,
+      SGD: 64.0,
+      CAD: 60.5,
+      AUD: 55.0,
+    },
+    isMerged: true,
+    mergedSourceVaultIds: params.sourceVaultsData.map((s) => s.vault.id),
+  };
+
+  const allRecords: EncryptedRecord[] = [];
+
+  // Aggregated ID mappings
+  const accountIdMap = new Map<string, string>();
+  const categoryIdMap = new Map<string, string>();
+  const assetIdMap = new Map<string, string>();
+  const liabilityIdMap = new Map<string, string>();
+
+  // 1. Categories
+  const categoryNameMap = new Map<string, string>();
+  for (const source of params.sourceVaultsData) {
+    for (const cat of source.data.categories || []) {
+      const lower = cat.name.toLowerCase().trim();
+      let targetCatId = categoryNameMap.get(lower);
+      if (!targetCatId) {
+        targetCatId = generateUUID();
+        categoryNameMap.set(lower, targetCatId);
+        const newCat: Category = {
+          ...cat,
+          id: targetCatId,
+          vaultId,
+          updatedAt: new Date().toISOString(),
+        };
+        const enc = await encryptData(newCat, key);
+        allRecords.push({
+          id: newCat.id,
+          vaultId,
+          type: 'category',
+          iv: enc.iv,
+          ciphertext: enc.ciphertext,
+          updatedAt: newCat.updatedAt,
+        });
+      }
+      categoryIdMap.set(cat.id, targetCatId);
+    }
+  }
+
+  // 2. Accounts (prefixed with source vault name)
+  for (const source of params.sourceVaultsData) {
+    for (const acc of source.data.accounts || []) {
+      const newAccId = generateUUID();
+      accountIdMap.set(acc.id, newAccId);
+      const newAcc: Account = {
+        ...acc,
+        id: newAccId,
+        vaultId,
+        name: `[${source.vault.name}] ${acc.name}`,
+        updatedAt: new Date().toISOString(),
+      };
+      const enc = await encryptData(newAcc, key);
+      allRecords.push({
+        id: newAcc.id,
+        vaultId,
+        type: 'account',
+        iv: enc.iv,
+        ciphertext: enc.ciphertext,
+        updatedAt: newAcc.updatedAt,
+      });
+    }
+  }
+
+  // 3. Assets
+  for (const source of params.sourceVaultsData) {
+    for (const asset of source.data.assets || []) {
+      const newAssetId = generateUUID();
+      assetIdMap.set(asset.id, newAssetId);
+      const newAsset: Asset = {
+        ...asset,
+        id: newAssetId,
+        vaultId,
+        name: `[${source.vault.name}] ${asset.name}`,
+        updatedAt: new Date().toISOString(),
+      };
+      const enc = await encryptData(newAsset, key);
+      allRecords.push({
+        id: newAsset.id,
+        vaultId,
+        type: 'asset',
+        iv: enc.iv,
+        ciphertext: enc.ciphertext,
+        updatedAt: newAsset.updatedAt,
+      });
+    }
+  }
+
+  // 4. Liabilities
+  for (const source of params.sourceVaultsData) {
+    for (const liab of source.data.liabilities || []) {
+      const newLiabId = generateUUID();
+      liabilityIdMap.set(liab.id, newLiabId);
+      const newLiab: Liability = {
+        ...liab,
+        id: newLiabId,
+        vaultId,
+        name: `[${source.vault.name}] ${liab.name}`,
+        updatedAt: new Date().toISOString(),
+      };
+      const enc = await encryptData(newLiab, key);
+      allRecords.push({
+        id: newLiab.id,
+        vaultId,
+        type: 'liability',
+        iv: enc.iv,
+        ciphertext: enc.ciphertext,
+        updatedAt: newLiab.updatedAt,
+      });
+    }
+  }
+
+  // 5. Transactions
+  for (const source of params.sourceVaultsData) {
+    for (const tx of source.data.transactions || []) {
+      const newTxId = generateUUID();
+      const newTx: Transaction = {
+        ...tx,
+        id: newTxId,
+        vaultId,
+        accountId: accountIdMap.get(tx.accountId) || tx.accountId,
+        toAccountId: tx.toAccountId ? (accountIdMap.get(tx.toAccountId) || tx.toAccountId) : undefined,
+        categoryId: tx.categoryId ? (categoryIdMap.get(tx.categoryId) || tx.categoryId) : undefined,
+        linkedAssetId: tx.linkedAssetId ? (assetIdMap.get(tx.linkedAssetId) || tx.linkedAssetId) : undefined,
+        linkedLiabilityId: tx.linkedLiabilityId ? (liabilityIdMap.get(tx.linkedLiabilityId) || tx.linkedLiabilityId) : undefined,
+        updatedAt: new Date().toISOString(),
+      };
+      const enc = await encryptData(newTx, key);
+      allRecords.push({
+        id: newTx.id,
+        vaultId,
+        type: 'transaction',
+        iv: enc.iv,
+        ciphertext: enc.ciphertext,
+        updatedAt: newTx.updatedAt,
+      });
+    }
+  }
+
+  // 6. People Ledger
+  for (const source of params.sourceVaultsData) {
+    for (const p of source.data.peopleLedger || []) {
+      const newPId = generateUUID();
+      const newP: PeopleLedgerEntry = {
+        ...p,
+        id: newPId,
+        vaultId,
+        contactName: `[${source.vault.name}] ${p.contactName}`,
+        accountId: p.accountId ? (accountIdMap.get(p.accountId) || p.accountId) : undefined,
+        updatedAt: new Date().toISOString(),
+      };
+      const enc = await encryptData(newP, key);
+      allRecords.push({
+        id: newP.id,
+        vaultId,
+        type: 'people',
+        iv: enc.iv,
+        ciphertext: enc.ciphertext,
+        updatedAt: newP.updatedAt,
+      });
+    }
+  }
+
+  // 7. Budgets
+  for (const source of params.sourceVaultsData) {
+    for (const b of source.data.budgets || []) {
+      const newBId = generateUUID();
+      const newB: Budget = {
+        ...b,
+        id: newBId,
+        vaultId,
+        categoryId: categoryIdMap.get(b.categoryId) || b.categoryId,
+        updatedAt: new Date().toISOString(),
+      };
+      const enc = await encryptData(newB, key);
+      allRecords.push({
+        id: newB.id,
+        vaultId,
+        type: 'budget',
+        iv: enc.iv,
+        ciphertext: enc.ciphertext,
+        updatedAt: newB.updatedAt,
+      });
+    }
+  }
+
+  // 8. Goals
+  for (const source of params.sourceVaultsData) {
+    for (const g of source.data.goals || []) {
+      const newGId = generateUUID();
+      const newG: SavingsGoal = {
+        ...g,
+        id: newGId,
+        vaultId,
+        name: `[${source.vault.name}] ${g.name}`,
+        updatedAt: new Date().toISOString(),
+      };
+      const enc = await encryptData(newG, key);
+      allRecords.push({
+        id: newG.id,
+        vaultId,
+        type: 'goal',
+        iv: enc.iv,
+        ciphertext: enc.ciphertext,
+        updatedAt: newG.updatedAt,
+      });
+    }
+  }
+
+  // Save vault and all records atomically
+  await db.transaction('rw', db.vaults, db.records, async () => {
+    await db.vaults.put(mergedVault);
+    await db.records.bulkPut(allRecords);
+  });
+
+  return { vault: mergedVault, key };
 }

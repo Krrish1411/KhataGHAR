@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { Card } from '../components/common/Card';
@@ -29,6 +29,9 @@ import {
   Eye,
   EyeOff,
   ChevronRight,
+  ArrowRight,
+  Archive,
+  CheckCircle2,
 } from 'lucide-react';
 
 const ASSET_CLASS_COLORS: Record<AssetType, string> = {
@@ -49,6 +52,7 @@ export const AssetsLiabilitiesView: React.FC = () => {
   const { isPrivacyMode } = usePrivacy();
 
   const [activeTab, setActiveTab] = useState<'assets' | 'liabilities'>('assets');
+  const [assetStatusFilter, setAssetStatusFilter] = useState<'active' | 'settled'>('active');
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
   const [assetToEdit, setAssetToEdit] = useState<Asset | undefined>(undefined);
   const [valuationAsset, setValuationAsset] = useState<Asset | null>(null);
@@ -64,10 +68,43 @@ export const AssetsLiabilitiesView: React.FC = () => {
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
 
+  // Helper to identify liquidated / settled asset positions
+  const isAssetSettled = useCallback((a: Asset): boolean => {
+    const tranches = a.tranches || [];
+    const sellTranches = tranches.filter((t) => t.type === 'sell');
+    const buyTranches = tranches.filter((t) => t.type !== 'sell');
+    const soldUnitsSum = sellTranches.reduce((sum, t) => sum + (t.units || 0), 0);
+    const buyUnitsSum = buyTranches.reduce((sum, t) => sum + (t.units || 0), 0);
+    const totalUnits =
+      a.totalUnits !== undefined
+        ? a.totalUnits
+        : buyUnitsSum > 0
+        ? Math.max(0, buyUnitsSum - soldUnitsSum)
+        : 0;
+
+    return (
+      (a.currentValue <= 0 || (totalUnits === 0 && (buyTranches.length > 0 || a.purchasePrice === 0))) &&
+      sellTranches.length > 0
+    );
+  }, []);
+
+  const { activeAssets, settledAssets } = useMemo(() => {
+    const active: Asset[] = [];
+    const settled: Asset[] = [];
+    assets.forEach((a) => {
+      if (isAssetSettled(a)) {
+        settled.push(a);
+      } else {
+        active.push(a);
+      }
+    });
+    return { activeAssets: active, settledAssets: settled };
+  }, [assets, isAssetSettled]);
+
   // Total sums
   const totalAssetsValue = useMemo(() => {
-    return assets.reduce((sum, a) => sum + a.currentValue, 0);
-  }, [assets]);
+    return activeAssets.reduce((sum, a) => sum + a.currentValue, 0);
+  }, [activeAssets]);
 
   const totalLiabilitiesBalance = useMemo(() => {
     return liabilities.reduce((sum, l) => sum + l.outstandingBalance, 0);
@@ -80,7 +117,7 @@ export const AssetsLiabilitiesView: React.FC = () => {
   // Asset breakdown for distribution bar
   const assetChartData = useMemo(() => {
     const map = new Map<string, number>();
-    assets.forEach((a) => {
+    activeAssets.forEach((a) => {
       const typeLabel = a.type.replace('_', ' ').toUpperCase();
       map.set(typeLabel, (map.get(typeLabel) || 0) + a.currentValue);
     });
@@ -90,7 +127,7 @@ export const AssetsLiabilitiesView: React.FC = () => {
       value,
       color: ASSET_CLASS_COLORS[name.toLowerCase().replace(' ', '_') as AssetType] || '#12855a',
     }));
-  }, [assets]);
+  }, [activeAssets]);
 
   const handleDeleteAsset = async (id: string, name: string) => {
     if (window.confirm(`Delete asset "${name}" and its valuation history?`)) {
@@ -210,30 +247,6 @@ export const AssetsLiabilitiesView: React.FC = () => {
             <Plus className="w-3.5 h-3.5" />
             <span>Add Loan / Debt</span>
           </button>
-
-          <button
-            onClick={() => {
-              setLiabilityToEdit({
-                id: '',
-                vaultId: '',
-                name: 'Sister Loan',
-                type: 'family_peer',
-                category: 'Sister Loan',
-                lender: 'Sister',
-                principalAmount: 0,
-                outstandingBalance: 0,
-                interestRate: 0,
-                emiAmount: 0,
-                currency: 'INR',
-                updatedAt: '',
-              } as any);
-              setIsLiabilityModalOpen(true);
-            }}
-            className="px-3.5 py-2 rounded-xl border border-line bg-card hover:bg-moss active:scale-[0.97] text-xs font-bold text-ink flex items-center gap-1.5 cursor-pointer transition-all"
-          >
-            <span>🤝</span>
-            <span>+ Family / Sister Debt</span>
-          </button>
         </div>
       </div>
 
@@ -313,222 +326,403 @@ export const AssetsLiabilitiesView: React.FC = () => {
       {/* TAB 1: Assets View */}
       {activeTab === 'assets' && (
         <div className="space-y-4">
-          {assets.length === 0 ? (
-            <Card className="text-center py-12 text-xs space-y-3 lift">
-              <div className="w-12 h-12 rounded-2xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 grid place-items-center mx-auto text-pine-600">
-                <Landmark className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="font-display font-bold text-sm text-ink">No assets logged yet</h3>
-                <p className="text-xs text-ink/50 mt-1 max-w-sm mx-auto">
-                  Add your home, vehicles, gold, mutual funds, PF, or stocks to see your true net worth.
-                </p>
-              </div>
+          {/* Status Sub-Filters */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-moss border border-line self-start">
               <button
-                onClick={() => {
-                  setAssetToEdit(undefined);
-                  setIsAssetModalOpen(true);
-                }}
-                className="px-4 py-2 rounded-xl bg-pine-700 text-white text-xs font-bold shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setAssetStatusFilter('active')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  assetStatusFilter === 'active'
+                    ? 'bg-card text-ink shadow-xs border border-line'
+                    : 'text-ink/60 hover:text-ink'
+                }`}
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add your first asset</span>
+                Active Holdings ({activeAssets.length})
               </button>
-            </Card>
-          ) : (
+              <button
+                onClick={() => setAssetStatusFilter('settled')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  assetStatusFilter === 'settled'
+                    ? 'bg-card text-ink shadow-xs border border-line'
+                    : 'text-ink/60 hover:text-ink'
+                }`}
+              >
+                Settled Archive ({settledAssets.length})
+              </button>
+            </div>
+
+            {assetStatusFilter === 'active' && settledAssets.length > 0 && (
+              <button
+                onClick={() => setAssetStatusFilter('settled')}
+                className="text-[11.5px] text-pine-700 dark:text-pine-400 hover:underline flex items-center gap-1 font-medium cursor-pointer self-start sm:self-auto"
+              >
+                <span>Hiding {settledAssets.length} liquidated asset(s) to reduce clutter</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          {/* VIEW A: Active Assets */}
+          {assetStatusFilter === 'active' && (
             <>
-              {/* Asset Allocation Bar */}
-              {assetChartData.length > 0 && (
-                <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-3.5 shadow-sm lift">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div>
-                      <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink">
-                        Asset Class Portfolio Distribution
-                      </h3>
-                      <p className="text-[11.5px] text-ink/50 mt-0.5">
-                        Breakdown across physical real estate, equity, fixed deposits, and retirement vehicles
-                      </p>
-                    </div>
-                    <span className="text-xs font-mono font-bold text-ink tabular-nums">
-                      {assets.length} Holdings Registered
-                    </span>
+              {activeAssets.length === 0 ? (
+                <Card className="text-center py-12 text-xs space-y-3 lift">
+                  <div className="w-12 h-12 rounded-2xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 grid place-items-center mx-auto text-pine-600">
+                    <Landmark className="w-6 h-6" />
                   </div>
-
-                  {/* Multi-segment bar */}
-                  <div className="w-full h-3 rounded-full overflow-hidden flex bg-moss p-0.5 gap-0.5">
-                    {assetChartData.map((seg, idx) => {
-                      const pct = totalAssetsValue > 0 ? (seg.value / totalAssetsValue) * 100 : 0;
-                      if (pct <= 0) return null;
-                      return (
-                        <div
-                          key={idx}
-                          title={`${seg.name}: ${formatPercent(pct)}`}
-                          style={{
-                            width: `${pct}%`,
-                            backgroundColor: seg.color,
-                          }}
-                          className="h-full rounded-full transition-all duration-300 first:rounded-l-full last:rounded-r-full"
-                        />
-                      );
-                    })}
+                  <div>
+                    <h3 className="font-display font-bold text-sm text-ink">
+                      {settledAssets.length > 0
+                        ? 'All registered assets are fully liquidated'
+                        : 'No assets logged yet'}
+                    </h3>
+                    <p className="text-xs text-ink/50 mt-1 max-w-sm mx-auto">
+                      {settledAssets.length > 0
+                        ? `You have ${settledAssets.length} liquidated position(s) preserved in your Settled Archive.`
+                        : 'Add your home, vehicles, gold, mutual funds, PF, or stocks to see your true net worth.'}
+                    </p>
                   </div>
-
-                  {/* Legend Chips */}
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    {assetChartData.map((seg, idx) => {
-                      const pct = totalAssetsValue > 0 ? (seg.value / totalAssetsValue) * 100 : 0;
-                      return (
-                        <div
-                          key={idx}
-                          className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-moss border border-line text-xs"
-                        >
-                          <span
-                            className="w-2 h-2 rounded-full shrink-0"
-                            style={{ backgroundColor: seg.color }}
-                          />
-                          <span className="font-semibold text-ink">{seg.name}</span>
-                          <span className="font-mono text-ink/50 text-[11px] tabular-nums">
-                            {formatPercent(pct)}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Asset Cards Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {assets.map((asset) => {
-                  const gain = asset.purchasePrice ? asset.currentValue - asset.purchasePrice : 0;
-                  const gainPct =
-                    asset.purchasePrice && asset.purchasePrice > 0
-                      ? (gain / asset.purchasePrice) * 100
-                      : 0;
-
-                  return (
-                    <div
-                      key={asset.id}
-                      onClick={() => setSelectedAssetId(selectedAssetId === asset.id ? null : asset.id)}
-                      className={`rounded-2xl border p-4 sm:p-5 space-y-3 shadow-sm lift flex flex-col justify-between transition-all cursor-pointer ${
-                        selectedAssetId === asset.id || assetToEdit?.id === asset.id || detailAsset?.id === asset.id
-                          ? 'border-pine-500 ring-2 ring-pine-500 bg-pine-50/20 dark:bg-pine-950/20 shadow-md scale-[1.01]'
-                          : 'border-line bg-card hover:border-pine-300'
-                      }`}
+                  <div className="flex items-center justify-center gap-2 pt-1">
+                    {settledAssets.length > 0 && (
+                      <button
+                        onClick={() => setAssetStatusFilter('settled')}
+                        className="px-3.5 py-2 rounded-xl border border-line bg-card hover:bg-moss text-ink text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Archive className="w-3.5 h-3.5 text-pine-600" />
+                        <span>View Settled Archive ({settledAssets.length})</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setAssetToEdit(undefined);
+                        setIsAssetModalOpen(true);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 text-white text-xs font-bold shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
                     >
-                      <div>
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <h3
-                              onClick={() => setDetailAsset(asset)}
-                              className="font-display font-bold text-sm text-ink truncate cursor-pointer hover:text-pine-600 transition-colors"
-                              title="Click to view SIP installments and unit details"
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add New Asset</span>
+                    </button>
+                  </div>
+                </Card>
+              ) : (
+                <>
+                  {/* Asset Allocation Bar */}
+                  {assetChartData.length > 0 && (
+                    <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-3.5 shadow-sm lift">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink">
+                            Asset Class Portfolio Distribution
+                          </h3>
+                          <p className="text-[11.5px] text-ink/50 mt-0.5">
+                            Breakdown across physical real estate, equity, fixed deposits, and retirement vehicles
+                          </p>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-ink tabular-nums">
+                          {activeAssets.length} Active Holdings
+                        </span>
+                      </div>
+
+                      {/* Multi-segment bar */}
+                      <div className="w-full h-3 rounded-full overflow-hidden flex bg-moss p-0.5 gap-0.5">
+                        {assetChartData.map((seg, idx) => {
+                          const pct = totalAssetsValue > 0 ? (seg.value / totalAssetsValue) * 100 : 0;
+                          if (pct <= 0) return null;
+                          return (
+                            <div
+                              key={idx}
+                              title={`${seg.name}: ${formatPercent(pct)}`}
+                              style={{
+                                width: `${pct}%`,
+                                backgroundColor: seg.color,
+                              }}
+                              className="h-full rounded-full transition-all duration-300 first:rounded-l-full last:rounded-r-full"
+                            />
+                          );
+                        })}
+                      </div>
+
+                      {/* Legend Chips */}
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {assetChartData.map((seg, idx) => {
+                          const pct = totalAssetsValue > 0 ? (seg.value / totalAssetsValue) * 100 : 0;
+                          return (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-moss border border-line text-xs"
                             >
-                              {asset.name}
-                            </h3>
-                            <div className="flex items-center gap-1 mt-1 flex-wrap">
-                              <Badge tone="pine" size="xs" className="capitalize">
-                                {asset.type.replace('_', ' ')}
-                              </Badge>
-                              {asset.tranches && asset.tranches.length > 0 && (
-                                <Badge tone="sky" size="xs">
-                                  SIP • {asset.tranches.length} lots
-                                </Badge>
-                              )}
-                              {asset.totalUnits && asset.totalUnits > 0 && (
-                                <span className="text-[11px] font-mono text-ink/50">
-                                  {asset.totalUnits.toFixed(2)} units
-                                </span>
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{ backgroundColor: seg.color }}
+                              />
+                              <span className="font-semibold text-ink">{seg.name}</span>
+                              <span className="font-mono text-ink/50 text-[11px] tabular-nums">
+                                {formatPercent(pct)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Asset Cards Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                    {activeAssets.map((asset) => {
+                      const gain = asset.purchasePrice ? asset.currentValue - asset.purchasePrice : 0;
+                      const gainPct =
+                        asset.purchasePrice && asset.purchasePrice > 0
+                          ? (gain / asset.purchasePrice) * 100
+                          : 0;
+
+                      return (
+                        <div
+                          key={asset.id}
+                          onClick={() => setSelectedAssetId(selectedAssetId === asset.id ? null : asset.id)}
+                          className={`rounded-2xl border p-4 sm:p-5 space-y-3 shadow-sm lift flex flex-col justify-between transition-all cursor-pointer ${
+                            selectedAssetId === asset.id || assetToEdit?.id === asset.id || detailAsset?.id === asset.id
+                              ? 'border-pine-500 ring-2 ring-pine-500 bg-pine-50/20 dark:bg-pine-950/20 shadow-md scale-[1.01]'
+                              : 'border-line bg-card hover:border-pine-300'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <h3
+                                  onClick={() => setDetailAsset(asset)}
+                                  className="font-display font-bold text-sm text-ink truncate cursor-pointer hover:text-pine-600 transition-colors"
+                                  title="Click to view SIP installments and unit details"
+                                >
+                                  {asset.name}
+                                </h3>
+                                <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                  <Badge tone="pine" size="xs" className="capitalize">
+                                    {asset.type.replace('_', ' ')}
+                                  </Badge>
+                                  {asset.tranches && asset.tranches.length > 0 && (
+                                    <Badge tone="sky" size="xs">
+                                      SIP • {asset.tranches.length} lots
+                                    </Badge>
+                                  )}
+                                  {asset.totalUnits && asset.totalUnits > 0 && (
+                                    <span className="text-[11px] font-mono text-ink/50">
+                                      {asset.totalUnits.toFixed(2)} units
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-0.5">
+                                <button
+                                  onClick={() => {
+                                    setAssetToEdit(asset);
+                                    setIsAssetModalOpen(true);
+                                  }}
+                                  title="Edit asset details"
+                                  className="p-1.5 rounded-lg text-ink/40 hover:text-ink hover:bg-moss cursor-pointer transition-colors"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteAsset(asset.id, asset.name)}
+                                  title="Delete asset"
+                                  className="p-1.5 rounded-lg text-ink/40 hover:text-flare-600 hover:bg-moss cursor-pointer transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 space-y-1">
+                              <span className="text-[10px] text-ink/45 font-bold uppercase tracking-wider block">
+                                Current Market Value
+                              </span>
+                              <div className="font-display font-extrabold text-xl sm:text-2xl num text-ink tracking-tight">
+                                <AnimatedNumber
+                                  value={asset.currentValue}
+                                  currency={asset.currency}
+                                  numberFormat={numberFormat}
+                                  isPrivacyMode={isPrivacyMode}
+                                />
+                              </div>
+
+                              {asset.purchasePrice && asset.purchasePrice > 0 && (
+                                <div className="flex items-center gap-1.5 text-xs pt-1 flex-wrap">
+                                  <span
+                                    className={`font-semibold flex items-center ${
+                                      gain >= 0 ? 'text-pine-600' : 'text-flare-600'
+                                    }`}
+                                  >
+                                    {gain >= 0 ? (
+                                      <TrendingUp className="w-3.5 h-3.5 mr-0.5" />
+                                    ) : (
+                                      <TrendingDown className="w-3.5 h-3.5 mr-0.5" />
+                                    )}
+                                    {formatPercent(gainPct)}
+                                  </span>
+                                  <span className="text-ink/45 font-normal">
+                                    (Cost:{' '}
+                                    {formatCompactCurrency(
+                                      asset.purchasePrice,
+                                      asset.currency,
+                                      numberFormat,
+                                      isPrivacyMode
+                                    )}
+                                    )
+                                  </span>
+                                </div>
                               )}
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-0.5">
+                          {/* Card Footer Actions */}
+                          <div className="pt-2.5 border-t border-line flex items-center justify-between">
                             <button
-                              onClick={() => {
-                                setAssetToEdit(asset);
-                                setIsAssetModalOpen(true);
-                              }}
-                              className="p-1.5 rounded-lg text-ink/40 hover:text-ink transition-colors cursor-pointer"
-                              title="Edit Asset"
+                              onClick={() => setDetailAsset(asset)}
+                              className="text-[11.5px] text-pine-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                             >
-                              <Edit2 className="w-3.5 h-3.5" />
+                              <Layers className="w-3 h-3" />
+                              <span>{asset.tranches && asset.tranches.length > 0 ? `${asset.tranches.length} Lots & Tranches` : 'Lots & Details'}</span>
                             </button>
+
+                            <button
+                              onClick={() => setValuationAsset(asset)}
+                              className="px-2.5 py-1 rounded-lg bg-moss hover:bg-pine-50 text-pine-700 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <History className="w-3 h-3 text-pine-600" />
+                              <span>Update Value</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* VIEW B: Settled Archive (Liquidated Positions) */}
+          {assetStatusFilter === 'settled' && (
+            <>
+              {settledAssets.length === 0 ? (
+                <Card className="text-center py-12 text-xs space-y-3 lift">
+                  <div className="w-12 h-12 rounded-2xl bg-moss border border-line grid place-items-center mx-auto text-ink/40">
+                    <Archive className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-bold text-sm text-ink">No liquidated assets in archive</h3>
+                    <p className="text-xs text-ink/50 mt-1 max-w-sm mx-auto">
+                      Whenever you sell or redeem 100% of an asset holding, it is archived here with complete capital gain and tax lot history.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setAssetStatusFilter('active')}
+                    className="px-3.5 py-1.5 rounded-xl border border-line hover:bg-moss text-xs font-semibold text-ink inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Back to Active Holdings</span>
+                  </button>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                  {settledAssets.map((asset) => {
+                    const tranches = asset.tranches || [];
+                    const sellTranches = tranches.filter((t) => t.type === 'sell');
+                    const buyTranches = tranches.filter((t) => t.type !== 'sell');
+                    const totalInvested =
+                      buyTranches.reduce((sum, t) => sum + (t.amount || 0), 0) || asset.purchasePrice || 0;
+                    const soldProceeds = sellTranches.reduce((sum, t) => sum + (t.amount || 0), 0);
+                    const totalRealizedGain = sellTranches.reduce((sum, t) => sum + (t.realizedGain || 0), 0);
+                    const gainPct = totalInvested > 0 ? (totalRealizedGain / totalInvested) * 100 : 0;
+                    const lastSellDate = sellTranches.length > 0 ? sellTranches[sellTranches.length - 1].date : '';
+
+                    return (
+                      <div
+                        key={asset.id}
+                        className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-3 shadow-sm lift flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h3
+                                onClick={() => setDetailAsset(asset)}
+                                className="font-display font-bold text-sm text-ink truncate cursor-pointer hover:text-pine-600 transition-colors"
+                                title="Click to view liquidation tranches and tax records"
+                              >
+                                {asset.name}
+                              </h3>
+                              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                <Badge tone="gray" size="xs" className="capitalize">
+                                  {asset.type.replace('_', ' ')}
+                                </Badge>
+                                <Badge tone="pine" size="xs" icon={<CheckCircle2 className="w-3 h-3" />}>
+                                  100% Liquidated
+                                </Badge>
+                                <span className="text-[11px] text-ink/40 font-mono">
+                                  {sellTranches.length} {sellTranches.length === 1 ? 'sale' : 'sales'}
+                                </span>
+                              </div>
+                            </div>
+
                             <button
                               onClick={() => handleDeleteAsset(asset.id, asset.name)}
-                              className="p-1.5 rounded-lg text-ink/40 hover:text-flare-600 transition-colors cursor-pointer"
-                              title="Delete Asset"
+                              title="Delete from archive"
+                              className="p-1.5 rounded-lg text-ink/40 hover:text-flare-600 hover:bg-moss cursor-pointer transition-colors"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
-                        </div>
 
-                        {/* Valuation */}
-                        <div className="pt-2">
-                          <span className="text-[10px] text-ink/45 font-bold uppercase tracking-wider block">
-                            Current Valuation
-                          </span>
-                          <div className="font-display font-extrabold text-2xl num text-ink mt-0.5">
-                            <AnimatedNumber
-                              value={asset.currentValue}
-                              currency={asset.currency}
-                              numberFormat={numberFormat}
-                              isPrivacyMode={isPrivacyMode}
-                            />
-                          </div>
+                          <div className="grid grid-cols-2 gap-2 pt-3 border-t border-line/60 mt-3 text-xs">
+                            <div>
+                              <span className="text-[10px] text-ink/45 font-bold uppercase block">
+                                Sale Proceeds
+                              </span>
+                              <span className="font-mono font-bold text-ink text-sm block mt-0.5">
+                                {formatCurrency(soldProceeds, asset.currency, numberFormat, isPrivacyMode)}
+                              </span>
+                            </div>
 
-                          {asset.purchasePrice && (
-                            <div className="flex items-center gap-1.5 text-xs mt-1 font-semibold">
+                            <div>
+                              <span className="text-[10px] text-ink/45 font-bold uppercase block">
+                                Net Realized Gain
+                              </span>
                               <span
-                                className={`flex items-center ${
-                                  gain >= 0 ? 'text-pine-600' : 'text-flare-600'
+                                className={`font-mono font-bold text-sm block mt-0.5 ${
+                                  totalRealizedGain >= 0 ? 'text-pine-600' : 'text-flare-600'
                                 }`}
                               >
-                                {gain >= 0 ? (
-                                  <TrendingUp className="w-3.5 h-3.5 mr-0.5" />
-                                ) : (
-                                  <TrendingDown className="w-3.5 h-3.5 mr-0.5" />
-                                )}
-                                {formatPercent(gainPct)}
+                                {totalRealizedGain >= 0 ? '+' : ''}
+                                {formatCurrency(totalRealizedGain, asset.currency, numberFormat, isPrivacyMode)}
+                                <span className="text-[10.5px] font-normal ml-1">
+                                  ({formatPercent(gainPct)})
+                                </span>
                               </span>
-                              <span className="text-ink/45 font-normal">
-                                (Cost:{' '}
-                                {formatCompactCurrency(
-                                  asset.purchasePrice,
-                                  asset.currency,
-                                  numberFormat,
-                                  isPrivacyMode
-                                )}
-                                )
-                              </span>
+                            </div>
+                          </div>
+
+                          {lastSellDate && (
+                            <div className="text-[11px] text-ink/45 pt-2 flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              <span>Liquidated on {formatReadableDate(lastSellDate)}</span>
                             </div>
                           )}
                         </div>
-                      </div>
 
-                      {/* Card Footer Actions */}
-                      <div className="pt-2.5 border-t border-line flex items-center justify-between">
-                        <button
-                          onClick={() => setDetailAsset(asset)}
-                          className="text-[11.5px] text-pine-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                        >
-                          <Layers className="w-3 h-3" />
-                          <span>{asset.tranches && asset.tranches.length > 0 ? `${asset.tranches.length} SIP Lots` : 'Lots & Details'}</span>
-                        </button>
-
-                        <button
-                          onClick={() => setValuationAsset(asset)}
-                          className="px-2.5 py-1 rounded-lg bg-moss hover:bg-pine-50 text-pine-700 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <History className="w-3 h-3 text-pine-600" />
-                          <span>Update Value</span>
-                        </button>
+                        <div className="pt-2.5 border-t border-line flex items-center justify-between">
+                          <button
+                            onClick={() => setDetailAsset(asset)}
+                            className="text-[11.5px] text-pine-600 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <History className="w-3 h-3" />
+                            <span>View Redemption History</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </>
           )}
         </div>

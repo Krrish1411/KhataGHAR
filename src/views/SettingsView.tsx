@@ -48,7 +48,7 @@ import { IconRenderer } from '../components/common/IconRenderer';
 import { APP_SHORTCUTS, formatKeyDisplay } from '../services/shortcuts';
 
 export const SettingsView: React.FC = () => {
-  const { activeVault, sessionKey, lockVault, refreshVaultList, setActiveVaultMeta } =
+  const { activeVault, sessionKey, lockVault, refreshVaultList, setActiveVaultMeta, setSessionCredentials } =
     useAuth();
   const {
     accounts,
@@ -68,6 +68,23 @@ export const SettingsView: React.FC = () => {
     loadDemoData,
   } = useVault();
   const { theme, setTheme } = useTheme();
+
+  const [vaultNameInput, setVaultNameInput] = useState(activeVault?.name || '');
+  const [vaultNameSuccess, setVaultNameSuccess] = useState('');
+
+  useEffect(() => {
+    if (activeVault?.name) {
+      setVaultNameInput(activeVault.name);
+    }
+  }, [activeVault?.name]);
+
+  const handleRenameVault = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeVault || !vaultNameInput.trim()) return;
+    await updateVaultSettings({ name: vaultNameInput.trim() });
+    setVaultNameSuccess('Vault renamed successfully!');
+    setTimeout(() => setVaultNameSuccess(''), 3000);
+  };
 
   const [isNewVaultOpen, setIsNewVaultOpen] = useState(false);
   const [isLoadingDemo, setIsLoadingDemo] = useState(false);
@@ -193,8 +210,10 @@ export const SettingsView: React.FC = () => {
     setPasswordChangeSuccess('');
 
     try {
-      await changeVaultPassword(activeVault, sessionKey, newPassword);
-      setPasswordChangeSuccess('Password changed successfully! Locking vault to enforce re-authentication…');
+      const { updatedVault, newKey } = await changeVaultPassword(activeVault, sessionKey, newPassword);
+      setSessionCredentials(updatedVault, newKey);
+      await refreshVaultList();
+      setPasswordChangeSuccess('Password changed successfully! Re-encryption complete. Locking vault to enforce re-authentication…');
       setNewPassword('');
       setConfirmNewPassword('');
       setTimeout(() => {
@@ -462,6 +481,40 @@ export const SettingsView: React.FC = () => {
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
+          {/* Vault Name / Renaming */}
+          <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-2.5 shadow-sm lift sm:col-span-2 xl:col-span-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="block text-xs font-bold text-ink">
+                  Vault Name & Identification
+                </span>
+                <span className="block text-[11.5px] text-ink/55 mt-0.5">
+                  Customize the display name for this encrypted financial enclave.
+                </span>
+              </div>
+              {vaultNameSuccess && (
+                <span className="text-xs text-pine-600 font-semibold bg-pine-50 dark:bg-pine-950/50 px-2.5 py-1 rounded-lg border border-pine-200">
+                  {vaultNameSuccess}
+                </span>
+              )}
+            </div>
+            <form onSubmit={handleRenameVault} className="flex gap-2 pt-1 max-w-md">
+              <Input
+                value={vaultNameInput}
+                onChange={(e) => setVaultNameInput(e.target.value)}
+                placeholder="Vault name (e.g. Personal Finances, Family Hub)"
+                className="flex-1"
+                required
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-[0.97] text-white text-xs font-bold shadow-xs cursor-pointer transition-all shrink-0"
+              >
+                Rename Vault
+              </button>
+            </form>
+          </div>
+
           {/* Theme */}
           <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-2.5 shadow-sm lift">
             <label className="block text-xs font-semibold text-ink">

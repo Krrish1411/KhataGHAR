@@ -191,6 +191,8 @@ export const PnLStatementSection: React.FC<PnLStatementSectionProps> = ({
     const netProfit = grossEconomicRevenue - totalOperatingExpenses - totalFinanceCharges;
     const netProfitMargin = grossEconomicRevenue > 0 ? (netProfit / grossEconomicRevenue) * 100 : 0;
 
+    const netCapitalAssetAdditions = Math.max(0, totalInvestmentsPurchased - totalCostBasis);
+
     return {
       operatingRevenueItems,
       totalOperatingRevenue,
@@ -210,6 +212,7 @@ export const PnLStatementSection: React.FC<PnLStatementSectionProps> = ({
       netProfit,
       netProfitMargin,
       totalInvestmentsPurchased,
+      netCapitalAssetAdditions,
       totalDebtPrincipalRepaid,
     };
   }, [currentPeriodTxs, catMap, assetMap]);
@@ -283,7 +286,9 @@ export const PnLStatementSection: React.FC<PnLStatementSectionProps> = ({
     lines.push(``);
 
     lines.push(`SCHEDULE V (MEMORANDUM): BALANCE SHEET MOVEMENTS`);
-    lines.push(`Investments & Capital Assets Acquired,${pnl.totalInvestmentsPurchased.toFixed(2)}`);
+    lines.push(`Gross Investments & Capital Assets Acquired,${pnl.totalInvestmentsPurchased.toFixed(2)}`);
+    lines.push(`Less: Liquidated Assets (Cost Basis),-${pnl.totalCostBasis.toFixed(2)}`);
+    lines.push(`Net Capital Asset Additions,${pnl.netCapitalAssetAdditions.toFixed(2)}`);
     lines.push(`Debt Principal Repaid,${pnl.totalDebtPrincipalRepaid.toFixed(2)}`);
 
     const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -713,11 +718,35 @@ export const PnLStatementSection: React.FC<PnLStatementSectionProps> = ({
 
           <div className="space-y-2 pt-1">
             <div className="flex items-center justify-between text-xs py-1.5 border-b border-line/40">
-              <span className="text-ink/80">New Investments & SIPs Acquired</span>
+              <span className="text-ink/80">Gross Investments & SIPs Acquired</span>
               <span className="font-mono font-bold text-pine-600">
                 +{formatCurrency(pnl.totalInvestmentsPurchased, baseCurrency, numberFormat, isPrivacyMode)}
               </span>
             </div>
+
+            {pnl.totalCostBasis > 0 && (
+              <div className="flex items-center justify-between text-xs py-1.5 border-b border-line/40">
+                <span className="text-ink/80">Less: Redemptions & Liquidations (Cost Basis)</span>
+                <span className="font-mono font-bold text-flare-600">
+                  -{formatCurrency(pnl.totalCostBasis, baseCurrency, numberFormat, isPrivacyMode)}
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between text-xs py-1.5 border-b border-line/40 font-semibold bg-moss/40 px-2 rounded-lg">
+              <div>
+                <span className="text-ink">Net Capital Asset Additions</span>
+                {pnl.totalInvestmentsPurchased > 0 && pnl.netCapitalAssetAdditions === 0 && (
+                  <span className="text-[10px] text-ink/50 block font-normal italic">
+                    Acquired & fully liquidated within the same period
+                  </span>
+                )}
+              </div>
+              <span className="font-mono font-bold text-pine-700 dark:text-pine-300">
+                +{formatCurrency(pnl.netCapitalAssetAdditions, baseCurrency, numberFormat, isPrivacyMode)}
+              </span>
+            </div>
+
             <div className="flex items-center justify-between text-xs py-1.5 border-b border-line/40">
               <span className="text-ink/80">Debt & Loan Principal Paydowns</span>
               <span className="font-mono font-bold text-mari-600">

@@ -4,8 +4,12 @@ import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
+import { Modal } from '../components/common/Modal';
+import { Input } from '../components/common/Input';
 import { AnimatedNumber } from '../components/common/AnimatedNumber';
 import { OnboardingModal } from '../components/security/OnboardingModal';
+import { MergedVaultModal } from '../components/vault/MergedVaultModal';
+import { renameVault } from '../services/storage';
 import type { VaultMeta } from '../types';
 import {
   Home,
@@ -16,14 +20,18 @@ import {
   Sparkles,
   Layers,
   CheckCircle2,
+  Pencil,
 } from 'lucide-react';
 
 export const FamilyOverviewView: React.FC = () => {
-  const { allVaults, activeVault } = useAuth();
+  const { allVaults, activeVault, refreshVaultList } = useAuth();
   const { accounts, assets, liabilities, updateVaultSettings } = useVault();
   const { isPrivacyMode } = usePrivacy();
 
   const [isCreateVaultOpen, setIsCreateVaultOpen] = useState(false);
+  const [isMergedModalOpen, setIsMergedModalOpen] = useState(false);
+  const [vaultToRename, setVaultToRename] = useState<VaultMeta | null>(null);
+  const [renameVaultName, setRenameVaultName] = useState('');
 
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
@@ -36,6 +44,17 @@ export const FamilyOverviewView: React.FC = () => {
 
   const handleToggleFamilyInclusion = async (val: boolean) => {
     await updateVaultSettings({ includeInFamilyOverview: val });
+  };
+
+  const handleRenameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vaultToRename || !renameVaultName.trim()) return;
+    await renameVault(vaultToRename.id, renameVaultName.trim());
+    if (activeVault && activeVault.id === vaultToRename.id) {
+      await updateVaultSettings({ name: renameVaultName.trim() });
+    }
+    await refreshVaultList();
+    setVaultToRename(null);
   };
 
   return (
@@ -56,13 +75,24 @@ export const FamilyOverviewView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsCreateVaultOpen(true)}
-          className="px-4 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-[0.97] text-white text-xs font-bold shadow-sm shadow-pine-900/20 flex items-center gap-1.5 cursor-pointer transition-all self-start sm:self-auto"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Add Family Vault</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <button
+            onClick={() => setIsMergedModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-mari-700 hover:bg-mari-600 active:scale-[0.97] text-white text-xs font-bold shadow-sm shadow-mari-900/20 flex items-center gap-1.5 cursor-pointer transition-all"
+            title="Consolidate multiple family vaults into a combined enclave with its own master password"
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Create Merged Vault</span>
+          </button>
+
+          <button
+            onClick={() => setIsCreateVaultOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-[0.97] text-white text-xs font-bold shadow-sm shadow-pine-900/20 flex items-center gap-1.5 cursor-pointer transition-all"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Family Vault</span>
+          </button>
+        </div>
       </div>
 
       {/* Architecture Info Banner */}
@@ -174,6 +204,7 @@ export const FamilyOverviewView: React.FC = () => {
                       <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="font-display font-bold text-sm text-ink">{vault.name}</h4>
                         {vault.isPrimary && <Badge tone="mari">Primary</Badge>}
+                        {vault.isMerged && <Badge tone="sky">Merged Enclave</Badge>}
                         {isActive && <Badge tone="pine">Active</Badge>}
                       </div>
                       <span className="text-[11px] text-ink/45 block mt-1">
@@ -181,8 +212,21 @@ export const FamilyOverviewView: React.FC = () => {
                       </span>
                     </div>
 
-                    <div className="w-8 h-8 rounded-xl bg-moss border border-line grid place-items-center text-ink/40 shrink-0">
-                      <Lock className="w-3.5 h-3.5" />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVaultToRename(vault);
+                          setRenameVaultName(vault.name);
+                        }}
+                        title={`Rename "${vault.name}"`}
+                        className="w-7 h-7 rounded-lg bg-moss hover:bg-moss/80 border border-line grid place-items-center text-ink/50 hover:text-ink cursor-pointer transition-all"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="w-8 h-8 rounded-xl bg-moss border border-line grid place-items-center text-ink/40 shrink-0">
+                        <Lock className="w-3.5 h-3.5" />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -217,6 +261,52 @@ export const FamilyOverviewView: React.FC = () => {
           onClose={() => setIsCreateVaultOpen(false)}
           isInitialSetup={false}
         />
+      )}
+
+      {/* Merged Vault Creation Modal */}
+      {isMergedModalOpen && (
+        <MergedVaultModal
+          isOpen={isMergedModalOpen}
+          onClose={() => setIsMergedModalOpen(false)}
+        />
+      )}
+
+      {/* Rename Vault Modal */}
+      {vaultToRename && (
+        <Modal
+          isOpen={Boolean(vaultToRename)}
+          onClose={() => setVaultToRename(null)}
+          title="Rename Vault"
+          description={`Change display name for "${vaultToRename.name}"`}
+          maxWidth="sm"
+        >
+          <form onSubmit={handleRenameSubmit} className="space-y-4">
+            <Input
+              label="Vault Name"
+              value={renameVaultName}
+              onChange={(e) => setRenameVaultName(e.target.value)}
+              placeholder="e.g. Household, Personal, Mom's Savings"
+              required
+              autoFocus
+            />
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setVaultToRename(null)}
+                className="px-3.5 py-2 rounded-xl border border-line hover:bg-moss text-xs font-semibold text-ink transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-[0.97] text-white text-xs font-bold shadow-xs cursor-pointer transition-all"
+              >
+                Save Name
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );

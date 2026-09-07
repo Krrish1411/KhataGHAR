@@ -34,6 +34,7 @@ import {
   Command,
   Keyboard,
   ArrowRight,
+  Target,
 } from 'lucide-react';
 import { computeFinancialInsights, type FinancialInsight } from '../services/insights';
 import {
@@ -47,7 +48,7 @@ import {
 } from 'recharts';
 
 export const DashboardView: React.FC = () => {
-  const { activeVault, accounts, transactions, categories, peopleLedger, budgets, assets, liabilities, plannedExpenses, loadDemoData } =
+  const { activeVault, accounts, transactions, categories, peopleLedger, budgets, goals, assets, liabilities, plannedExpenses, loadDemoData } =
     useVault();
   const { isPrivacyMode, togglePrivacy } = usePrivacy();
 
@@ -285,8 +286,13 @@ export const DashboardView: React.FC = () => {
             </Badge>
             <Badge
               tone="gray"
-              className="!bg-white/10 !text-pine-100 !border-white/20"
+              className="!bg-white/10 !text-pine-100 !border-white/20 cursor-help"
               icon={<CalendarClock className="w-3 h-3" />}
+              title={
+                d.committedPaidThisMonth > 0
+                  ? `${formatCurrency(d.committedTotal, baseCurrency, numberFormat, isPrivacyMode)} remaining of ${formatCurrency(d.grossCommittedTotal, baseCurrency, numberFormat, isPrivacyMode)} budgeted (${formatCurrency(d.committedPaidThisMonth, baseCurrency, numberFormat, isPrivacyMode)} already paid this month)`
+                  : `${formatCurrency(d.committedTotal, baseCurrency, numberFormat, isPrivacyMode)} committed upcoming bills & EMIs`
+              }
             >
               {formatCompactCurrency(d.committedTotal, baseCurrency, numberFormat, isPrivacyMode)} committed
             </Badge>
@@ -662,7 +668,59 @@ export const DashboardView: React.FC = () => {
         </section>
       )}
 
-      {/* 5. MONEY VITALS / RATIOS (Widget 3) */}
+      {/* 5. SAVINGS MILESTONES & TARGET POTS (Decoupled from Available Cash) */}
+      {goals.length > 0 && (
+        <section className="space-y-2.5">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="font-display font-bold text-[15px] tracking-tight text-ink flex items-center gap-2">
+              <Target className="w-4 h-4 text-pine-600" />
+              <span>Savings Goals & Milestones</span>
+            </h2>
+            <button
+              onClick={() => (window.location.hash = '#/budgets')}
+              className="text-[11.5px] font-semibold text-pine-700 dark:text-pine-400 hover:underline cursor-pointer"
+            >
+              manage goals →
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {goals.map((g) => {
+              const pct = g.targetAmount > 0 ? Math.min(100, (g.currentAmount / g.targetAmount) * 100) : 0;
+              return (
+                <div
+                  key={g.id}
+                  onClick={() => (window.location.hash = '#/budgets')}
+                  className="rounded-2xl border border-line bg-card p-4 space-y-2.5 shadow-sm lift cursor-pointer"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-display font-bold text-sm text-ink truncate">{g.name}</span>
+                    <Badge tone={pct >= 100 ? 'pine' : 'sky'}>{pct.toFixed(0)}%</Badge>
+                  </div>
+
+                  <div className="h-2 w-full bg-moss rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500 bg-pine-600"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <span className="font-bold text-ink">
+                      {formatCurrency(g.currentAmount, baseCurrency, numberFormat, isPrivacyMode)}
+                    </span>
+                    <span className="text-ink/45">
+                      target: {formatCurrency(g.targetAmount, baseCurrency, numberFormat, isPrivacyMode)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* 6. MONEY VITALS / RATIOS (Widget 3) */}
       <section className="space-y-2.5">
         <div className="flex items-center justify-between px-1">
           <h2 className="font-display font-bold text-[15px] tracking-tight text-ink flex items-center gap-2">

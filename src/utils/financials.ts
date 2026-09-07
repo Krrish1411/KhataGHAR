@@ -10,6 +10,8 @@ export interface DerivedFinancials {
   givenOutTotal: number;
   reservedTotal: number;
   committedTotal: number;
+  grossCommittedTotal: number;
+  committedPaidThisMonth: number;
   availableToSpend: number;
   netWorth: number;
   thisMonthIncome: number;
@@ -86,12 +88,34 @@ export function computeDerivedFinancials(
 
   const reservedTotal = reservedHolding + reservedBorrowed;
 
-  // 3. Committed Upcoming Bills (Active budgets or EMIs)
-  const totalBudgeted = budgets.reduce((sum, b) => sum + b.amount, 0);
-  const committedTotal = totalBudgeted + monthlyEMIs;
+  // 3. Committed Upcoming Bills (Active budgets or EMIs with deduction of amounts already paid this month)
+  let remainingBudgetsTotal = 0;
+  budgets.forEach((b) => {
+    const spentThisMonth = transactions
+      .filter((t) => t.type === 'expense' && t.categoryId === b.categoryId && t.date.startsWith(thisMonthKey))
+      .reduce((sum, t) => sum + t.amount, 0);
+    const rem = Math.max(0, b.amount - spentThisMonth);
+    remainingBudgetsTotal += rem;
+  });
 
-  // 4. Available to Spend: True liquid liquidity minus non-owned money & half of committed budget
-  const availableToSpend = r2(Math.max(0, liquidBalance - reservedTotal - Math.min(liquidBalance * 0.3, committedTotal)));
+  let remainingEMIsTotal = 0;
+  liabilities.forEach((l) => {
+    if (!l.emiAmount || l.emiAmount <= 0) return;
+    const paidThisMonth = transactions
+      .filter((t) => t.type === 'expense' && t.linkedLiabilityId === l.id && t.date.startsWith(thisMonthKey))
+      .reduce((sum, t) => sum + t.amount, 0);
+    const rem = Math.max(0, l.emiAmount - paidThisMonth);
+    remainingEMIsTotal += rem;
+  });
+
+  const totalBudgeted = budgets.reduce((sum, b) => sum + b.amount, 0);
+  const grossCommittedTotal = r2(totalBudgeted + monthlyEMIs);
+  const committedTotal = r2(remainingBudgetsTotal + remainingEMIsTotal);
+  const committedPaidThisMonth = r2(Math.max(0, grossCommittedTotal - committedTotal));
+
+  // 4. Available to Spend: True liquid cash minus custodial/borrowed funds minus remaining unpaid commitments
+  // Long-term savings milestone goals are explicitly separated and NOT deducted from liquid spendable cash
+  const availableToSpend = r2(Math.max(0, liquidBalance - reservedTotal - committedTotal));
 
   // 5. Net Worth Formula: Assets − Liabilities − Money held for others + Money given out
   const netWorth = r2(totalAssets - totalLiabilities - reservedHolding - reservedBorrowed + givenOutTotal);
@@ -193,6 +217,8 @@ export function computeDerivedFinancials(
     givenOutTotal: r2(givenOutTotal),
     reservedTotal: r2(reservedTotal),
     committedTotal: r2(committedTotal),
+    grossCommittedTotal: r2(grossCommittedTotal),
+    committedPaidThisMonth: r2(committedPaidThisMonth),
     availableToSpend: r2(availableToSpend),
     netWorth: r2(netWorth),
     thisMonthIncome: r2(thisM.income),

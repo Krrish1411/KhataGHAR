@@ -31,6 +31,8 @@ export interface VaultMeta {
   isDemo?: boolean;
   showPersonalBorrowingsInLiabilities?: boolean; // Default: true — show People-Ledger borrowed entries in Liabilities tab
   customShortcuts?: Record<string, string>; // User customized keyboard shortcuts mapped by action ID
+  isMerged?: boolean; // True if this is a consolidated merged multi-vault
+  mergedSourceVaultIds?: string[]; // IDs of the constituent source vaults merged into this enclave
 }
 
 export type AccountType = 'bank' | 'cash' | 'credit_card' | 'wallet' | 'upi' | 'investment' | 'other';

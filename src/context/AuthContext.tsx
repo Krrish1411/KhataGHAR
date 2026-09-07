@@ -52,6 +52,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setActiveVault(primary);
       } else if (vaults.length === 0) {
         setActiveVault(null);
+      } else if (activeVault) {
+        const refreshedActive = vaults.find((v) => v.id === activeVault.id);
+        if (refreshedActive) {
+          setActiveVault(refreshedActive);
+        }
       }
     } catch (err) {
       console.error('Failed to load vaults:', err);
@@ -93,7 +98,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Unlock with password (or decoy PIN)
   const unlockVaultWithPassword = async (vaultId: string, password: string): Promise<boolean> => {
-    const targetVault = allVaults.find((v) => v.id === vaultId) || (await db.vaults.get(vaultId));
+    // Always fetch fresh from IndexedDB to ensure updated salt/verifier are used after password changes
+    const targetVault = (await db.vaults.get(vaultId)) || allVaults.find((v) => v.id === vaultId);
     if (!targetVault) return false;
 
     // Check if entered password matches Decoy PIN hash
@@ -105,6 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const decoyKey = await deriveKey(password, targetVault.salt);
         setActiveVault(targetVault);
         setSessionKey(decoyKey);
+        await refreshVaultList(false);
         return true;
       }
     }
@@ -117,6 +124,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsDecoyMode(false);
       setActiveVault(targetVault);
       setSessionKey(key);
+      await refreshVaultList(false);
       return true;
     } catch (err) {
       console.error('Error during vault unlock:', err);
