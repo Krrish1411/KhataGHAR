@@ -53,7 +53,7 @@ const NAV_GROUPS = [
     items: [
       { path: '/import', label: 'Import Data', icon: FileSpreadsheet },
       { path: '/documents', label: 'Document Vault', icon: FolderLock },
-      { path: '/family', label: 'Family Hub', icon: Home },
+      { path: '/family', label: 'Vault Hub', icon: Home },
     ],
   },
   {

@@ -30,6 +30,9 @@ export const GoalModal: React.FC<GoalModalProps> = ({
   );
   const [currency, setCurrency] = useState<CurrencyCode>(goalToEdit?.currency || activeVault?.currency || 'INR');
   const [notes, setNotes] = useState(goalToEdit?.notes || '');
+  const [deductFromAvailableToSpend, setDeductFromAvailableToSpend] = useState<boolean>(
+    goalToEdit?.deductFromAvailableToSpend || false
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -62,6 +65,7 @@ export const GoalModal: React.FC<GoalModalProps> = ({
           currency,
           notes: notes.trim() || undefined,
           isCompleted: numCurrent >= numTarget,
+          deductFromAvailableToSpend,
         });
       } else {
         await addGoal({
@@ -72,6 +76,7 @@ export const GoalModal: React.FC<GoalModalProps> = ({
           currency,
           notes: notes.trim() || undefined,
           isCompleted: numCurrent >= numTarget,
+          deductFromAvailableToSpend,
         });
       }
       onClose();
@@ -162,6 +167,25 @@ export const GoalModal: React.FC<GoalModalProps> = ({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
+
+        <div className="p-3.5 rounded-2xl bg-moss/70 border border-line space-y-1.5">
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={deductFromAvailableToSpend}
+              onChange={(e) => setDeductFromAvailableToSpend(e.target.checked)}
+              className="mt-0.5 rounded border-line text-pine-600 focus:ring-pine-500 cursor-pointer"
+            />
+            <div>
+              <span className="text-xs font-bold text-ink block">
+                Deduct from Available to Spend (Hero Green Box)
+              </span>
+              <p className="text-[11px] text-ink/50 leading-relaxed mt-0.5">
+                When checked, the remaining unfulfilled amount (Target − Current Saved) is treated as a reserved commitment and deducted from your spendable cash balance on the Home tab.
+              </p>
+            </div>
+          </label>
+        </div>
 
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>

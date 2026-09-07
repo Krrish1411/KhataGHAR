@@ -66,8 +66,8 @@ export const DashboardView: React.FC = () => {
 
   // Compute all derived financials & 8-month series via unified PaisaBook engine
   const d = useMemo(
-    () => computeDerivedFinancials(accounts, transactions, peopleLedger, budgets, assets, liabilities),
-    [accounts, transactions, peopleLedger, budgets, assets, liabilities]
+    () => computeDerivedFinancials(accounts, transactions, peopleLedger, budgets, assets, liabilities, goals),
+    [accounts, transactions, peopleLedger, budgets, assets, liabilities, goals]
   );
 
   // Liquid Net Worth calculation (pure liquid cash/bank minus short term credit, excluding illiquid property/gold)
@@ -296,6 +296,16 @@ export const DashboardView: React.FC = () => {
             >
               {formatCompactCurrency(d.committedTotal, baseCurrency, numberFormat, isPrivacyMode)} committed
             </Badge>
+            {d.goalReservations > 0 && (
+              <Badge
+                tone="warning"
+                className="!bg-amber-500/20 !text-amber-100 !border-amber-400/30 cursor-help"
+                icon={<Target className="w-3 h-3" />}
+                title={`${formatCurrency(d.goalReservations, baseCurrency, numberFormat, isPrivacyMode)} allocated towards savings goals`}
+              >
+                {formatCompactCurrency(d.goalReservations, baseCurrency, numberFormat, isPrivacyMode)} for goals
+              </Badge>
+            )}
           </div>
 
           {/* Action Trigger Bar */}
@@ -695,7 +705,14 @@ export const DashboardView: React.FC = () => {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-display font-bold text-sm text-ink truncate">{g.name}</span>
-                    <Badge tone={pct >= 100 ? 'pine' : 'sky'}>{pct.toFixed(0)}%</Badge>
+                    <div className="flex items-center gap-1">
+                      {g.deductFromAvailableToSpend && (
+                        <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold px-1.5 py-0.5 rounded">
+                          Deducted
+                        </span>
+                      )}
+                      <Badge tone={pct >= 100 ? 'pine' : 'sky'}>{pct.toFixed(0)}%</Badge>
+                    </div>
                   </div>
 
                   <div className="h-2 w-full bg-moss rounded-full overflow-hidden">

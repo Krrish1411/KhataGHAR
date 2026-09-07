@@ -1,4 +1,4 @@
-import type { Account, Transaction, PeopleLedgerEntry, Budget, Liability, Asset } from '../types';
+import type { Account, Transaction, PeopleLedgerEntry, Budget, Liability, Asset, SavingsGoal } from '../types';
 
 export interface DerivedFinancials {
   liquidBalance: number;
@@ -12,6 +12,7 @@ export interface DerivedFinancials {
   committedTotal: number;
   grossCommittedTotal: number;
   committedPaidThisMonth: number;
+  goalReservations: number;
   availableToSpend: number;
   netWorth: number;
   thisMonthIncome: number;
@@ -35,7 +36,8 @@ export function computeDerivedFinancials(
   peopleLedger: PeopleLedgerEntry[],
   budgets: Budget[],
   assets: Asset[] = [],
-  liabilities: Liability[] = []
+  liabilities: Liability[] = [],
+  goals: SavingsGoal[] = []
 ): DerivedFinancials {
   const now = new Date();
   const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
@@ -113,11 +115,17 @@ export function computeDerivedFinancials(
   const committedTotal = r2(remainingBudgetsTotal + remainingEMIsTotal);
   const committedPaidThisMonth = r2(Math.max(0, grossCommittedTotal - committedTotal));
 
-  // 4. Available to Spend: True liquid cash minus custodial/borrowed funds minus remaining unpaid commitments
-  // Long-term savings milestone goals are explicitly separated and NOT deducted from liquid spendable cash
-  const availableToSpend = r2(Math.max(0, liquidBalance - reservedTotal - committedTotal));
+  // 4. Savings Goals Deductions (only for goals where user opted to deduct from available to spend)
+  const goalReservations = r2(
+    goals
+      .filter((g) => g.deductFromAvailableToSpend && !g.isCompleted)
+      .reduce((sum, g) => sum + Math.max(0, (g.targetAmount || 0) - (g.currentAmount || 0)), 0)
+  );
 
-  // 5. Net Worth Formula: Assets − Liabilities − Money held for others + Money given out
+  // 5. Available to Spend: True liquid cash minus custodial/borrowed funds minus remaining unpaid commitments minus opted goal reservations
+  const availableToSpend = r2(Math.max(0, liquidBalance - reservedTotal - committedTotal - goalReservations));
+
+  // 6. Net Worth Formula: Assets − Liabilities − Money held for others + Money given out
   const netWorth = r2(totalAssets - totalLiabilities - reservedHolding - reservedBorrowed + givenOutTotal);
 
   // 6. Monthly Cash Flows
@@ -219,6 +227,7 @@ export function computeDerivedFinancials(
     committedTotal: r2(committedTotal),
     grossCommittedTotal: r2(grossCommittedTotal),
     committedPaidThisMonth: r2(committedPaidThisMonth),
+    goalReservations: r2(goalReservations),
     availableToSpend: r2(availableToSpend),
     netWorth: r2(netWorth),
     thisMonthIncome: r2(thisM.income),

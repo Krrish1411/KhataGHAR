@@ -328,13 +328,18 @@ export const BudgetsGoalsView: React.FC = () => {
                   <div>
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-display font-bold text-sm text-ink">
                             {goal.name}
                           </h3>
                           {isCompleted && (
                             <Badge tone="pine" size="xs">
                               Target Reached
+                            </Badge>
+                          )}
+                          {goal.deductFromAvailableToSpend && (
+                            <Badge tone="warning" size="xs" title="Deducted from Available to Spend (Hero Green Box on Home tab)">
+                              Deducts Spendable
                             </Badge>
                           )}
                         </div>

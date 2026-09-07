@@ -21,10 +21,11 @@ import {
   Layers,
   CheckCircle2,
   Pencil,
+  KeyRound,
 } from 'lucide-react';
 
 export const FamilyOverviewView: React.FC = () => {
-  const { allVaults, activeVault, refreshVaultList } = useAuth();
+  const { allVaults, activeVault, refreshVaultList, unlockVaultWithPassword } = useAuth();
   const { accounts, assets, liabilities, updateVaultSettings } = useVault();
   const { isPrivacyMode } = usePrivacy();
 
@@ -32,6 +33,35 @@ export const FamilyOverviewView: React.FC = () => {
   const [isMergedModalOpen, setIsMergedModalOpen] = useState(false);
   const [vaultToRename, setVaultToRename] = useState<VaultMeta | null>(null);
   const [renameVaultName, setRenameVaultName] = useState('');
+
+  // Switch vault state
+  const [vaultToUnlock, setVaultToUnlock] = useState<VaultMeta | null>(null);
+  const [switchPassword, setSwitchPassword] = useState('');
+  const [switchError, setSwitchError] = useState('');
+  const [isSwitching, setIsSwitching] = useState(false);
+
+  const handleSwitchVaultSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vaultToUnlock || !switchPassword) return;
+
+    setIsSwitching(true);
+    setSwitchError('');
+
+    try {
+      const ok = await unlockVaultWithPassword(vaultToUnlock.id, switchPassword);
+      if (ok) {
+        setVaultToUnlock(null);
+        setSwitchPassword('');
+        setSwitchError('');
+      } else {
+        setSwitchError('Incorrect master password for this vault enclave. Please try again.');
+      }
+    } catch (err: any) {
+      setSwitchError(err?.message || 'Failed to unlock vault enclave.');
+    } finally {
+      setIsSwitching(false);
+    }
+  };
 
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
@@ -67,11 +97,11 @@ export const FamilyOverviewView: React.FC = () => {
               <Home className="w-4 h-4" />
             </span>
             <h1 className="font-display font-extrabold text-[22px] sm:text-[24px] tracking-tight text-ink">
-              Family Vaults & Multi-Enclave Hub
+              Vault Hub & Multi-Enclave Manager
             </h1>
           </div>
           <p className="text-xs text-ink/50 mt-1">
-            Maintain independent encrypted vaults for parents, spouse, or business with distinct master passwords
+            Maintain independent encrypted vaults for personal, family, business, or joint accounts with distinct master passwords
           </p>
         </div>
 
@@ -79,7 +109,7 @@ export const FamilyOverviewView: React.FC = () => {
           <button
             onClick={() => setIsMergedModalOpen(true)}
             className="px-3.5 py-2 rounded-xl bg-mari-700 hover:bg-mari-600 active:scale-[0.97] text-white text-xs font-bold shadow-sm shadow-mari-900/20 flex items-center gap-1.5 cursor-pointer transition-all"
-            title="Consolidate multiple family vaults into a combined enclave with its own master password"
+            title="Consolidate multiple vaults into a combined enclave with its own master password"
           >
             <Layers className="w-3.5 h-3.5" />
             <span>Create Merged Vault</span>
@@ -90,7 +120,7 @@ export const FamilyOverviewView: React.FC = () => {
             className="px-3.5 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-[0.97] text-white text-xs font-bold shadow-sm shadow-pine-900/20 flex items-center gap-1.5 cursor-pointer transition-all"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Add Family Vault</span>
+            <span>Add Enclave Vault</span>
           </button>
         </div>
       </div>
@@ -102,7 +132,7 @@ export const FamilyOverviewView: React.FC = () => {
           <span>Multi-Vault Architecture (Zero-Sync & 100% Cryptographic Segregation)</span>
         </div>
         <p className="text-[12px] text-ink/65 leading-relaxed">
-          Each family member's vault (e.g. "Mom's Finances", "Pension Vault", "Business Petty Cash") has its own unique master password and AES-256-GCM encryption key. They remain isolated on your device and can be seamlessly switched via the top header.
+          Each vault (e.g. "Personal Finances", "Family Household", "Business Petty Cash") has its own unique master password and AES-256-GCM encryption key. They remain isolated on your device and can be seamlessly switched via the top header or unlocked below.
         </p>
       </div>
 
@@ -243,9 +273,17 @@ export const FamilyOverviewView: React.FC = () => {
                       <span>Include in Summary</span>
                     </label>
                   ) : (
-                    <span className="text-ink/45 text-[11px] font-medium">
-                      Switch in top header to unlock
-                    </span>
+                    <button
+                      onClick={() => {
+                        setVaultToUnlock(vault);
+                        setSwitchPassword('');
+                        setSwitchError('');
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-pine-50 hover:bg-pine-100 dark:bg-pine-950/40 dark:hover:bg-pine-900/50 text-pine-700 dark:text-pine-300 font-bold text-[11px] border border-pine-200/60 dark:border-pine-800/40 flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Lock className="w-3 h-3" />
+                      <span>Unlock & Switch</span>
+                    </button>
                   )}
                 </div>
               </div>
@@ -303,6 +341,73 @@ export const FamilyOverviewView: React.FC = () => {
                 className="px-4 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-[0.97] text-white text-xs font-bold shadow-xs cursor-pointer transition-all"
               >
                 Save Name
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Switch Vault Unlock Modal */}
+      {vaultToUnlock && (
+        <Modal
+          isOpen={Boolean(vaultToUnlock)}
+          onClose={() => {
+            if (!isSwitching) {
+              setVaultToUnlock(null);
+              setSwitchPassword('');
+              setSwitchError('');
+            }
+          }}
+          title={
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-pine-50 dark:bg-pine-950/40 text-pine-600 border border-pine-200/60 dark:border-pine-800/40">
+                <Shield className="w-5 h-5" />
+              </div>
+              <span className="text-base sm:text-lg font-bold">
+                Unlock {vaultToUnlock.name}
+              </span>
+            </div>
+          }
+          description={`Enter the Master Password for "${vaultToUnlock.name}" to switch active enclave.`}
+          maxWidth="sm"
+        >
+          <form onSubmit={handleSwitchVaultSubmit} className="space-y-4">
+            {switchError && (
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 text-xs rounded-xl font-medium">
+                {switchError}
+              </div>
+            )}
+
+            <Input
+              type="password"
+              label="Master Password"
+              placeholder="Enter master password for this vault"
+              value={switchPassword}
+              onChange={(e) => setSwitchPassword(e.target.value)}
+              required
+              autoFocus
+              leftIcon={<KeyRound className="w-4 h-4" />}
+            />
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setVaultToUnlock(null);
+                  setSwitchPassword('');
+                  setSwitchError('');
+                }}
+                disabled={isSwitching}
+                className="px-3.5 py-2 rounded-xl border border-line hover:bg-moss text-xs font-semibold text-ink transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSwitching}
+                className="px-4 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 text-white text-xs font-bold shadow-xs cursor-pointer transition-all"
+              >
+                {isSwitching ? 'Unlocking...' : 'Unlock & Switch'}
               </button>
             </div>
           </form>

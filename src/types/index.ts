@@ -176,6 +176,7 @@ export interface SavingsGoal {
   notes?: string;
   icon?: string;
   isCompleted?: boolean;
+  deductFromAvailableToSpend?: boolean; // When true, unfulfilled target is deducted from Available to Spend (Hero Green Box)
   updatedAt: string;
 }
 

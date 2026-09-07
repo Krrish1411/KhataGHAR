@@ -437,7 +437,7 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
                 <Users className="w-4 h-4" />
               </div>
               <h4 className="font-display font-bold text-sm text-ink">
-                Family Hub ('Not Your Money')
+                Vault Hub & Custodial Funds ('Not Your Money')
               </h4>
               <p className="text-[12px] text-ink/65 leading-relaxed">
                 <b>In Plain English:</b> Keep track of money lent to friends, borrowed for emergencies, or held in trust for siblings and parents. Prevents you from accidentally spending money that belongs to someone else.

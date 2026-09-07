@@ -502,7 +502,7 @@ export const SettingsView: React.FC = () => {
               <Input
                 value={vaultNameInput}
                 onChange={(e) => setVaultNameInput(e.target.value)}
-                placeholder="Vault name (e.g. Personal Finances, Family Hub)"
+                placeholder="Vault name (e.g. Personal Finances, Vault Hub)"
                 className="flex-1"
                 required
               />

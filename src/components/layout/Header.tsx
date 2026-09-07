@@ -3,8 +3,11 @@ import { useAuth } from '../../context/AuthContext';
 import { usePrivacy } from '../../context/PrivacyContext';
 import { useTheme, type ThemePalette } from '../../context/ThemeContext';
 import { Button } from '../common/Button';
+import { Modal } from '../common/Modal';
+import { Input } from '../common/Input';
 import { OnboardingModal } from '../security/OnboardingModal';
 import { PWAInstallModal } from '../common/PWAInstallModal';
+import type { VaultMeta } from '../../types';
 import {
   Eye,
   EyeOff,
@@ -17,6 +20,7 @@ import {
   Check,
   IndianRupee,
   HelpCircle,
+  KeyRound,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -37,13 +41,42 @@ const THEME_PRESETS: Array<{ id: ThemePalette; name: string; isDark: boolean; co
 ];
 
 export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMenu, onOpenWelcome }) => {
-  const { activeVault, allVaults, lockVault, setActiveVaultMeta } = useAuth();
+  const { activeVault, allVaults, lockVault, unlockVaultWithPassword } = useAuth();
   const { isPrivacyMode, togglePrivacy } = usePrivacy();
   const { currentPalette, setTheme } = useTheme();
 
   const [vaultDropdownOpen, setVaultDropdownOpen] = useState(false);
   const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
   const [isNewVaultModalOpen, setIsNewVaultModalOpen] = useState(false);
+
+  // Switching vault unlock state
+  const [vaultToUnlock, setVaultToUnlock] = useState<VaultMeta | null>(null);
+  const [switchPassword, setSwitchPassword] = useState('');
+  const [switchError, setSwitchError] = useState('');
+  const [isSwitching, setIsSwitching] = useState(false);
+
+  const handleSwitchVaultSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vaultToUnlock || !switchPassword) return;
+
+    setIsSwitching(true);
+    setSwitchError('');
+
+    try {
+      const ok = await unlockVaultWithPassword(vaultToUnlock.id, switchPassword);
+      if (ok) {
+        setVaultToUnlock(null);
+        setSwitchPassword('');
+        setSwitchError('');
+      } else {
+        setSwitchError('Incorrect master password for this vault enclave. Please try again.');
+      }
+    } catch (err: any) {
+      setSwitchError(err?.message || 'Failed to unlock vault enclave.');
+    } finally {
+      setIsSwitching(false);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-30 bg-moss/80 backdrop-blur-md border-b border-line px-4 sm:px-6 h-[60px] flex items-center transition-colors">
@@ -95,7 +128,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
                         <button
                           key={vault.id}
                           onClick={() => {
-                            setActiveVaultMeta(vault);
+                            if (isActive) {
+                              setVaultDropdownOpen(false);
+                              return;
+                            }
+                            setVaultToUnlock(vault);
+                            setSwitchPassword('');
+                            setSwitchError('');
                             setVaultDropdownOpen(false);
                           }}
                           className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs text-left transition-colors cursor-pointer ${
@@ -252,6 +291,73 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
           onClose={() => setIsNewVaultModalOpen(false)}
           isInitialSetup={false}
         />
+      )}
+
+      {/* Switch Vault Unlock Modal */}
+      {vaultToUnlock && (
+        <Modal
+          isOpen={Boolean(vaultToUnlock)}
+          onClose={() => {
+            if (!isSwitching) {
+              setVaultToUnlock(null);
+              setSwitchPassword('');
+              setSwitchError('');
+            }
+          }}
+          title={
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-pine-50 dark:bg-pine-950/40 text-pine-600 border border-pine-200/60 dark:border-pine-800/40">
+                <Shield className="w-5 h-5" />
+              </div>
+              <span className="text-base sm:text-lg font-bold">
+                Unlock {vaultToUnlock.name}
+              </span>
+            </div>
+          }
+          description={`Enter the Master Password for "${vaultToUnlock.name}" to switch active enclave.`}
+          maxWidth="sm"
+        >
+          <form onSubmit={handleSwitchVaultSubmit} className="space-y-4">
+            {switchError && (
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 text-xs rounded-xl font-medium">
+                {switchError}
+              </div>
+            )}
+
+            <Input
+              type="password"
+              label="Master Password"
+              placeholder="Enter master password for this vault"
+              value={switchPassword}
+              onChange={(e) => setSwitchPassword(e.target.value)}
+              required
+              autoFocus
+              leftIcon={<KeyRound className="w-4 h-4" />}
+            />
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setVaultToUnlock(null);
+                  setSwitchPassword('');
+                  setSwitchError('');
+                }}
+                disabled={isSwitching}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                isLoading={isSwitching}
+              >
+                Unlock & Switch
+              </Button>
+            </div>
+          </form>
+        </Modal>
       )}
     </header>
   );
