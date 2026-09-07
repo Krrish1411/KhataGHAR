@@ -87,13 +87,13 @@ export async function createVault(params: CreateVaultParams): Promise<{
   // Save vault metadata
   await db.vaults.put(vault);
 
-  // Generate and encrypt starter categories
+  // Generate and encrypt starter categories and starter primary account
   const starterCategories = generateStarterCategories(vaultId);
-  const encryptedCategoryRecords: EncryptedRecord[] = [];
+  const encryptedRecords: EncryptedRecord[] = [];
 
   for (const cat of starterCategories) {
     const enc = await encryptData(cat, key);
-    encryptedCategoryRecords.push({
+    encryptedRecords.push({
       id: cat.id,
       vaultId,
       type: 'category',
@@ -103,10 +103,33 @@ export async function createVault(params: CreateVaultParams): Promise<{
     });
   }
 
-  await db.records.bulkPut(encryptedCategoryRecords);
+  const defaultAccount: Account = {
+    id: generateUUID(),
+    vaultId,
+    name: 'Primary Account',
+    type: 'bank',
+    currency: params.currency || 'INR',
+    balance: 0,
+    initialBalance: 0,
+    balanceAsOfDate: new Date().toISOString().split('T')[0],
+    isVisibleOnDashboard: true,
+    tag: 'personal',
+    updatedAt: new Date().toISOString(),
+  };
+  const encAcc = await encryptData(defaultAccount, key);
+  encryptedRecords.push({
+    id: defaultAccount.id,
+    vaultId,
+    type: 'account',
+    iv: encAcc.iv,
+    ciphertext: encAcc.ciphertext,
+    updatedAt: defaultAccount.updatedAt,
+  });
+
+  await db.records.bulkPut(encryptedRecords);
 
   const initialData: VaultData = {
-    accounts: [],
+    accounts: [defaultAccount],
     transactions: [],
     categories: starterCategories,
     peopleLedger: [],

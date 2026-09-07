@@ -29,10 +29,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const lockTimerRef = useRef<number | null>(null);
 
+  const activeVaultRef = useRef<VaultMeta | null>(activeVault);
+  activeVaultRef.current = activeVault;
+
   const isUnlocked = Boolean(activeVault && sessionKey);
 
   // Load all vaults from IndexedDB on initial mount (and purge temporary demo vaults on refresh)
-  const refreshVaultList = useCallback(async (isInitialStartup = false) => {
+  const refreshVaultList = useCallback(async (isInitialStartup = false, overrideActiveVault?: VaultMeta) => {
     try {
       if (isInitialStartup) {
         // Automatically delete ephemeral demo vaults on browser refresh/startup
@@ -46,28 +49,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const vaults = await db.vaults.toArray();
       setAllVaults(vaults);
-      if (!activeVault && vaults.length > 0) {
+
+      const targetCurrent = overrideActiveVault ?? activeVaultRef.current;
+      if (targetCurrent) {
+        const refreshedActive = vaults.find((v) => v.id === targetCurrent.id) || targetCurrent;
+        activeVaultRef.current = refreshedActive;
+        setActiveVault(refreshedActive);
+      } else if (vaults.length > 0) {
         // Select primary or first non-demo vault by default
         const primary = vaults.find((v) => v.isPrimary) || vaults[0];
+        activeVaultRef.current = primary;
         setActiveVault(primary);
-      } else if (vaults.length === 0) {
+      } else {
+        activeVaultRef.current = null;
         setActiveVault(null);
-      } else if (activeVault) {
-        const refreshedActive = vaults.find((v) => v.id === activeVault.id);
-        if (refreshedActive) {
-          setActiveVault(refreshedActive);
-        }
       }
     } catch (err) {
       console.error('Failed to load vaults:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [activeVault]);
+  }, []);
 
   useEffect(() => {
     refreshVaultList(true);
-  }, []);
+  }, [refreshVaultList]);
 
   // Exit & delete demo vault cleanly
   const exitDemoVault = useCallback(async () => {
@@ -82,6 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error exiting demo vault:', err);
     }
     setSessionKey(null);
+    activeVaultRef.current = null;
     setActiveVault(null);
     await refreshVaultList(false);
   }, [refreshVaultList]);
@@ -109,9 +116,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsDecoyMode(true);
         // Derive session key directly from the entered Decoy PIN so encrypted snapshot can be decrypted
         const decoyKey = await deriveKey(password, targetVault.salt);
+        activeVaultRef.current = targetVault;
         setActiveVault(targetVault);
         setSessionKey(decoyKey);
-        await refreshVaultList(false);
+        await refreshVaultList(false, targetVault);
         return true;
       }
     }
@@ -122,9 +130,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!isValid) return false;
 
       setIsDecoyMode(false);
-      setActiveVault(targetVault);
+      activeVaultRef.current = targetVault;
       setSessionKey(key);
-      await refreshVaultList(false);
+      setActiveVault(targetVault);
+      await refreshVaultList(false, targetVault);
       return true;
     } catch (err) {
       console.error('Error during vault unlock:', err);
@@ -133,11 +142,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const setSessionCredentials = (vault: VaultMeta, key: CryptoKey) => {
+    activeVaultRef.current = vault;
     setActiveVault(vault);
     setSessionKey(key);
   };
 
   const setActiveVaultMeta = (vault: VaultMeta) => {
+    activeVaultRef.current = vault;
     setActiveVault(vault);
   };
 

@@ -301,9 +301,9 @@ export const DashboardView: React.FC = () => {
                 tone="warning"
                 className="!bg-amber-500/20 !text-amber-100 !border-amber-400/30 cursor-help"
                 icon={<Target className="w-3 h-3" />}
-                title={`${formatCurrency(d.goalReservations, baseCurrency, numberFormat, isPrivacyMode)} allocated towards savings goals`}
+                title={`${formatCurrency(d.goalReservations, baseCurrency, numberFormat, isPrivacyMode)} currently saved in goals reserved from spendable cash`}
               >
-                {formatCompactCurrency(d.goalReservations, baseCurrency, numberFormat, isPrivacyMode)} for goals
+                {formatCompactCurrency(d.goalReservations, baseCurrency, numberFormat, isPrivacyMode)} saved in goals
               </Badge>
             )}
           </div>

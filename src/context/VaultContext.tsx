@@ -23,7 +23,7 @@ import {
   deleteRecord,
   generateUUID,
 } from '../services/storage';
-import { decryptData } from '../services/crypto';
+import { decryptData, verifyKey } from '../services/crypto';
 import { generateDemoDataset } from '../services/demoData';
 import { isTxAfterBaseline } from '../utils/dates';
 import { generateStarterCategories } from '../utils/categories';
@@ -353,6 +353,16 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setIsDecrypting(true);
     try {
+      // Validate key matches activeVault before decrypting to prevent cross-vault decryption errors
+      if (sessionKey && activeVault?.verifier) {
+        const isKeyValid = await verifyKey(sessionKey, activeVault.verifier);
+        if (!isKeyValid) {
+          console.warn(`[VaultContext] Session key does not match active vault ${activeVault.name}, skipping load`);
+          setIsDecrypting(false);
+          return;
+        }
+      }
+
       const records = await db.records.where('vaultId').equals(activeVault.id).toArray();
 
       const accs: Account[] = [];
@@ -467,6 +477,12 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         })
       );
 
+      accountsRef.current = accs;
+      transactionsRef.current = txs;
+      peopleLedgerRef.current = rebalancedPeople;
+      assetsRef.current = healedAssets;
+      liabilitiesRef.current = liabs;
+
       setAccounts(accs);
       setTransactions(txs);
       setCategories(cleanCats);
@@ -474,7 +490,6 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setBudgets(bdgs);
       setGoals(gls);
       setAssets(healedAssets);
-      assetsRef.current = healedAssets;
       setLiabilities(liabs);
       setDocuments(docs);
       setPlannedExpenses(plans);
@@ -489,7 +504,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (isUnlocked) {
       loadVaultData();
     }
-  }, [isUnlocked, loadVaultData]);
+  }, [isUnlocked, activeVault?.id, sessionKey, loadVaultData]);
 
   // Account Operations
   const addAccount = async (data: Omit<Account, 'id' | 'vaultId' | 'updatedAt'>): Promise<Account> => {

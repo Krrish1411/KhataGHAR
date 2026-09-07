@@ -115,11 +115,11 @@ export function computeDerivedFinancials(
   const committedTotal = r2(remainingBudgetsTotal + remainingEMIsTotal);
   const committedPaidThisMonth = r2(Math.max(0, grossCommittedTotal - committedTotal));
 
-  // 4. Savings Goals Deductions (only for goals where user opted to deduct from available to spend)
+  // 4. Savings Goals Deductions: Deduct current saved amount only (not whole goal target) for opted goals
   const goalReservations = r2(
     goals
-      .filter((g) => g.deductFromAvailableToSpend && !g.isCompleted)
-      .reduce((sum, g) => sum + Math.max(0, (g.targetAmount || 0) - (g.currentAmount || 0)), 0)
+      .filter((g) => g.deductFromAvailableToSpend)
+      .reduce((sum, g) => sum + Math.max(0, g.currentAmount || 0), 0)
   );
 
   // 5. Available to Spend: True liquid cash minus custodial/borrowed funds minus remaining unpaid commitments minus opted goal reservations

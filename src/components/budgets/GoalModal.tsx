@@ -178,10 +178,10 @@ export const GoalModal: React.FC<GoalModalProps> = ({
             />
             <div>
               <span className="text-xs font-bold text-ink block">
-                Deduct from Available to Spend (Hero Green Box)
+                Deduct Current Savings from Available to Spend (Hero Green Box)
               </span>
               <p className="text-[11px] text-ink/50 leading-relaxed mt-0.5">
-                When checked, the remaining unfulfilled amount (Target − Current Saved) is treated as a reserved commitment and deducted from your spendable cash balance on the Home tab.
+                When checked, the amount currently saved in this goal is reserved from your liquid cash so you don't accidentally spend money already set aside for this goal.
               </p>
             </div>
           </label>

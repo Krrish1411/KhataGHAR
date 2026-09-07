@@ -338,8 +338,8 @@ export const BudgetsGoalsView: React.FC = () => {
                             </Badge>
                           )}
                           {goal.deductFromAvailableToSpend && (
-                            <Badge tone="warning" size="xs" title="Deducted from Available to Spend (Hero Green Box on Home tab)">
-                              Deducts Spendable
+                            <Badge tone="warning" size="xs" title="Current saved amount is deducted from Available to Spend (Hero Green Box on Home tab)">
+                              Deducts Saved
                             </Badge>
                           )}
                         </div>
