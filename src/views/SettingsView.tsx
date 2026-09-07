@@ -8,6 +8,7 @@ import { Select } from '../components/common/Select';
 import { Card } from '../components/common/Card';
 import { PasswordStrengthMeter } from '../components/security/PasswordStrengthMeter';
 import { OnboardingModal } from '../components/security/OnboardingModal';
+import { SyncMergedVaultModal } from '../components/vault/SyncMergedVaultModal';
 import {
   exportVaultEncrypted,
   importVaultEncrypted,
@@ -43,6 +44,7 @@ import {
   Keyboard,
   RotateCcw,
   Copy,
+  Layers,
 } from 'lucide-react';
 import { IconRenderer } from '../components/common/IconRenderer';
 import { APP_SHORTCUTS, formatKeyDisplay } from '../services/shortcuts';
@@ -87,6 +89,7 @@ export const SettingsView: React.FC = () => {
   };
 
   const [isNewVaultOpen, setIsNewVaultOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [isLoadingDemo, setIsLoadingDemo] = useState(false);
   const [demoSuccess, setDemoSuccess] = useState('');
 
@@ -514,6 +517,39 @@ export const SettingsView: React.FC = () => {
               </button>
             </form>
           </div>
+
+          {/* Merged Vault Re-Sync (if this active vault is a merged enclave) */}
+          {activeVault?.isMerged && (
+            <div className="rounded-2xl border border-mari-200/80 dark:border-mari-800/60 bg-mari-50/30 dark:bg-mari-950/20 p-4 sm:p-5 space-y-3 shadow-sm lift sm:col-span-2 xl:col-span-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-lg bg-mari-500/10 text-mari-600 border border-mari-500/20 grid place-items-center">
+                      <Layers className="w-3.5 h-3.5" />
+                    </span>
+                    <span className="text-xs font-bold text-ink">
+                      Merged Enclave Synchronization
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-mari-100 dark:bg-mari-900/50 text-mari-700 dark:text-mari-300 text-[10.5px] font-bold">
+                      Multi-Source
+                    </span>
+                  </div>
+                  <p className="text-[11.5px] text-ink/65 max-w-2xl leading-relaxed">
+                    This vault is a consolidated enclave that aggregates financial records from multiple independent vaults. Whenever new transactions, account balance changes, or asset additions occur in source vaults, you can pull the latest encrypted records into this vault.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsSyncModalOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-mari-700 hover:bg-mari-600 active:scale-[0.97] text-white text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer transition-all shrink-0 self-start sm:self-auto"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Sync Latest Data from Source Vaults</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Theme */}
           <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-2.5 shadow-sm lift">
@@ -1469,12 +1505,21 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-{/* Onboarding Modal */}
+      {/* Onboarding Modal */}
       {isNewVaultOpen && (
         <OnboardingModal
           isOpen={isNewVaultOpen}
           onClose={() => setIsNewVaultOpen(false)}
           isInitialSetup={false}
+        />
+      )}
+
+      {/* Sync Merged Vault Modal */}
+      {isSyncModalOpen && activeVault && (
+        <SyncMergedVaultModal
+          isOpen={isSyncModalOpen}
+          onClose={() => setIsSyncModalOpen(false)}
+          mergedVault={activeVault}
         />
       )}
     </div>

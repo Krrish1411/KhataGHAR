@@ -32,8 +32,9 @@ interface VaultContextType {
   // Active Vault Meta
   activeVault: VaultMeta | null;
 
-  // Demo Data Seeder
+  // Demo Data Seeder & Reload
   loadDemoData: () => Promise<void>;
+  reloadVaultData: () => Promise<void>;
 
   // In-Memory Data
   accounts: Account[];
@@ -2535,6 +2536,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       value={{
         activeVault,
         loadDemoData,
+        reloadVaultData: loadVaultData,
         accounts,
         transactions,
         categories,

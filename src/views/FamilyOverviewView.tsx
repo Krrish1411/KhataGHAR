@@ -9,6 +9,7 @@ import { Input } from '../components/common/Input';
 import { AnimatedNumber } from '../components/common/AnimatedNumber';
 import { OnboardingModal } from '../components/security/OnboardingModal';
 import { MergedVaultModal } from '../components/vault/MergedVaultModal';
+import { SyncMergedVaultModal } from '../components/vault/SyncMergedVaultModal';
 import { renameVault } from '../services/storage';
 import type { VaultMeta } from '../types';
 import {
@@ -22,6 +23,7 @@ import {
   CheckCircle2,
   Pencil,
   KeyRound,
+  RefreshCw,
 } from 'lucide-react';
 
 export const FamilyOverviewView: React.FC = () => {
@@ -31,6 +33,7 @@ export const FamilyOverviewView: React.FC = () => {
 
   const [isCreateVaultOpen, setIsCreateVaultOpen] = useState(false);
   const [isMergedModalOpen, setIsMergedModalOpen] = useState(false);
+  const [vaultToSync, setVaultToSync] = useState<VaultMeta | null>(null);
   const [vaultToRename, setVaultToRename] = useState<VaultMeta | null>(null);
   const [renameVaultName, setRenameVaultName] = useState('');
 
@@ -261,28 +264,44 @@ export const FamilyOverviewView: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="pt-2.5 border-t border-line flex items-center justify-between text-xs">
-                  {isActive ? (
-                    <label className="flex items-center gap-2 text-xs font-semibold text-ink cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={activeVault?.includeInFamilyOverview ?? true}
-                        onChange={(e) => handleToggleFamilyInclusion(e.target.checked)}
-                        className="rounded border-line text-pine-600 focus:ring-pine-500 cursor-pointer"
-                      />
-                      <span>Include in Summary</span>
-                    </label>
-                  ) : (
+                <div className="pt-2.5 border-t border-line flex items-center justify-between text-xs gap-2 flex-wrap">
+                  <div>
+                    {isActive ? (
+                      <label className="flex items-center gap-2 text-xs font-semibold text-ink cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={activeVault?.includeInFamilyOverview ?? true}
+                          onChange={(e) => handleToggleFamilyInclusion(e.target.checked)}
+                          className="rounded border-line text-pine-600 focus:ring-pine-500 cursor-pointer"
+                        />
+                        <span>Include in Summary</span>
+                      </label>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setVaultToUnlock(vault);
+                          setSwitchPassword('');
+                          setSwitchError('');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-pine-50 hover:bg-pine-100 dark:bg-pine-950/40 dark:hover:bg-pine-900/50 text-pine-700 dark:text-pine-300 font-bold text-[11px] border border-pine-200/60 dark:border-pine-800/40 flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Lock className="w-3 h-3" />
+                        <span>Unlock & Switch</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {vault.isMerged && (
                     <button
-                      onClick={() => {
-                        setVaultToUnlock(vault);
-                        setSwitchPassword('');
-                        setSwitchError('');
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setVaultToSync(vault);
                       }}
-                      className="px-2.5 py-1 rounded-lg bg-pine-50 hover:bg-pine-100 dark:bg-pine-950/40 dark:hover:bg-pine-900/50 text-pine-700 dark:text-pine-300 font-bold text-[11px] border border-pine-200/60 dark:border-pine-800/40 flex items-center gap-1 cursor-pointer transition-colors"
+                      className="px-2.5 py-1 rounded-lg bg-mari-50 hover:bg-mari-100 dark:bg-mari-950/40 dark:hover:bg-mari-900/50 text-mari-700 dark:text-mari-300 font-bold text-[11px] border border-mari-200/60 dark:border-mari-800/40 flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Sync & update this merged enclave with latest entries from source vaults"
                     >
-                      <Lock className="w-3 h-3" />
-                      <span>Unlock & Switch</span>
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Sync Latest</span>
                     </button>
                   )}
                 </div>
@@ -306,6 +325,15 @@ export const FamilyOverviewView: React.FC = () => {
         <MergedVaultModal
           isOpen={isMergedModalOpen}
           onClose={() => setIsMergedModalOpen(false)}
+        />
+      )}
+
+      {/* Re-Sync Merged Vault Modal */}
+      {vaultToSync && (
+        <SyncMergedVaultModal
+          isOpen={Boolean(vaultToSync)}
+          onClose={() => setVaultToSync(null)}
+          mergedVault={vaultToSync}
         />
       )}
 

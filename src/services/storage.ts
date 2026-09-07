@@ -394,6 +394,63 @@ export async function createMergedVault(
     mergedSourceVaultIds: params.sourceVaultsData.map((s) => s.vault.id),
   };
 
+  const allRecords = await buildConsolidatedRecords(vaultId, key, params.sourceVaultsData);
+
+  // Save vault and all records atomically
+  await db.transaction('rw', db.vaults, db.records, async () => {
+    await db.vaults.put(mergedVault);
+    await db.records.bulkPut(allRecords);
+  });
+
+  return { vault: mergedVault, key };
+}
+
+export interface ReSyncMergedVaultParams {
+  mergedVault: VaultMeta;
+  mergedVaultKey: CryptoKey;
+  sourceVaultsData: Array<{
+    vault: VaultMeta;
+    key?: CryptoKey;
+    data: VaultData;
+  }>;
+}
+
+// Re-synchronize an existing merged vault with latest data from its source constituent vaults
+export async function reSyncMergedVault(
+  params: ReSyncMergedVaultParams
+): Promise<{ vault: VaultMeta; key: CryptoKey }> {
+  const { mergedVault, mergedVaultKey, sourceVaultsData } = params;
+  const vaultId = mergedVault.id;
+
+  const allRecords = await buildConsolidatedRecords(vaultId, mergedVaultKey, sourceVaultsData);
+
+  const updatedVault: VaultMeta = {
+    ...mergedVault,
+    mergedSourceVaultIds: sourceVaultsData.map((s) => s.vault.id),
+  };
+
+  await db.transaction('rw', db.vaults, db.records, async () => {
+    // Purge old merged snapshot records for this vault
+    await db.records.where('vaultId').equals(vaultId).delete();
+    // Insert updated consolidated records
+    await db.records.bulkPut(allRecords);
+    // Update vault metadata
+    await db.vaults.put(updatedVault);
+  });
+
+  return { vault: updatedVault, key: mergedVaultKey };
+}
+
+// Internal helper to map and encrypt records from source vaults for a merged enclave
+async function buildConsolidatedRecords(
+  vaultId: string,
+  key: CryptoKey,
+  sourceVaultsData: Array<{
+    vault: VaultMeta;
+    key?: CryptoKey;
+    data: VaultData;
+  }>
+): Promise<EncryptedRecord[]> {
   const allRecords: EncryptedRecord[] = [];
 
   // Aggregated ID mappings
@@ -404,7 +461,7 @@ export async function createMergedVault(
 
   // 1. Categories
   const categoryNameMap = new Map<string, string>();
-  for (const source of params.sourceVaultsData) {
+  for (const source of sourceVaultsData) {
     for (const cat of source.data.categories || []) {
       const lower = cat.name.toLowerCase().trim();
       let targetCatId = categoryNameMap.get(lower);
@@ -432,7 +489,7 @@ export async function createMergedVault(
   }
 
   // 2. Accounts (prefixed with source vault name)
-  for (const source of params.sourceVaultsData) {
+  for (const source of sourceVaultsData) {
     for (const acc of source.data.accounts || []) {
       const newAccId = generateUUID();
       accountIdMap.set(acc.id, newAccId);
@@ -456,7 +513,7 @@ export async function createMergedVault(
   }
 
   // 3. Assets
-  for (const source of params.sourceVaultsData) {
+  for (const source of sourceVaultsData) {
     for (const asset of source.data.assets || []) {
       const newAssetId = generateUUID();
       assetIdMap.set(asset.id, newAssetId);
@@ -480,7 +537,7 @@ export async function createMergedVault(
   }
 
   // 4. Liabilities
-  for (const source of params.sourceVaultsData) {
+  for (const source of sourceVaultsData) {
     for (const liab of source.data.liabilities || []) {
       const newLiabId = generateUUID();
       liabilityIdMap.set(liab.id, newLiabId);
@@ -504,7 +561,7 @@ export async function createMergedVault(
   }
 
   // 5. Transactions
-  for (const source of params.sourceVaultsData) {
+  for (const source of sourceVaultsData) {
     for (const tx of source.data.transactions || []) {
       const newTxId = generateUUID();
       const newTx: Transaction = {
@@ -531,7 +588,7 @@ export async function createMergedVault(
   }
 
   // 6. People Ledger
-  for (const source of params.sourceVaultsData) {
+  for (const source of sourceVaultsData) {
     for (const p of source.data.peopleLedger || []) {
       const newPId = generateUUID();
       const newP: PeopleLedgerEntry = {
@@ -555,7 +612,7 @@ export async function createMergedVault(
   }
 
   // 7. Budgets
-  for (const source of params.sourceVaultsData) {
+  for (const source of sourceVaultsData) {
     for (const b of source.data.budgets || []) {
       const newBId = generateUUID();
       const newB: Budget = {
@@ -578,7 +635,7 @@ export async function createMergedVault(
   }
 
   // 8. Goals
-  for (const source of params.sourceVaultsData) {
+  for (const source of sourceVaultsData) {
     for (const g of source.data.goals || []) {
       const newGId = generateUUID();
       const newG: SavingsGoal = {
@@ -600,11 +657,5 @@ export async function createMergedVault(
     }
   }
 
-  // Save vault and all records atomically
-  await db.transaction('rw', db.vaults, db.records, async () => {
-    await db.vaults.put(mergedVault);
-    await db.records.bulkPut(allRecords);
-  });
-
-  return { vault: mergedVault, key };
+  return allRecords;
 }
