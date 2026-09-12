@@ -348,6 +348,7 @@ export interface VaultNote {
   tags: string[];
   isPinned: boolean;
   color?: string;
+  icon?: string;
   attachments?: NoteAttachment[];
   createdAt: string;
   updatedAt: string;
