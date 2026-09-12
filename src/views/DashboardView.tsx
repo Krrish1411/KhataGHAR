@@ -53,14 +53,13 @@ export const DashboardView: React.FC = () => {
   const navigate = useNavigate();
   const goTo = (route: string) => navigate(route.startsWith('#') ? route.slice(1) : route);
 
-  const { activeVault, accounts, transactions, categories, peopleLedger, budgets, goals, assets, liabilities, plannedExpenses, loadDemoData } =
+  const { activeVault, accounts, transactions, categories, peopleLedger, budgets, goals, assets, liabilities, plannedExpenses } =
     useVault();
   const { isPrivacyMode, togglePrivacy } = usePrivacy();
 
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [quickAddType, setQuickAddType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
-  const [isLoadingDemo, setIsLoadingDemo] = useState(false);
   const [netWorthMode, setNetWorthMode] = useState<'total' | 'liquid'>('total');
 
   const baseCurrency = activeVault?.currency || 'INR';
@@ -581,25 +580,10 @@ export const DashboardView: React.FC = () => {
             <div>
               <h3 className="font-display font-bold text-sm text-ink">Set up your first account</h3>
               <p className="text-xs text-ink/50 mt-1 max-w-md mx-auto">
-                Add your bank, cash, or wallet — or load the realistic 4-month Indian demo dataset to explore the dashboard immediately.
+                Add your bank, cash, or wallet to start tracking balances and cashflow.
               </p>
             </div>
             <div className="flex items-center justify-center gap-2 pt-1">
-              <button
-                onClick={async () => {
-                  setIsLoadingDemo(true);
-                  try {
-                    await loadDemoData();
-                  } finally {
-                    setIsLoadingDemo(false);
-                  }
-                }}
-                disabled={isLoadingDemo}
-                className="px-3.5 py-2 rounded-xl border border-line bg-card hover:border-pine-300 hover:bg-pine-50 text-xs font-semibold text-pine-700 flex items-center gap-1.5 cursor-pointer transition-all"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-pine-600" />
-                <span>Load Demo Accounts & Ledger</span>
-              </button>
               <button
                 onClick={() => {
                   goTo('/accounts');

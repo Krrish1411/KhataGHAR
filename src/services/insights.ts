@@ -45,6 +45,7 @@ export function computeFinancialInsights(params: {
   const todayISO = new Date().toISOString().split('T')[0];
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
   // 1. Check Bank/Wallet Overdrafts (Critical)
   accounts
@@ -63,16 +64,20 @@ export function computeFinancialInsights(params: {
     });
 
   // 2. Check Budget Overruns & 85% Warning Thresholds (Critical / Warning)
-  const currentMonthExpenses = transactions.filter(
-    (t) => t.type === 'expense' && t.date >= startOfMonth
-  );
-
   budgets.forEach((b) => {
     const cat = categories.find((c) => c.id === b.categoryId);
     const catName = cat?.name || 'Category';
-    const spent = currentMonthExpenses
-      .filter((t) => t.categoryId === b.categoryId)
-      .reduce((sum, t) => sum + t.amount, 0);
+    let spent = 0;
+    for (const t of transactions) {
+      if (t.type !== 'expense' || t.date < startOfMonth || t.date > endOfMonth) continue;
+      if (t.splits && t.splits.length > 0) {
+        for (const s of t.splits) {
+          if (s.categoryId === b.categoryId) spent += s.amount;
+        }
+      } else if (t.categoryId === b.categoryId) {
+        spent += t.amount;
+      }
+    }
 
     if (b.amount > 0 && spent > b.amount) {
       const overAmount = spent - b.amount;

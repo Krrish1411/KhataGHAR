@@ -71,6 +71,11 @@ import {
   Apple,
   Milk,
   Package,
+  Landmark,
+  Folder,
+  FolderPlus,
+  Pin,
+  StickyNote,
 } from 'lucide-react';
 
 interface IconRendererProps {
@@ -153,6 +158,11 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string; size?: 
   Apple,
   Milk,
   Package,
+  Landmark,
+  Folder,
+  FolderPlus,
+  Pin,
+  StickyNote,
 };
 
 export const LUCIDE_TO_EMOJI: Record<string, string> = {
@@ -199,6 +209,11 @@ export const LUCIDE_TO_EMOJI: Record<string, string> = {
   Building2: '🏛️',
   Scale: '⚖️',
   Users: '👥',
+  Landmark: '🏛️',
+  Folder: '📁',
+  FolderPlus: '📁',
+  Pin: '📌',
+  StickyNote: '📝',
 };
 
 /**

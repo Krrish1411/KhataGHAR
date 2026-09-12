@@ -24,17 +24,13 @@ import {
   Coins,
   Smartphone,
   ShieldAlert,
-  Database,
-  RefreshCw,
   ArrowRightLeft,
 } from 'lucide-react';
 import { RelocateHoldingModal } from '../components/accounts/RelocateHoldingModal';
 
 export const AccountsView: React.FC = () => {
-  const { accounts, transactions, peopleLedger, activeVault, deleteAccount, updateAccount, loadDemoData, reconcileAccounts } = useVault();
+  const { accounts, transactions, peopleLedger, activeVault, deleteAccount, updateAccount } = useVault();
   const { isPrivacyMode } = usePrivacy();
-  const [isLoadingDemo, setIsLoadingDemo] = useState(false);
-  const [isReconciling, setIsReconciling] = useState(false);
 
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [accountToEdit, setAccountToEdit] = useState<Account | undefined>(undefined);
@@ -218,43 +214,6 @@ export const AccountsView: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <Button
-            onClick={async () => {
-              setIsLoadingDemo(true);
-              try {
-                await loadDemoData();
-              } finally {
-                setIsLoadingDemo(false);
-              }
-            }}
-            variant="outline"
-            size="sm"
-            isLoading={isLoadingDemo}
-          >
-            <Database className="w-3.5 h-3.5 mr-1 text-pine-600" />
-            <span>Load Demo Accounts</span>
-          </Button>
-
-          <Button
-            onClick={async () => {
-              if (window.confirm('Recalculate and reconcile all account balances based on your ledger? Fixed opening balances will be preserved, and only transactions after each account\'s opening date will apply.')) {
-                setIsReconciling(true);
-                try {
-                  await reconcileAccounts();
-                } finally {
-                  setIsReconciling(false);
-                }
-              }
-            }}
-            variant="outline"
-            size="sm"
-            isLoading={isReconciling}
-            title="Recalculate balances from ledger"
-          >
-            <RefreshCw className="w-3.5 h-3.5 mr-1 text-pine-600" />
-            <span>Reconcile</span>
-          </Button>
-
-          <Button
             onClick={() => setIsQuickAddOpen(true)}
             variant="secondary"
             size="sm"
@@ -379,25 +338,9 @@ export const AccountsView: React.FC = () => {
           <Wallet className="w-10 h-10 mx-auto text-pine-600/40" />
           <div>
             <p className="font-bold text-ink text-sm">No accounts found</p>
-            <p className="text-[11px] text-ink/50 mt-0.5">Add an account or load realistic demo accounts to explore.</p>
+            <p className="text-[11px] text-ink/50 mt-0.5">Create your first bank account, cash reserve, or credit card to get started.</p>
           </div>
           <div className="flex items-center justify-center gap-2 pt-2">
-            <Button
-              onClick={async () => {
-                setIsLoadingDemo(true);
-                try {
-                  await loadDemoData();
-                } finally {
-                  setIsLoadingDemo(false);
-                }
-              }}
-              variant="outline"
-              size="sm"
-              isLoading={isLoadingDemo}
-            >
-              <Database className="w-3.5 h-3.5 mr-1 text-pine-600" />
-              <span>Load Demo Accounts</span>
-            </Button>
             <Button
               onClick={handleOpenAddAccount}
               variant="primary"

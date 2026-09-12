@@ -28,12 +28,15 @@ import {
   CheckCircle2,
   Tag,
   ChevronLeft,
+  ChevronDown,
   Paperclip,
   Info,
   Sparkles,
   ExternalLink,
   ShieldCheck,
+  X,
 } from 'lucide-react';
+import { IconRenderer } from '../components/common/IconRenderer';
 
 const NOTE_COLORS = [
   { name: 'Default', value: '#64748b' },
@@ -79,10 +82,31 @@ export const NotesView: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [isFolderMenuOpen, setIsFolderMenuOpen] = useState(false);
+  const folderMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (folderMenuRef.current && !folderMenuRef.current.contains(e.target as Node)) {
+        setIsFolderMenuOpen(false);
+      }
+    };
+    if (isFolderMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isFolderMenuOpen]);
+
   // Combined system & custom folders
   const allFolders = useMemo(() => {
     return folders;
   }, [folders]);
+
+  const currentFolder = useMemo(() => {
+    return allFolders.find((f) => f.id === folderId) || allFolders[0] || { id: 'general', name: 'Personal Memos', icon: 'Sparkles' };
+  }, [allFolders, folderId]);
 
   // Filter notes based on folder & search
   const filteredNotes = useMemo(() => {
@@ -313,8 +337,71 @@ export const NotesView: React.FC = () => {
         </div>
       </div>
 
+      {/* 4 Top KPI Stat Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="p-4 rounded-2xl bg-card border border-line shadow-xs space-y-1 lift">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-ink/50">Total Notes</span>
+            <div className="w-7 h-7 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 grid place-items-center text-pine-600">
+              <StickyNote className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="text-2xl font-black font-display text-ink tracking-tight">
+            {notes.length}
+          </div>
+          <p className="text-[10.5px] text-ink/40 truncate">
+            {notes.reduce((acc, n) => acc + (n.attachments?.length || 0), 0)} attachments secured
+          </p>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-card border border-line shadow-xs space-y-1 lift">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-ink/50">Folders</span>
+            <div className="w-7 h-7 rounded-xl bg-skyx-50 dark:bg-skyx-950/40 border border-skyx-200/60 dark:border-skyx-800/40 grid place-items-center text-skyx-600">
+              <Folder className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="text-2xl font-black font-display text-ink tracking-tight">
+            {allFolders.length}
+          </div>
+          <p className="text-[10.5px] text-ink/40 truncate">
+            Organized categories
+          </p>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-card border border-line shadow-xs space-y-1 lift">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-ink/50">Pinned Memos</span>
+            <div className="w-7 h-7 rounded-xl bg-mari-50 dark:bg-mari-950/40 border border-mari-200/60 dark:border-mari-800/40 grid place-items-center text-mari-600">
+              <Pin className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="text-2xl font-black font-display text-ink tracking-tight">
+            {notes.filter((n) => n.isPinned).length}
+          </div>
+          <p className="text-[10.5px] text-ink/40 truncate">
+            Priority quick-access memos
+          </p>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-card border border-line shadow-xs space-y-1 lift">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-ink/50">Security</span>
+            <div className="w-7 h-7 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 grid place-items-center text-pine-600">
+              <ShieldCheck className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div className="text-2xl font-black font-display text-ink tracking-tight">
+            AES-GCM
+          </div>
+          <p className="text-[10.5px] text-ink/40 truncate">
+            Zero-Knowledge encrypted
+          </p>
+        </div>
+      </div>
+
       {/* 3-Pane Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[calc(100vh-210px)] min-h-[580px]">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[calc(100vh-275px)] min-h-[540px]">
         {/* Pane 1: Folders Sidebar (2.5 Cols) */}
         <div className="hidden lg:flex lg:col-span-3 flex-col bg-card rounded-2xl border border-line p-3 space-y-3 shadow-xs">
           <div className="flex items-center justify-between px-2 pt-1 text-xs font-bold text-ink/50 uppercase tracking-wider">
@@ -384,8 +471,10 @@ export const NotesView: React.FC = () => {
                         : 'text-ink/70 hover:bg-moss hover:text-ink'
                     }`}
                   >
-                    <div className="flex items-center gap-2 truncate">
-                      <span>{f.icon || '📁'}</span>
+                    <div className="flex items-center gap-2.5 truncate">
+                      <span className="shrink-0 text-pine-600 dark:text-pine-400">
+                        <IconRenderer name={f.icon || 'Folder'} className="w-3.5 h-3.5" />
+                      </span>
                       <span className="truncate">{f.name}</span>
                     </div>
                     <span className="text-[11px] font-mono text-ink/40 tabular-nums">
@@ -462,13 +551,14 @@ export const NotesView: React.FC = () => {
               <button
                 key={f.id}
                 onClick={() => setSelectedFolderId(f.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap cursor-pointer transition-colors ${
                   selectedFolderId === f.id
                     ? 'bg-pine-600 text-white'
                     : 'bg-slate-100 dark:bg-navy-900 text-ink/60'
                 }`}
               >
-                {f.icon} {f.name}
+                <IconRenderer name={f.icon || 'Folder'} className="w-3.5 h-3.5" />
+                <span>{f.name}</span>
               </button>
             ))}
           </div>
@@ -567,21 +657,68 @@ export const NotesView: React.FC = () => {
                     <ChevronLeft className="w-4 h-4" />
                   </button>
 
-                  {/* Folder Selector */}
-                  <select
-                    value={folderId}
-                    onChange={(e) => {
-                      setFolderId(e.target.value);
-                      triggerSave({ folderId: e.target.value });
-                    }}
-                    className="bg-slate-50 dark:bg-navy-900 text-xs font-bold text-ink rounded-lg border border-line px-2 py-1 outline-none cursor-pointer"
-                  >
-                    {allFolders.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.icon} {f.name}
-                      </option>
-                    ))}
-                  </select>
+                  {/* Custom Folder Switcher Popover */}
+                  <div className="relative" ref={folderMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => setIsFolderMenuOpen(!isFolderMenuOpen)}
+                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-line bg-card hover:bg-moss text-xs font-semibold text-ink cursor-pointer transition-colors"
+                    >
+                      <IconRenderer name={currentFolder.icon || 'Folder'} className="w-3.5 h-3.5 text-pine-600 dark:text-pine-400 shrink-0" />
+                      <span className="max-w-[120px] sm:max-w-[150px] truncate">{currentFolder.name}</span>
+                      <ChevronDown className="w-3 h-3 text-ink/40 shrink-0" />
+                    </button>
+
+                    {isFolderMenuOpen && (
+                      <div className="absolute left-0 top-full mt-1.5 w-56 rounded-2xl bg-card border border-line shadow-card py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+                        <div className="px-3 py-1 text-[10px] font-bold text-ink/40 uppercase tracking-wider">
+                          Assign Folder
+                        </div>
+                        <div className="max-h-56 overflow-y-auto py-0.5 space-y-0.5">
+                          {allFolders.map((f) => {
+                            const isSelected = f.id === folderId;
+                            return (
+                              <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => {
+                                  setFolderId(f.id);
+                                  triggerSave({ folderId: f.id });
+                                  setIsFolderMenuOpen(false);
+                                }}
+                                className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-left transition-colors cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-pine-50 dark:bg-pine-950/60 text-pine-700 dark:text-pine-300 font-bold'
+                                    : 'text-ink/80 hover:bg-moss hover:text-ink'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  <IconRenderer name={f.icon || 'Folder'} className="w-3.5 h-3.5 text-pine-600 dark:text-pine-400 shrink-0" />
+                                  <span className="truncate">{f.name}</span>
+                                </div>
+                                {isSelected && (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-pine-600 dark:text-pine-400 shrink-0 ml-2" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="border-t border-line mt-1 pt-1 px-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsFolderMenuOpen(false);
+                              setIsNewFolderOpen(true);
+                            }}
+                            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-pine-700 dark:text-pine-400 hover:bg-moss transition-colors cursor-pointer"
+                          >
+                            <FolderPlus className="w-3.5 h-3.5" />
+                            <span>New Folder…</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Color tags */}
                   <div className="hidden sm:flex items-center gap-1">
@@ -658,40 +795,41 @@ export const NotesView: React.FC = () => {
                   setTitle(e.target.value);
                   triggerSave({ title: e.target.value });
                 }}
-                className="w-full font-display font-extrabold text-xl sm:text-2xl text-ink bg-transparent outline-none placeholder:text-ink/30 tracking-tight"
+                className="w-full font-display font-extrabold text-2xl sm:text-3xl text-ink bg-transparent border-0 outline-none focus:outline-none focus:ring-0 placeholder:text-ink/25 tracking-tight px-0 py-1"
               />
 
               {/* Tags Section */}
               <div className="flex items-center gap-1.5 flex-wrap">
-                <Tag className="w-3 h-3 text-ink/40" />
+                <Tag className="w-3.5 h-3.5 text-ink/40 shrink-0 mr-0.5" />
                 {tags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center gap-1 text-[11px] font-mono font-semibold bg-slate-100 dark:bg-navy-900 text-ink/70 px-2 py-0.5 rounded-md"
+                    className="inline-flex items-center gap-1 text-[11px] font-mono font-bold bg-pine-50 dark:bg-pine-950/40 text-pine-800 dark:text-pine-300 border border-pine-200/60 dark:border-pine-800/40 px-2.5 py-0.5 rounded-lg shadow-2xs"
                   >
                     #{tag}
                     <button
+                      type="button"
                       onClick={() => handleRemoveTag(tag)}
                       className="hover:text-flare-600 cursor-pointer ml-0.5"
                     >
-                      ×
+                      <X className="w-3 h-3" />
                     </button>
                   </span>
                 ))}
                 <input
                   type="text"
-                  placeholder="+ add tag (Enter)"
+                  placeholder="+ add tag"
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
                   onKeyDown={handleAddTag}
-                  className="text-[11px] font-mono bg-transparent outline-none text-ink placeholder:text-ink/30 w-24"
+                  className="text-[11px] font-mono bg-transparent border-0 outline-none focus:outline-none focus:ring-0 text-ink placeholder:text-ink/30 w-24 px-1"
                 />
               </div>
 
               {/* Main Text Content Area or Preview */}
               <div className="flex-1 overflow-y-auto">
                 {isPreviewMode ? (
-                  <div className="prose dark:prose-invert max-w-none text-xs text-ink/90 whitespace-pre-wrap font-sans leading-relaxed">
+                  <div className="prose dark:prose-invert max-w-none text-xs text-ink/90 whitespace-pre-wrap font-sans leading-relaxed p-1">
                     {content || <span className="italic text-ink/40">No content to preview</span>}
                   </div>
                 ) : (
@@ -702,7 +840,7 @@ export const NotesView: React.FC = () => {
                       setContent(e.target.value);
                       triggerSave({ content: e.target.value });
                     }}
-                    className="w-full h-full min-h-[180px] bg-transparent outline-none resize-none text-xs text-ink placeholder:text-ink/30 font-mono leading-relaxed"
+                    className="w-full h-full min-h-[220px] bg-transparent border-0 outline-none focus:outline-none focus:ring-0 resize-none text-[13px] text-ink placeholder:text-ink/30 font-mono leading-relaxed px-0 py-1"
                   />
                 )}
               </div>

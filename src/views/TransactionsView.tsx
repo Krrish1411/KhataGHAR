@@ -86,7 +86,6 @@ export const TransactionsView: React.FC = () => {
     deleteTransaction,
     deletePeopleEntry,
     deleteSettlement,
-    reconcileAccounts,
     activeVault,
   } = useVault();
   const { isPrivacyMode } = usePrivacy();
@@ -105,7 +104,6 @@ export const TransactionsView: React.FC = () => {
   } | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [expandedSplitIds, setExpandedSplitIds] = useState<Set<string>>(new Set());
-  const [isReconciling, setIsReconciling] = useState(false);
 
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
@@ -451,17 +449,6 @@ export const TransactionsView: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedEntryId, filteredEntries]);
-
-  const handleReconcile = async () => {
-    if (window.confirm('Recalculate and reconcile all account balances based on your complete ledger?')) {
-      setIsReconciling(true);
-      try {
-        await reconcileAccounts();
-      } finally {
-        setIsReconciling(false);
-      }
-    }
-  };
 
   const toggleSplitExpand = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();

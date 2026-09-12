@@ -314,12 +314,26 @@ export function computeHealthScore(params: RatioCalculatorParams): HealthScoreBr
   let budgetStatus = 'No Overspends';
   let budgetAdvice = 'Spending is within budgeted caps.';
   if (budgets.length > 0) {
+    const now = new Date();
+    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    const budgetStart = params.startDate || defaultStart;
+    const budgetEnd = params.endDate || defaultEnd;
+
     let overBudgetCount = 0;
     budgets.forEach((b) => {
-      const spent = transactions
-        .filter((t) => t.type === 'expense' && t.categoryId === b.categoryId)
-        .reduce((sum, t) => sum + t.amount, 0);
-      if (spent > b.amount) {
+      let spent = 0;
+      for (const t of transactions) {
+        if (t.type !== 'expense' || t.date < budgetStart || t.date > budgetEnd) continue;
+        if (t.splits && t.splits.length > 0) {
+          for (const s of t.splits) {
+            if (s.categoryId === b.categoryId) spent += s.amount;
+          }
+        } else if (t.categoryId === b.categoryId) {
+          spent += t.amount;
+        }
+      }
+      if (b.amount > 0 && spent > b.amount) {
         overBudgetCount++;
       }
     });

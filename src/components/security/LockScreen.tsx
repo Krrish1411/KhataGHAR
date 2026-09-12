@@ -91,11 +91,8 @@ export const LockScreen: React.FC = () => {
   }
 
   return (
-    <div
-      style={{ zoom: 1.25 }}
-      className="min-h-screen bg-ground text-ink flex flex-col items-center justify-center p-4 relative select-none"
-    >
-      <div className="w-full max-w-md space-y-6 my-auto">
+    <div className="min-h-screen min-h-[100dvh] bg-ground text-ink flex flex-col items-center justify-center p-4 relative select-none">
+      <div className="w-full max-w-md space-y-5">
         {/* Brand Header */}
         <div className="text-center space-y-1.5">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-pine-600 text-white shadow-button-primary mb-2">

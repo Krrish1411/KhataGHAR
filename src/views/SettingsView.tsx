@@ -72,6 +72,7 @@ export const SettingsView: React.FC = () => {
     deleteCategory,
     resetCategoriesToDefault,
     loadDemoData,
+    reconcileAccounts,
   } = useVault();
   const { theme, setTheme } = useTheme();
 
@@ -96,6 +97,8 @@ export const SettingsView: React.FC = () => {
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [isLoadingDemo, setIsLoadingDemo] = useState(false);
   const [demoSuccess, setDemoSuccess] = useState('');
+  const [isReconciling, setIsReconciling] = useState(false);
+  const [reconcileSuccess, setReconcileSuccess] = useState('');
 
   // Category Management state
   const [catNewName, setCatNewName] = useState('');
@@ -160,6 +163,27 @@ export const SettingsView: React.FC = () => {
       console.error('Failed to load demo data:', err);
     } finally {
       setIsLoadingDemo(false);
+    }
+  };
+
+  const handleReconcile = async () => {
+    if (
+      !window.confirm(
+        "Recalculate and reconcile all account balances based on your complete double-entry ledger? Fixed opening balances will be preserved, and only transactions after each account's opening date will apply."
+      )
+    ) {
+      return;
+    }
+    setIsReconciling(true);
+    setReconcileSuccess('');
+    try {
+      await reconcileAccounts();
+      setReconcileSuccess('All account balances reconciled successfully against ledger records!');
+      setTimeout(() => setReconcileSuccess(''), 5000);
+    } catch (err) {
+      console.error('Failed to reconcile accounts:', err);
+    } finally {
+      setIsReconciling(false);
     }
   };
 
@@ -895,42 +919,82 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Demo Data & Accounts */}
+      {/* Ledger Maintenance & Demo Data */}
       <div className="space-y-3">
         <h3 className="font-display font-bold text-xs uppercase tracking-wider text-pine-700 dark:text-pine-400 px-1 flex items-center gap-2">
           <Database className="w-4 h-4 text-pine-600" />
-          <span>Demo Data & Accounts</span>
+          <span>Ledger Maintenance & Demo Data</span>
         </h3>
 
-        <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-3.5 shadow-sm lift">
+        <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-4 shadow-sm lift">
           <div className="flex items-center justify-between text-xs">
             <span className="text-ink/70">Current Ledger Size</span>
             <span className="font-mono font-bold text-ink num">
-              {transactions.length} entries · {accounts.length} accounts
+              {transactions.length} entries · {accounts.length} accounts · {peopleLedger.length} people records
             </span>
           </div>
 
-          <div className="pt-1">
-            <Button
-              variant="outline"
-              size="sm"
-              isLoading={isLoadingDemo}
-              onClick={handleLoadDemo}
-            >
-              <Sparkles className="w-4 h-4 mr-1.5 text-pine-600" />
-              <span>Load Realistic Indian Demo Data</span>
-            </Button>
+          {/* Reconcile Section */}
+          <div className="pt-3 border-t border-line/60 space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <div className="font-bold text-xs text-ink flex items-center gap-1.5">
+                  <RefreshCw className="w-3.5 h-3.5 text-pine-600" />
+                  <span>Reconcile Account Balances</span>
+                </div>
+                <p className="text-[11px] text-ink/50 leading-relaxed">
+                  Recalculates all balances from the complete double-entry transaction ledger and people records, preserving opening balances.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                isLoading={isReconciling}
+                onClick={handleReconcile}
+                className="shrink-0"
+              >
+                <RefreshCw className="w-3.5 h-3.5 mr-1.5 text-pine-600" />
+                <span>Reconcile Balances</span>
+              </Button>
+            </div>
+            {reconcileSuccess && (
+              <div className="p-2.5 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-pine-600 shrink-0" />
+                <span>{reconcileSuccess}</span>
+              </div>
+            )}
           </div>
 
-          <p className="text-[11px] text-ink/50 leading-relaxed">
-            Populates 4 accounts (HDFC, Cash, Paytm, SBI Credit Card), 4 months of transactions (Salary, Rent, SIP, Swiggy, Groceries), custodial funds (sister Priya & friend Amit), budgets, goals, and planned bills.
-          </p>
-
-          {demoSuccess && (
-            <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold">
-              {demoSuccess}
+          {/* Demo Data Section */}
+          <div className="pt-3 border-t border-line/60 space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <div className="font-bold text-xs text-ink flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-pine-600" />
+                  <span>Load Realistic Indian Demo Data</span>
+                </div>
+                <p className="text-[11px] text-ink/50 leading-relaxed">
+                  Populates 4 accounts (HDFC, Cash, Paytm, SBI Credit Card), 4 months of transactions, custodial funds, budgets & goals.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                isLoading={isLoadingDemo}
+                onClick={handleLoadDemo}
+                className="shrink-0"
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1.5 text-pine-600" />
+                <span>Load Demo Data</span>
+              </Button>
             </div>
-          )}
+            {demoSuccess && (
+              <div className="p-2.5 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-pine-600 shrink-0" />
+                <span>{demoSuccess}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
