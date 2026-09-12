@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useVault } from '../context/VaultContext';
 import { useTheme } from '../context/ThemeContext';
+import { useConfirm } from '../context/DialogContext';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { Select } from '../components/common/Select';
@@ -75,6 +76,7 @@ export const SettingsView: React.FC = () => {
     reconcileAccounts,
   } = useVault();
   const { theme, setTheme } = useTheme();
+  const confirm = useConfirm();
 
   const [vaultNameInput, setVaultNameInput] = useState(activeVault?.name || '');
   const [vaultNameSuccess, setVaultNameSuccess] = useState('');
@@ -147,8 +149,14 @@ export const SettingsView: React.FC = () => {
     updateVaultSettings({ customShortcuts: currentCustom });
   };
 
-  const handleResetAllShortcuts = () => {
-    if (window.confirm('Reset all keyboard shortcuts to their factory defaults?')) {
+  const handleResetAllShortcuts = async () => {
+    const ok = await confirm({
+      title: 'Reset Keyboard Shortcuts',
+      description: 'Reset all keyboard shortcuts to their factory defaults?',
+      confirmText: 'Reset Defaults',
+      variant: 'warning',
+    });
+    if (ok) {
       updateVaultSettings({ customShortcuts: {} });
     }
   };
@@ -167,11 +175,13 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleReconcile = async () => {
-    if (
-      !window.confirm(
-        "Recalculate and reconcile all account balances based on your complete double-entry ledger? Fixed opening balances will be preserved, and only transactions after each account's opening date will apply."
-      )
-    ) {
+    const ok = await confirm({
+      title: 'Reconcile Account Balances',
+      description: "Recalculate and reconcile all account balances based on your complete double-entry ledger? Fixed opening balances will be preserved, and only transactions after each account's opening date will apply.",
+      confirmText: 'Run Reconciliation',
+      variant: 'primary',
+    });
+    if (!ok) {
       return;
     }
     setIsReconciling(true);
@@ -1238,7 +1248,13 @@ export const SettingsView: React.FC = () => {
           <button
             type="button"
             onClick={async () => {
-              if (window.confirm('Reset categories to the clean standard set? Custom categories will be removed, but your past transaction history and balances will remain completely safe.')) {
+              const ok = await confirm({
+                title: 'Reset Categories',
+                description: 'Reset categories to the clean standard set? Custom categories will be removed, but your past transaction history and balances will remain completely safe.',
+                confirmText: 'Reset to Defaults',
+                variant: 'warning',
+              });
+              if (ok) {
                 await resetCategoriesToDefault();
               }
             }}
@@ -1514,8 +1530,14 @@ export const SettingsView: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (window.confirm(`Delete category "${cat.name}"? This cannot be undone.`)) {
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: 'Delete Category',
+                          description: `Delete category "${cat.name}"? This cannot be undone.`,
+                          confirmText: 'Delete Category',
+                          variant: 'danger',
+                        });
+                        if (ok) {
                           deleteCategory(cat.id);
                         }
                       }}

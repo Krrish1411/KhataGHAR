@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
+import { useConfirm } from '../context/DialogContext';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { AnimatedNumber } from '../components/common/AnimatedNumber';
@@ -51,6 +52,7 @@ const ASSET_CLASS_COLORS: Record<AssetType, string> = {
 export const AssetsLiabilitiesView: React.FC = () => {
   const { assets, liabilities, peopleLedger, activeVault, deleteAsset, deleteLiability, updateVaultSettings } = useVault();
   const { isPrivacyMode } = usePrivacy();
+  const confirm = useConfirm();
 
   const [activeTab, setActiveTab] = useState<'assets' | 'liabilities'>('assets');
   const [assetStatusFilter, setAssetStatusFilter] = useState<'active' | 'settled'>('active');
@@ -162,13 +164,25 @@ export const AssetsLiabilitiesView: React.FC = () => {
   }, [activeAssets]);
 
   const handleDeleteAsset = async (id: string, name: string) => {
-    if (window.confirm(`Delete asset "${name}" and its valuation history?`)) {
+    const ok = await confirm({
+      title: 'Delete Asset',
+      description: `Delete asset "${name}" and its valuation history?`,
+      confirmText: 'Delete Asset',
+      variant: 'danger',
+    });
+    if (ok) {
       await deleteAsset(id);
     }
   };
 
   const handleDeleteLiability = async (id: string, name: string) => {
-    if (window.confirm(`Delete liability "${name}"?`)) {
+    const ok = await confirm({
+      title: 'Delete Liability',
+      description: `Delete liability "${name}"?`,
+      confirmText: 'Delete Liability',
+      variant: 'danger',
+    });
+    if (ok) {
       await deleteLiability(id);
     }
   };

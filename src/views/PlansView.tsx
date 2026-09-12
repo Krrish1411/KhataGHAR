@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
+import { useConfirm } from '../context/DialogContext';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { AnimatedNumber } from '../components/common/AnimatedNumber';
@@ -35,6 +36,7 @@ export const PlansView: React.FC = () => {
     markPlanPaid,
   } = useVault();
   const { isPrivacyMode } = usePrivacy();
+  const confirm = useConfirm();
 
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [planToEdit, setPlanToEdit] = useState<PlannedExpense | null>(null);
@@ -139,7 +141,13 @@ export const PlansView: React.FC = () => {
   };
 
   const handleDeletePlan = async (id: string, name: string) => {
-    if (window.confirm(`Delete planned expense "${name}"?`)) {
+    const ok = await confirm({
+      title: 'Delete Planned Expense',
+      description: `Delete planned expense "${name}"?`,
+      confirmText: 'Delete Plan',
+      variant: 'danger',
+    });
+    if (ok) {
       await deletePlannedExpense(id);
     }
   };

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
+import { useConfirm } from '../context/DialogContext';
 import { Button } from '../components/common/Button';
 import { Card, Surface } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
@@ -31,6 +32,7 @@ import { RelocateHoldingModal } from '../components/accounts/RelocateHoldingModa
 export const AccountsView: React.FC = () => {
   const { accounts, transactions, peopleLedger, activeVault, deleteAccount, updateAccount } = useVault();
   const { isPrivacyMode } = usePrivacy();
+  const confirm = useConfirm();
 
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [accountToEdit, setAccountToEdit] = useState<Account | undefined>(undefined);
@@ -177,7 +179,13 @@ export const AccountsView: React.FC = () => {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to delete account "${name}"? Existing transactions referencing it will be preserved.`)) {
+    const ok = await confirm({
+      title: 'Delete Account',
+      description: `Are you sure you want to delete account "${name}"? Existing transactions referencing it will be preserved.`,
+      confirmText: 'Delete Account',
+      variant: 'danger',
+    });
+    if (ok) {
       await deleteAccount(id);
     }
   };

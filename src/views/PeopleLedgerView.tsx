@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
+import { useConfirm } from '../context/DialogContext';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { AnimatedNumber } from '../components/common/AnimatedNumber';
@@ -33,6 +34,7 @@ import {
 export const PeopleLedgerView: React.FC = () => {
   const { peopleLedger, accounts, activeVault, deletePeopleEntry } = useVault();
   const { isPrivacyMode } = usePrivacy();
+  const confirm = useConfirm();
 
   const accountLookup = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
 
@@ -208,7 +210,13 @@ export const PeopleLedgerView: React.FC = () => {
   }, [contactAggregates, contactSearch]);
 
   const handleDelete = async (id: string, name: string) => {
-    if (window.confirm(`Delete entry for "${name}"?`)) {
+    const ok = await confirm({
+      title: 'Delete People Entry',
+      description: `Delete entry for "${name}"? Associated records will be removed.`,
+      confirmText: 'Delete Entry',
+      variant: 'danger',
+    });
+    if (ok) {
       await deletePeopleEntry(id);
     }
   };

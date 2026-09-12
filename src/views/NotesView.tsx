@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { Modal } from '../components/common/Modal';
+import { ConfirmModal } from '../components/common/ConfirmModal';
 import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { processAttachmentFile } from '../utils/compression';
@@ -77,6 +78,11 @@ export const NotesView: React.FC = () => {
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderIcon, setNewFolderIcon] = useState('📁');
   const [viewingAttachment, setViewingAttachment] = useState<NoteAttachment | null>(null);
+
+  // In-App Confirmation Pop-ups (Desktop & Mobile safe, zero window.confirm)
+  const [confirmDeleteNoteOpen, setConfirmDeleteNoteOpen] = useState(false);
+  const [folderToDelete, setFolderToDelete] = useState<NoteFolder | null>(null);
+  const [attachmentToDelete, setAttachmentToDelete] = useState<NoteAttachment | null>(null);
 
   // Mobile navigation between list & editor
   const [mobileView, setMobileView] = useState<'list' | 'editor'>('list');
@@ -245,19 +251,40 @@ export const NotesView: React.FC = () => {
     }
   };
 
-  const handleDeleteCurrentNote = async () => {
+  const handleDeleteCurrentNote = () => {
     if (!activeNote) return;
-    if (window.confirm(`Delete "${activeNote.title || 'Untitled Note'}" permanently?`)) {
-      await deleteNote(activeNote.id);
-      lastLoadedNoteIdRef.current = null;
-      const remaining = notes.filter((n) => n.id !== activeNote.id);
-      if (remaining.length > 0) {
-        setSelectedNoteId(remaining[0].id);
-      } else {
-        setSelectedNoteId(null);
-      }
-      setMobileView('list');
+    setConfirmDeleteNoteOpen(true);
+  };
+
+  const handleConfirmDeleteNote = async () => {
+    if (!activeNote) return;
+    const noteIdToDelete = activeNote.id;
+    setConfirmDeleteNoteOpen(false);
+    await deleteNote(noteIdToDelete);
+    lastLoadedNoteIdRef.current = null;
+    const remaining = notes.filter((n) => n.id !== noteIdToDelete);
+    if (remaining.length > 0) {
+      setSelectedNoteId(remaining[0].id);
+    } else {
+      setSelectedNoteId(null);
     }
+    setMobileView('list');
+  };
+
+  const handleConfirmDeleteFolder = async () => {
+    if (!folderToDelete) return;
+    const fId = folderToDelete.id;
+    setFolderToDelete(null);
+    await deleteFolder(fId);
+  };
+
+  const handleConfirmRemoveAttachment = () => {
+    if (!attachmentToDelete) return;
+    const attId = attachmentToDelete.id;
+    setAttachmentToDelete(null);
+    const updated = attachments.filter((a) => a.id !== attId);
+    setAttachments(updated);
+    triggerSave({ attachments: updated });
   };
 
   const handleCreateFolder = async (e: React.FormEvent) => {
@@ -568,11 +595,9 @@ export const NotesView: React.FC = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (window.confirm(`Delete folder "${f.name}"? Notes inside will move to General.`)) {
-                            deleteFolder(f.id);
-                          }
+                          setFolderToDelete(f);
                         }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 text-ink/30 hover:text-flare-600 transition-opacity ml-0.5"
+                        className="opacity-0 group-hover:opacity-100 p-0.5 text-ink/30 hover:text-flare-600 transition-opacity ml-0.5 cursor-pointer"
                         title="Delete folder"
                       >
                         <Trash2 className="w-3 h-3" />
@@ -925,9 +950,9 @@ export const NotesView: React.FC = () => {
                           <Download className="w-3 h-3" />
                         </a>
                         <button
-                          onClick={() => handleRemoveAttachment(att.id)}
+                          onClick={() => setAttachmentToDelete(att)}
                           className="p-1 rounded hover:bg-card text-ink/40 hover:text-flare-600 cursor-pointer"
-                          title="Remove"
+                          title="Remove attachment"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -1196,6 +1221,88 @@ export const NotesView: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* In-App Confirmation Modal: Delete Note */}
+      <ConfirmModal
+        isOpen={confirmDeleteNoteOpen}
+        onClose={() => setConfirmDeleteNoteOpen(false)}
+        onConfirm={handleConfirmDeleteNote}
+        title="Delete Note"
+        description="This encrypted note and all its attachments will be permanently deleted from your vault. This action cannot be undone."
+        confirmText="Delete Permanently"
+        variant="danger"
+        itemPreview={
+          activeNote ? (
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="text-2xl select-none shrink-0">{activeNote.icon || '📝'}</span>
+              <div className="min-w-0 flex-1">
+                <div className="font-bold text-xs text-ink truncate">
+                  {activeNote.title || 'Untitled Note'}
+                </div>
+                <div className="text-[11px] text-ink/50 font-mono truncate">
+                  {currentFolder.name} • {stats.words} words
+                </div>
+              </div>
+            </div>
+          ) : null
+        }
+      />
+
+      {/* In-App Confirmation Modal: Delete Folder */}
+      <ConfirmModal
+        isOpen={Boolean(folderToDelete)}
+        onClose={() => setFolderToDelete(null)}
+        onConfirm={handleConfirmDeleteFolder}
+        title="Delete Folder"
+        description={`Notes inside "${folderToDelete?.name}" will not be deleted; they will be safely relocated to General.`}
+        confirmText="Delete Folder"
+        variant="warning"
+        itemPreview={
+          folderToDelete ? (
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <IconRenderer name={folderToDelete.icon || 'Folder'} className="w-4 h-4 text-pine-600 dark:text-pine-400 shrink-0" />
+                <span className="font-bold text-xs text-ink truncate">{folderToDelete.name}</span>
+              </div>
+              <span className="text-[11px] font-mono text-ink/50 tabular-nums shrink-0">
+                {notes.filter((n) => n.folderId === folderToDelete.id).length} notes inside
+              </span>
+            </div>
+          ) : null
+        }
+      />
+
+      {/* In-App Confirmation Modal: Remove Attachment */}
+      <ConfirmModal
+        isOpen={Boolean(attachmentToDelete)}
+        onClose={() => setAttachmentToDelete(null)}
+        onConfirm={handleConfirmRemoveAttachment}
+        title="Remove Attachment"
+        description="Are you sure you want to remove this attached file from the note?"
+        confirmText="Remove File"
+        variant="danger"
+        itemPreview={
+          attachmentToDelete ? (
+            <div className="flex items-center gap-2.5 min-w-0">
+              {attachmentToDelete.type === 'image' ? (
+                <img
+                  src={attachmentToDelete.dataUrl}
+                  alt={attachmentToDelete.name}
+                  className="w-8 h-8 rounded-lg object-cover border border-line shrink-0"
+                />
+              ) : (
+                <FileText className="w-5 h-5 text-ink/50 shrink-0" />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="font-bold text-xs text-ink truncate">{attachmentToDelete.name}</div>
+                <div className="text-[10px] text-ink/50 font-mono">
+                  {(attachmentToDelete.size / 1024).toFixed(0)} KB
+                </div>
+              </div>
+            </div>
+          ) : null
+        }
+      />
     </div>
   );
 };

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
+import { useConfirm } from '../context/DialogContext';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { AnimatedNumber } from '../components/common/AnimatedNumber';
@@ -27,6 +28,7 @@ export const BudgetsGoalsView: React.FC = () => {
   const { budgets, goals, transactions, categories, activeVault, deleteBudget, deleteGoal } =
     useVault();
   const { isPrivacyMode } = usePrivacy();
+  const confirm = useConfirm();
 
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [budgetToEdit, setBudgetToEdit] = useState<Budget | undefined>(undefined);
@@ -74,13 +76,25 @@ export const BudgetsGoalsView: React.FC = () => {
   }, [budgets, transactions, categoryLookup, thisMonthRange]);
 
   const handleDeleteBudget = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this budget?')) {
+    const ok = await confirm({
+      title: 'Delete Budget',
+      description: 'Are you sure you want to delete this budget limit?',
+      confirmText: 'Delete Budget',
+      variant: 'danger',
+    });
+    if (ok) {
       await deleteBudget(id);
     }
   };
 
   const handleDeleteGoal = async (id: string, name: string) => {
-    if (window.confirm(`Delete savings goal "${name}"?`)) {
+    const ok = await confirm({
+      title: 'Delete Savings Goal',
+      description: `Delete savings goal "${name}"? Past saved funds and accounts will remain intact.`,
+      confirmText: 'Delete Goal',
+      variant: 'danger',
+    });
+    if (ok) {
       await deleteGoal(id);
     }
   };

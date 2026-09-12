@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PrivacyProvider } from './context/PrivacyContext';
+import { DialogProvider } from './context/DialogContext';
 import { VaultProvider } from './context/VaultContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { LockScreen } from './components/security/LockScreen';
@@ -77,7 +78,9 @@ export function App() {
     <ThemeProvider>
       <AuthProvider>
         <PrivacyProvider>
-          <AuthenticatedApp />
+          <DialogProvider>
+            <AuthenticatedApp />
+          </DialogProvider>
         </PrivacyProvider>
       </AuthProvider>
     </ThemeProvider>

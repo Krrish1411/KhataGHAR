@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useVault } from '../context/VaultContext';
+import { useConfirm } from '../context/DialogContext';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { DocumentUploadModal } from '../components/documents/DocumentUploadModal';
@@ -29,6 +30,7 @@ interface DocumentLifecycle {
 
 export const DocumentsView: React.FC = () => {
   const { documents, assets, liabilities, accounts, deleteDocument, addPlannedExpense } = useVault();
+  const confirm = useConfirm();
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [filterTab, setFilterTab] = useState<'all' | 'action_required' | 'active'>('all');
@@ -117,7 +119,13 @@ export const DocumentsView: React.FC = () => {
   }, [enrichedDocs, filterTab]);
 
   const handleDelete = async (id: string, name: string) => {
-    if (window.confirm(`Delete document "${name}"?`)) {
+    const ok = await confirm({
+      title: 'Delete Document',
+      description: `Delete encrypted document "${name}"? This file will be permanently removed.`,
+      confirmText: 'Delete Document',
+      variant: 'danger',
+    });
+    if (ok) {
       await deleteDocument(id);
     }
   };
