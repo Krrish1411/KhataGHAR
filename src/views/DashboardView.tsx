@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { Card } from '../components/common/Card';
@@ -35,6 +36,7 @@ import {
   Keyboard,
   ArrowRight,
   Target,
+  X,
 } from 'lucide-react';
 import { computeFinancialInsights, type FinancialInsight } from '../services/insights';
 import {
@@ -48,6 +50,9 @@ import {
 } from 'recharts';
 
 export const DashboardView: React.FC = () => {
+  const navigate = useNavigate();
+  const goTo = (route: string) => navigate(route.startsWith('#') ? route.slice(1) : route);
+
   const { activeVault, accounts, transactions, categories, peopleLedger, budgets, goals, assets, liabilities, plannedExpenses, loadDemoData } =
     useVault();
   const { isPrivacyMode, togglePrivacy } = usePrivacy();
@@ -99,16 +104,49 @@ export const DashboardView: React.FC = () => {
     });
   }, [accounts, transactions, budgets, categories, peopleLedger, assets, liabilities, plannedExpenses, baseCurrency, numberFormat, isPrivacyMode]);
 
-  // Only actionable items (critical & warning) show on the top notification banner
+  const [dismissedInsightIds, setDismissedInsightIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('khataghar_dismissed_insights');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const dismissInsight = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setDismissedInsightIds((prev) => {
+      const updated = [...new Set([...prev, id])];
+      try {
+        localStorage.setItem('khataghar_dismissed_insights', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const dismissAllActionable = () => {
+    const allIds = actionableInsights.map((a) => a.id);
+    setDismissedInsightIds((prev) => {
+      const updated = [...new Set([...prev, ...allIds])];
+      try {
+        localStorage.setItem('khataghar_dismissed_insights', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  // Only actionable items (critical & warning) that are not dismissed show on the top notification banner
   const actionableInsights = useMemo(() => {
-    return insights.filter((i) => i.severity === 'critical' || i.severity === 'warning');
-  }, [insights]);
+    return insights.filter(
+      (i) => (i.severity === 'critical' || i.severity === 'warning') && !dismissedInsightIds.includes(i.id)
+    );
+  }, [insights, dismissedInsightIds]);
 
   // Account helper mapping
   const accountHeldMap = useMemo(() => {
     const map = new Map<string, number>();
     peopleLedger
-      .filter((p) => p.status !== 'closed' && (p.type === 'holding' || p.type === 'borrowed') && p.accountId)
+      .filter((p) => p.status !== 'closed' && (p.type === 'holding' || p.type === 'borrowed') && p.accountId && p.heldInType !== 'asset')
       .forEach((p) => {
         const settled = (p.settlements || []).reduce((s, st) => s + st.amount, 0);
         const rem = Math.max(0, p.amount - settled);
@@ -201,17 +239,25 @@ export const DashboardView: React.FC = () => {
 
             <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
               <button
-                onClick={() => (window.location.hash = actionableInsights[0].targetRoute)}
+                onClick={() => goTo(actionableInsights[0].targetRoute)}
                 className="px-3.5 py-2 rounded-xl bg-card border border-line text-xs font-bold text-ink hover:bg-moss active:scale-95 transition-all shadow-xs cursor-pointer"
               >
                 {actionableInsights[0].actionLabel}
               </button>
               <button
-                onClick={() => (window.location.hash = '#/reports')}
+                onClick={() => goTo('/reports')}
                 className="px-3.5 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 text-white text-xs font-bold active:scale-95 transition-all shadow-xs flex items-center gap-1 cursor-pointer"
               >
                 <span>View in Reports Hub</span>
                 <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={dismissAllActionable}
+                className="p-2 rounded-xl hover:bg-black/10 text-ink/50 hover:text-ink transition-colors cursor-pointer"
+                title="Dismiss alerts"
+                aria-label="Dismiss all notifications"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -223,16 +269,27 @@ export const DashboardView: React.FC = () => {
                 Also flagged:
               </span>
               {actionableInsights.slice(1).map((item) => (
-                <button
+                <div
                   key={item.id}
-                  onClick={() => (window.location.hash = item.targetRoute)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-card/80 border border-line text-xs font-medium text-ink hover:border-pine-400 hover:text-pine-700 transition-colors cursor-pointer"
-                  title={item.description}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-card/80 border border-line text-xs font-medium text-ink hover:border-pine-400 transition-colors"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                  <span className="font-semibold">{item.title}</span>
-                  <ArrowRight className="w-3 h-3 text-ink/40" />
-                </button>
+                  <button
+                    onClick={() => goTo(item.targetRoute)}
+                    className="inline-flex items-center gap-1.5 cursor-pointer hover:text-pine-700"
+                    title={item.description}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-mari-600" />
+                    <span className="font-semibold">{item.title}</span>
+                    <ArrowRight className="w-3 h-3 text-ink/40" />
+                  </button>
+                  <button
+                    onClick={(e) => dismissInsight(item.id, e)}
+                    className="ml-1 text-ink/40 hover:text-flare-600 cursor-pointer p-0.5 rounded"
+                    title="Dismiss alert"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -298,10 +355,10 @@ export const DashboardView: React.FC = () => {
             </Badge>
             {d.goalReservations > 0 && (
               <Badge
-                tone="warning"
-                className="!bg-amber-500/20 !text-amber-100 !border-amber-400/30 cursor-help"
+                tone="pine"
+                className="!bg-white/10 !text-pine-100 !border-white/20 cursor-help"
                 icon={<Target className="w-3 h-3" />}
-                title={`${formatCurrency(d.goalReservations, baseCurrency, numberFormat, isPrivacyMode)} currently saved in goals reserved from spendable cash`}
+                title={`${formatCurrency(d.goalReservations, baseCurrency, numberFormat, isPrivacyMode)} saved in goals (deducted from available to spend)`}
               >
                 {formatCompactCurrency(d.goalReservations, baseCurrency, numberFormat, isPrivacyMode)} saved in goals
               </Badge>
@@ -509,7 +566,7 @@ export const DashboardView: React.FC = () => {
             <span>Accounts & Enclaves</span>
           </h2>
           <button
-            onClick={() => (window.location.hash = '#/accounts')}
+            onClick={() => goTo('/accounts')}
             className="text-[11.5px] font-semibold text-pine-700 dark:text-pine-400 hover:underline flex items-center gap-1 cursor-pointer"
           >
             all accounts →
@@ -545,7 +602,7 @@ export const DashboardView: React.FC = () => {
               </button>
               <button
                 onClick={() => {
-                  window.location.hash = '#/accounts';
+                  goTo('/accounts');
                 }}
                 className="px-3.5 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer transition-all"
               >
@@ -645,7 +702,7 @@ export const DashboardView: React.FC = () => {
               return (
                 <button
                   key={f.id}
-                  onClick={() => (window.location.hash = '#/people')}
+                  onClick={() => goTo('/people')}
                   className="w-full text-left rounded-2xl border border-line bg-card p-3.5 flex items-center gap-3 lift cursor-pointer"
                 >
                   <span className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 border ${cfg.cls}`}>
@@ -687,7 +744,7 @@ export const DashboardView: React.FC = () => {
               <span>Savings Goals & Milestones</span>
             </h2>
             <button
-              onClick={() => (window.location.hash = '#/budgets')}
+              onClick={() => goTo('/budgets')}
               className="text-[11.5px] font-semibold text-pine-700 dark:text-pine-400 hover:underline cursor-pointer"
             >
               manage goals →
@@ -700,14 +757,14 @@ export const DashboardView: React.FC = () => {
               return (
                 <div
                   key={g.id}
-                  onClick={() => (window.location.hash = '#/budgets')}
+                  onClick={() => goTo('/budgets')}
                   className="rounded-2xl border border-line bg-card p-4 space-y-2.5 shadow-sm lift cursor-pointer"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-display font-bold text-sm text-ink truncate">{g.name}</span>
                     <div className="flex items-center gap-1">
                       {g.deductFromAvailableToSpend && (
-                        <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold px-1.5 py-0.5 rounded">
+                        <span className="text-[10px] bg-pine-500/10 text-pine-700 dark:text-pine-300 font-semibold px-1.5 py-0.5 rounded">
                           Deducted
                         </span>
                       )}
@@ -745,7 +802,7 @@ export const DashboardView: React.FC = () => {
             <span>Money vitals</span>
           </h2>
           <button
-            onClick={() => (window.location.hash = '#/reports')}
+            onClick={() => goTo('/reports')}
             className="text-[11.5px] font-semibold text-pine-700 dark:text-pine-400 hover:underline cursor-pointer"
           >
             full reports →
@@ -806,7 +863,7 @@ export const DashboardView: React.FC = () => {
             <span>Recent Entries</span>
           </h2>
           <button
-            onClick={() => (window.location.hash = '#/transactions')}
+            onClick={() => goTo('/transactions')}
             className="text-[11.5px] font-semibold text-pine-700 dark:text-pine-400 hover:underline cursor-pointer"
           >
             all entries →

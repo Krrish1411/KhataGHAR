@@ -7,6 +7,8 @@ export interface DerivedFinancials {
   totalLiabilities: number;
   reservedHolding: number;
   reservedBorrowed: number;
+  reservedLiquidTotal: number;
+  reservedAssetHolding: number;
   givenOutTotal: number;
   reservedTotal: number;
   committedTotal: number;
@@ -71,31 +73,59 @@ export function computeDerivedFinancials(
   const extraLiabVal = liabilities.reduce((sum, l) => sum + (l.outstandingBalance || 0), 0);
   const monthlyEMIs = liabilities.reduce((sum, l) => sum + (l.emiAmount || 0), 0);
 
-  const totalAssets = visibleAccounts.reduce((sum, a) => sum + Math.max(0, a.balance), 0) + extraAssetsVal;
-  const totalLiabilities = creditOutstanding + overdraftDebt + extraLiabVal;
-
-  // 2. People Ledger ("Not Your Money")
+  // 2. People Ledger (Receivables & Custodial/Borrowed Payables)
   const activeEntries = peopleLedger.filter((p) => p.status !== 'closed');
   let reservedHolding = 0;
   let reservedBorrowed = 0;
   let givenOutTotal = 0;
+  let reservedLiquidHolding = 0;
+  let reservedAssetHolding = 0;
 
   activeEntries.forEach((p) => {
     const settled = (p.settlements || []).reduce((s, st) => s + st.amount, 0);
     const rem = Math.max(0, p.amount - settled);
-    if (p.type === 'holding') reservedHolding += rem;
+    if (p.type === 'holding') {
+      reservedHolding += rem;
+      if (p.heldInType === 'asset' || p.linkedAssetId) {
+        reservedAssetHolding += rem;
+      } else {
+        reservedLiquidHolding += rem;
+      }
+    }
     else if (p.type === 'borrowed') reservedBorrowed += rem;
     else if (p.type === 'lent') givenOutTotal += rem;
   });
 
   const reservedTotal = reservedHolding + reservedBorrowed;
+  const reservedLiquidTotal = reservedLiquidHolding + reservedBorrowed;
+
+  // Institutional Balance Sheet (Assets vs Liabilities)
+  // Assets = Liquid Bank/Cash + Productive Capital Assets + Accounts Receivable (Money Lent)
+  const totalAssets = r2(
+    visibleAccounts.reduce((sum, a) => sum + Math.max(0, a.balance), 0) + extraAssetsVal + givenOutTotal
+  );
+
+  // Liabilities = Credit Card Outstanding + Bank Overdrafts + Formal Loans + Informal Debt & Escrow
+  const totalLiabilities = r2(
+    creditOutstanding + overdraftDebt + extraLiabVal + reservedTotal
+  );
 
   // 3. Committed Upcoming Bills (Active budgets or EMIs with deduction of amounts already paid this month)
   let remainingBudgetsTotal = 0;
   budgets.forEach((b) => {
     const spentThisMonth = transactions
-      .filter((t) => t.type === 'expense' && t.categoryId === b.categoryId && t.date.startsWith(thisMonthKey))
-      .reduce((sum, t) => sum + t.amount, 0);
+      .filter((t) => t.type === 'expense' && t.date.startsWith(thisMonthKey))
+      .reduce((sum, t) => {
+        let catSpend = 0;
+        if (t.splits && t.splits.length > 0) {
+          t.splits.forEach((sp) => {
+            if (sp.categoryId === b.categoryId) catSpend += sp.amount;
+          });
+        } else if (t.categoryId === b.categoryId) {
+          catSpend += t.amount;
+        }
+        return sum + catSpend;
+      }, 0);
     const rem = Math.max(0, b.amount - spentThisMonth);
     remainingBudgetsTotal += rem;
   });
@@ -115,18 +145,19 @@ export function computeDerivedFinancials(
   const committedTotal = r2(remainingBudgetsTotal + remainingEMIsTotal);
   const committedPaidThisMonth = r2(Math.max(0, grossCommittedTotal - committedTotal));
 
-  // 4. Savings Goals Deductions: Deduct current saved amount only (not whole goal target) for opted goals
+  // 4. Savings Goals Deductions: Deduct current saved amount (e.g. 20K saved, not 80K unfulfilled target)
+  // When a user saves money towards a goal, that saved amount is reserved from spendable cash.
   const goalReservations = r2(
     goals
-      .filter((g) => g.deductFromAvailableToSpend)
+      .filter((g) => g.deductFromAvailableToSpend !== false)
       .reduce((sum, g) => sum + Math.max(0, g.currentAmount || 0), 0)
   );
 
-  // 5. Available to Spend: True liquid cash minus custodial/borrowed funds minus remaining unpaid commitments minus opted goal reservations
-  const availableToSpend = r2(Math.max(0, liquidBalance - reservedTotal - committedTotal - goalReservations));
+  // 5. Available to Spend: True liquid cash minus custodial liquid funds minus remaining unpaid commitments minus saved goal reservations
+  const availableToSpend = r2(Math.max(0, liquidBalance - reservedLiquidTotal - committedTotal - goalReservations));
 
-  // 6. Net Worth Formula: Assets − Liabilities − Money held for others + Money given out
-  const netWorth = r2(totalAssets - totalLiabilities - reservedHolding - reservedBorrowed + givenOutTotal);
+  // 6. Net Worth: Verified Balance Sheet Assets − Liabilities
+  const netWorth = r2(totalAssets - totalLiabilities);
 
   // 6. Monthly Cash Flows
   const sumMonth = (key: string) => {
@@ -224,6 +255,8 @@ export function computeDerivedFinancials(
     reservedBorrowed: r2(reservedBorrowed),
     givenOutTotal: r2(givenOutTotal),
     reservedTotal: r2(reservedTotal),
+    reservedLiquidTotal: r2(reservedLiquidTotal),
+    reservedAssetHolding: r2(reservedAssetHolding),
     committedTotal: r2(committedTotal),
     grossCommittedTotal: r2(grossCommittedTotal),
     committedPaidThisMonth: r2(committedPaidThisMonth),

@@ -32,6 +32,7 @@ import {
   ArrowRight,
   Archive,
   CheckCircle2,
+  ShieldCheck,
 } from 'lucide-react';
 
 const ASSET_CLASS_COLORS: Record<AssetType, string> = {
@@ -101,10 +102,41 @@ export const AssetsLiabilitiesView: React.FC = () => {
     return { activeAssets: active, settledAssets: settled };
   }, [assets, isAssetSettled]);
 
+  // Compute custodial holdings in assets
+  const assetHeldMap = useMemo(() => {
+    const map = new Map<string, { totalHeld: number; contacts: string[] }>();
+    peopleLedger
+      .filter((p) => p.type === 'holding' && p.status !== 'closed' && (p.heldInType === 'asset' || p.linkedAssetId))
+      .forEach((p) => {
+        if (!p.linkedAssetId) return;
+        const settled = (p.settlements || []).reduce((sum, s) => sum + s.amount, 0);
+        const rem = Math.max(0, p.amount - settled);
+        if (rem > 0) {
+          const current = map.get(p.linkedAssetId) || { totalHeld: 0, contacts: [] };
+          current.totalHeld += rem;
+          if (!current.contacts.includes(p.contactName)) {
+            current.contacts.push(p.contactName);
+          }
+          map.set(p.linkedAssetId, current);
+        }
+      });
+    return map;
+  }, [peopleLedger]);
+
   // Total sums
   const totalAssetsValue = useMemo(() => {
     return activeAssets.reduce((sum, a) => sum + a.currentValue, 0);
   }, [activeAssets]);
+
+  const totalCustodialAssets = useMemo(() => {
+    let sum = 0;
+    activeAssets.forEach((a) => {
+      const heldInfo = assetHeldMap.get(a.id);
+      const held = (heldInfo ? heldInfo.totalHeld : 0) || (a.custodialAmount || 0);
+      sum += held;
+    });
+    return sum;
+  }, [activeAssets, assetHeldMap]);
 
   const totalLiabilitiesBalance = useMemo(() => {
     return liabilities.reduce((sum, l) => sum + l.outstandingBalance, 0);
@@ -253,8 +285,15 @@ export const AssetsLiabilitiesView: React.FC = () => {
       {/* Summary Cards (PaisaBook Styled) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 shadow-sm lift">
-          <div className="text-[10.5px] font-bold uppercase tracking-wider text-pine-700 dark:text-pine-400">
-            Total Asset Portfolio
+          <div className="flex items-center justify-between">
+            <div className="text-[10.5px] font-bold uppercase tracking-wider text-pine-700 dark:text-pine-400">
+              Total Asset Portfolio
+            </div>
+            {totalCustodialAssets > 0 && (
+              <span className="text-[10px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60 px-2 py-0.5 rounded-md">
+                🛡️ {formatCompactCurrency(totalCustodialAssets, baseCurrency, numberFormat, isPrivacyMode)} Custodial
+              </span>
+            )}
           </div>
           <div className="font-display font-extrabold text-[26px] num text-pine-700 dark:text-pine-400 mt-1">
             <AnimatedNumber
@@ -264,7 +303,14 @@ export const AssetsLiabilitiesView: React.FC = () => {
               isPrivacyMode={isPrivacyMode}
             />
           </div>
-          <div className="text-[11px] text-ink/45 mt-0.5">{assets.length} Assets Registered</div>
+          <div className="text-[11px] text-ink/45 mt-0.5 flex items-center justify-between">
+            <span>{assets.length} Assets Registered</span>
+            {totalCustodialAssets > 0 && (
+              <span className="text-[10.5px] font-bold text-pine-600 dark:text-pine-400">
+                Your Equity: {formatCompactCurrency(Math.max(0, totalAssetsValue - totalCustodialAssets), baseCurrency, numberFormat, isPrivacyMode)}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 shadow-sm lift">
@@ -475,6 +521,13 @@ export const AssetsLiabilitiesView: React.FC = () => {
                           ? (gain / asset.purchasePrice) * 100
                           : 0;
 
+                      const heldInfo = assetHeldMap.get(asset.id);
+                      const heldAmount = (heldInfo ? heldInfo.totalHeld : 0) || (asset.custodialAmount || 0);
+                      const contacts = heldInfo?.contacts.length
+                        ? heldInfo.contacts.join(', ')
+                        : (asset.custodialContactName || 'Others');
+                      const trueEquity = Math.max(0, asset.currentValue - heldAmount);
+
                       return (
                         <div
                           key={asset.id}
@@ -570,6 +623,29 @@ export const AssetsLiabilitiesView: React.FC = () => {
                                     )}
                                     )
                                   </span>
+                                </div>
+                              )}
+
+                              {heldAmount > 0 && (
+                                <div className="mt-3 p-2.5 rounded-xl bg-sky-50/80 dark:bg-sky-950/40 border border-sky-200/80 dark:border-sky-800/60 space-y-1.5 text-xs">
+                                  <div className="flex items-center justify-between text-sky-800 dark:text-sky-300 font-bold">
+                                    <span className="flex items-center gap-1">
+                                      <ShieldCheck className="w-3.5 h-3.5 text-sky-500" />
+                                      <span>Custodial Holding</span>
+                                    </span>
+                                    <span className="font-mono">
+                                      {formatCurrency(heldAmount, asset.currency, numberFormat)}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-ink/60 dark:text-ink/40">
+                                    Held on behalf of <span className="font-semibold text-ink">{contacts}</span>
+                                  </div>
+                                  <div className="pt-1.5 border-t border-sky-200/60 dark:border-sky-800/40 flex items-center justify-between text-ink font-semibold">
+                                    <span className="text-[11px] text-ink/70">Your True Equity:</span>
+                                    <span className="font-mono font-bold text-pine-600 dark:text-pine-400">
+                                      {formatCurrency(trueEquity, asset.currency, numberFormat)}
+                                    </span>
+                                  </div>
                                 </div>
                               )}
                             </div>

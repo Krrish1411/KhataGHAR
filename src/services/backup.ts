@@ -184,6 +184,9 @@ export async function importVaultEncrypted(
     { type: 'asset', items: parsed.data.assets || [] },
     { type: 'liability', items: parsed.data.liabilities || [] },
     { type: 'document', items: parsed.data.documents || [] },
+    { type: 'plan', items: parsed.data.plannedExpenses || [] },
+    { type: 'note', items: (parsed.data as any).notes || [] },
+    { type: 'folder', items: (parsed.data as any).folders || [] },
   ];
 
   for (const group of types) {

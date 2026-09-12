@@ -5,6 +5,9 @@ import { formatDateISO } from '../../utils/dates';
 import type { TransactionType, RecurringFrequency, TransactionSplit } from '../../types';
 import { AssetModal } from '../assets/AssetModal';
 import { LiabilityModal } from '../liabilities/LiabilityModal';
+import { AccountModal } from '../accounts/AccountModal';
+import { ContactSelect } from '../people/ContactSelect';
+import { ContactModal } from '../people/ContactModal';
 import {
   Users,
   ArrowDownLeft,
@@ -24,6 +27,8 @@ import {
   Trash2,
   AlertCircle,
   Search,
+  UserPlus,
+  Share2,
 } from 'lucide-react';
 import { IconRenderer, getCategoryEmoji } from '../common/IconRenderer';
 
@@ -68,11 +73,23 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   const [salePricePerUnit, setSalePricePerUnit] = useState('');
   const [debtSubMode, setDebtSubMode] = useState<'emi' | 'received'>('emi');
 
-  // Inline modal states (open AssetModal/LiabilityModal without leaving QuickAdd)
+  // Inline modal states (open nested modals without leaving QuickAdd)
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
   const [isLiabilityModalOpen, setIsLiabilityModalOpen] = useState(false);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
 
-  // Split Transaction State
+  // Paid by Contact State (Someone else paid for my expense directly)
+  const [isPaidByContact, setIsPaidByContact] = useState(false);
+  const [paidByContactName, setPaidByContactName] = useState('');
+
+  // Group Split State (Trip Splitter)
+  const [isGroupSplitMode, setIsGroupSplitMode] = useState(false);
+  const [myShareAmount, setMyShareAmount] = useState('');
+  const [groupMembers, setGroupMembers] = useState<Array<{ id: string; contactName: string; amount: string }>>([
+    { id: 'gm_1', contactName: '', amount: '' },
+  ]);
+
+  // Split Transaction State (Multi-category)
   const [isSplitMode, setIsSplitMode] = useState(false);
   const [splits, setSplits] = useState<
     Array<{
@@ -101,6 +118,11 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
     setPeopleType('lent');
     setIsSplitMode(false);
     setSplits([]);
+    setIsPaidByContact(false);
+    setPaidByContactName('');
+    setIsGroupSplitMode(false);
+    setMyShareAmount('');
+    setGroupMembers([{ id: 'gm_1', contactName: '', amount: '' }]);
     setInvestSubMode('buy');
     setSaleUnits('');
     setSalePricePerUnit('');
@@ -353,6 +375,28 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       return;
     }
 
+    if (entryMode === 'expense' && isGroupSplitMode) {
+      const myShare = parseFloat(myShareAmount) || 0;
+      const validMembers = groupMembers.filter((m) => m.contactName.trim() && (parseFloat(m.amount) || 0) > 0);
+      if (validMembers.length === 0) {
+        setError('Please add at least one group member / friend with a share amount.');
+        return;
+      }
+      const friendsSum = validMembers.reduce((s, m) => s + (parseFloat(m.amount) || 0), 0);
+      const totalSplit = Math.round((myShare + friendsSum) * 100) / 100;
+      if (Math.abs(totalSplit - numAmount) > 0.05) {
+        setError(`Group split total (₹${totalSplit.toFixed(2)}) must equal total bill amount (₹${numAmount.toFixed(2)}). Difference: ₹${(numAmount - totalSplit).toFixed(2)}`);
+        return;
+      }
+    }
+
+    if (entryMode === 'expense' && isPaidByContact) {
+      if (!paidByContactName.trim()) {
+        setError('Please select who paid for this expense.');
+        return;
+      }
+    }
+
     let parsedSplitsList: TransactionSplit[] | undefined = undefined;
     if (isSplitMode) {
       const splitSum = splits.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
@@ -381,6 +425,77 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
 
       const parsedUnits = units ? parseFloat(units) : undefined;
       const parsedUnitPrice = unitPrice ? parseFloat(unitPrice) : undefined;
+
+      // --- EXPENSE: GROUP / TRIP SPLIT ---
+      if (entryMode === 'expense' && isGroupSplitMode) {
+        const myShare = parseFloat(myShareAmount) || 0;
+        const validMembers = groupMembers.filter((m) => m.contactName.trim() && (parseFloat(m.amount) || 0) > 0);
+        const others = validMembers.map((m) => ({
+          contactName: m.contactName.trim(),
+          amount: Math.round((parseFloat(m.amount) || 0) * 100) / 100,
+        }));
+
+        // 1. Record total bill expense transaction debited from account
+        await addTransaction({
+          date,
+          amount: numAmount,
+          type: 'expense',
+          currency: activeVault?.currency || 'INR',
+          accountId,
+          categoryId: categoryId || undefined,
+          note: `[Group Split] ${note.trim() || 'Trip / Group Bill'} (My Share: ₹${myShare})`.trim(),
+          tags: [...(parsedTags.length > 0 ? parsedTags : []), 'group-split'],
+          groupSplit: {
+            totalBill: numAmount,
+            yourShare: myShare,
+            splits: others,
+          },
+        });
+
+        // 2. Automatically record lent receivable in peopleLedger for each friend
+        for (const member of others) {
+          await addPeopleEntry({
+            contactName: member.contactName,
+            type: 'lent',
+            amount: member.amount,
+            currency: activeVault?.currency || 'INR',
+            date,
+            accountId,
+            notes: `Group split share for ${note.trim() || 'Group Bill'} (Total Bill: ₹${numAmount})`,
+          });
+        }
+        onClose();
+        return;
+      }
+
+      // --- EXPENSE: DIRECTLY PAID BY SOMEONE ELSE ---
+      if (entryMode === 'expense' && isPaidByContact) {
+        const payerName = paidByContactName.trim();
+        // 1. Record expense transaction without bank debit
+        await addTransaction({
+          date,
+          amount: numAmount,
+          type: 'expense',
+          currency: activeVault?.currency || 'INR',
+          accountId,
+          categoryId: categoryId || undefined,
+          paidByContactName: payerName,
+          note: `[Paid by ${payerName}] ${note.trim() || ''}`.trim(),
+          tags: [...(parsedTags.length > 0 ? parsedTags : []), 'paid-by-contact'],
+        });
+
+        // 2. Automatically record borrowed liability in peopleLedger
+        await addPeopleEntry({
+          contactName: payerName,
+          type: 'borrowed',
+          amount: numAmount,
+          currency: activeVault?.currency || 'INR',
+          date,
+          notes: `Directly paid for my expense (${categories.find((c) => c.id === categoryId)?.name || 'Expense'}): ${note.trim() || ''}`.trim(),
+        });
+        onClose();
+        return;
+      }
 
       // --- ASSET SELL / REDEEM ---
       if (entryMode === 'invest' && investSubMode === 'sell') {
@@ -412,13 +527,6 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
           linkedLiabilityId: selectedLiabilityId || undefined,
           subType: 'regular',
         } as any);
-        // Increase liability outstanding balance
-        if (selectedLiabilityId) {
-          const liab = liabilities.find((l) => l.id === selectedLiabilityId);
-          if (liab) {
-            await updateLiability({ ...liab, outstandingBalance: Math.round((liab.outstandingBalance + numAmount) * 100) / 100, updatedAt: new Date().toISOString() });
-          }
-        }
         onClose();
         return;
       }
@@ -875,27 +983,15 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
               </div>
             </div>
 
-            {/* Person Name with Autocomplete Datalist */}
+            {/* Person Name with ContactSelect */}
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
-                Person / Contact Name
-              </label>
-              <input
-                type="text"
-                list="quickadd-people-contacts"
-                placeholder="Type or select contact name..."
+              <ContactSelect
+                label="Person / Contact Name"
                 value={contactName}
-                onChange={(e) => setContactName(e.target.value)}
-                className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-violet-500"
+                onChange={setContactName}
+                placeholder="Type or select contact name..."
                 required
               />
-              <datalist id="quickadd-people-contacts">
-                {Array.from(new Set(peopleLedger.map((p) => p.contactName.trim())))
-                  .filter(Boolean)
-                  .map((c) => (
-                    <option key={c} value={c} />
-                  ))}
-              </datalist>
             </div>
 
             {/* Due Date (Optional) */}
@@ -916,25 +1012,176 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50">
-                {isSplitMode ? 'Split Allocations' : 'Category'}
+                {isGroupSplitMode ? 'Group / Trip Split (Who Owes What)' : isSplitMode ? 'Category Split Allocations' : 'Category'}
               </label>
 
-              {/* Split Toggle */}
-              <button
-                type="button"
-                onClick={handleToggleSplit}
-                className={`text-[11.5px] font-semibold flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-all cursor-pointer ${
-                  isSplitMode
-                    ? 'bg-pine-100 dark:bg-pine-950/60 border-pine-300 dark:border-pine-800 text-pine-800 dark:text-pine-300'
-                    : 'bg-card border-line text-ink/60 hover:text-ink hover:bg-moss'
-                }`}
-              >
-                <Split className="w-3.5 h-3.5 text-pine-600" />
-                <span>{isSplitMode ? 'Cancel Split' : 'Split Transaction'}</span>
-              </button>
+              {/* Split Mode Toggles */}
+              <div className="flex items-center gap-1.5">
+                {entryMode === 'expense' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !isGroupSplitMode;
+                      setIsGroupSplitMode(next);
+                      if (next) {
+                        setIsSplitMode(false);
+                        const totalNum = parseSmartAmount(amount) || 0;
+                        const half = Math.round((totalNum / 2) * 100) / 100;
+                        setMyShareAmount(String(half));
+                        setGroupMembers([{ id: 'gm_1', contactName: '', amount: String(Math.round((totalNum - half) * 100) / 100) }]);
+                      }
+                    }}
+                    className={`text-[11.5px] font-semibold flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-all cursor-pointer ${
+                      isGroupSplitMode
+                        ? 'bg-mari-100 dark:bg-mari-950/60 border-mari-300 dark:border-mari-800 text-mari-800 dark:text-mari-300 shadow-xs'
+                        : 'bg-card border-line text-ink/60 hover:text-ink hover:bg-moss'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5 text-mari-600" />
+                    <span>{isGroupSplitMode ? 'Cancel Group Split' : 'Group Split'}</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleToggleSplit();
+                    if (!isSplitMode) setIsGroupSplitMode(false);
+                  }}
+                  className={`text-[11.5px] font-semibold flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-all cursor-pointer ${
+                    isSplitMode
+                      ? 'bg-pine-100 dark:bg-pine-950/60 border-pine-300 dark:border-pine-800 text-pine-800 dark:text-pine-300 shadow-xs'
+                      : 'bg-card border-line text-ink/60 hover:text-ink hover:bg-moss'
+                  }`}
+                >
+                  <Split className="w-3.5 h-3.5 text-pine-600" />
+                  <span>{isSplitMode ? 'Cancel Split' : 'Category Split'}</span>
+                </button>
+              </div>
             </div>
 
-            {isSplitMode ? (
+            {isGroupSplitMode ? (
+              /* Group / Trip Split Builder */
+              <div className="p-3.5 rounded-2xl bg-mari-50/50 dark:bg-mari-950/30 border border-mari-300/40 space-y-3">
+                <div className="flex items-center justify-between text-xs pb-2 border-b border-mari-200/50 dark:border-mari-800/40">
+                  <span className="font-semibold text-ink/70">
+                    Total Bill: <b className="text-ink">₹{parseSmartAmount(amount) || 0}</b>
+                  </span>
+                  {(() => {
+                    const totalNum = parseSmartAmount(amount) || 0;
+                    const myShare = parseFloat(myShareAmount) || 0;
+                    const friendsTotal = groupMembers.reduce((s, m) => s + (parseFloat(m.amount) || 0), 0);
+                    const diff = Math.round((totalNum - (myShare + friendsTotal)) * 100) / 100;
+                    return (
+                      <span className={`font-mono font-bold ${Math.abs(diff) < 0.01 ? 'text-pine-600' : 'text-flare-600'}`}>
+                        {Math.abs(diff) < 0.01 ? '✓ Balanced' : `Remaining: ₹${diff}`}
+                      </span>
+                    );
+                  })()}
+                </div>
+
+                {/* My Personal Share */}
+                <div className="p-2.5 rounded-xl bg-card border border-line flex flex-col sm:flex-row gap-2 items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-pine-100 dark:bg-pine-950/60 text-pine-700 dark:text-pine-300 font-bold text-xs grid place-items-center">
+                      ME
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-ink block">My Personal Share</span>
+                      <span className="text-[10px] text-ink/45">Debited under category</span>
+                    </div>
+                  </div>
+                  <div className="w-full sm:w-36">
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder="My Share"
+                      value={myShareAmount}
+                      onChange={(e) => setMyShareAmount(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-line bg-card text-xs font-mono font-bold text-ink outline-none focus:border-pine-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Friends / Others List */}
+                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                  {groupMembers.map((member, idx) => (
+                    <div key={member.id} className="p-2 rounded-xl bg-card border border-line flex flex-col sm:flex-row gap-2 items-center">
+                      <div className="flex-1 w-full">
+                        <ContactSelect
+                          value={member.contactName}
+                          onChange={(name) => {
+                            setGroupMembers((prev) =>
+                              prev.map((m) => (m.id === member.id ? { ...m, contactName: name } : m))
+                            );
+                          }}
+                          placeholder={`Friend #${idx + 1} name...`}
+                        />
+                      </div>
+                      <div className="w-full sm:w-32 shrink-0">
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder="Their Share"
+                          value={member.amount}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setGroupMembers((prev) =>
+                              prev.map((m) => (m.id === member.id ? { ...m, amount: val } : m))
+                            );
+                          }}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-line bg-card text-xs font-mono font-bold text-ink outline-none focus:border-pine-500"
+                        />
+                      </div>
+                      {groupMembers.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setGroupMembers((prev) => prev.filter((m) => m.id !== member.id))}
+                          className="p-1.5 text-ink/40 hover:text-flare-600 rounded-lg transition-colors cursor-pointer shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Actions: Add Member & Split Equally */}
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGroupMembers((prev) => [
+                        ...prev,
+                        { id: `gm_${Date.now()}`, contactName: '', amount: '' },
+                      ]);
+                    }}
+                    className="text-xs font-bold text-mari-700 dark:text-mari-300 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Another Friend</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const totalNum = parseSmartAmount(amount) || 0;
+                      if (totalNum <= 0) return;
+                      const count = 1 + groupMembers.length;
+                      const equalShare = Math.round((totalNum / count) * 100) / 100;
+                      const myFinalShare = Math.round((totalNum - equalShare * groupMembers.length) * 100) / 100;
+                      setMyShareAmount(String(myFinalShare));
+                      setGroupMembers((prev) =>
+                        prev.map((m) => ({ ...m, amount: String(equalShare) }))
+                      );
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-mari-100 hover:bg-mari-200 dark:bg-mari-950/80 text-mari-800 dark:text-mari-200 text-xs font-bold border border-mari-300 dark:border-mari-800 transition-all cursor-pointer shadow-2xs active:scale-95"
+                  >
+                    Split Equally ({1 + groupMembers.length} People)
+                  </button>
+                </div>
+              </div>
+            ) : isSplitMode ? (
               /* Split Rows Builder */
               <div className="p-3.5 rounded-2xl bg-moss/60 border border-line space-y-3">
                 <div className="flex items-center justify-between text-xs pb-1 border-b border-line">
@@ -1111,17 +1358,69 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
           </div>
         )}
 
-        {/* 4. Account & Date Row */}
+        {/* 4. Directly Paid by Someone Else Toggle (Available in Expense mode when not in group split) */}
+        {entryMode === 'expense' && !isGroupSplitMode && (
+          <div className="p-3.5 rounded-2xl bg-moss/50 border border-line space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isPaidByContact}
+                  onChange={(e) => setIsPaidByContact(e.target.checked)}
+                  className="rounded border-line text-mari-600 focus:ring-mari-500 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-ink flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-mari-600" />
+                  <span>Directly Paid by Someone Else?</span>
+                </span>
+              </label>
+              {isPaidByContact && (
+                <span className="text-[10px] font-bold uppercase tracking-wider text-mari-700 dark:text-mari-300 bg-mari-100 dark:bg-mari-950/70 px-2 py-0.5 rounded-md">
+                  Zero Bank Debit
+                </span>
+              )}
+            </div>
+
+            {isPaidByContact && (
+              <div className="pt-2 border-t border-line space-y-2 animate-in fade-in duration-150">
+                <ContactSelect
+                  label="Who paid this for you?"
+                  value={paidByContactName}
+                  onChange={setPaidByContactName}
+                  placeholder="Pick or type friend / contact..."
+                  required
+                />
+                <p className="text-[11px] text-ink/60 leading-snug">
+                  💡 This logs the expense under your category, but <b>does not debit your bank account</b>. A borrowed payable of this amount will be automatically recorded in your People Ledger for {paidByContactName || 'this contact'}.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 5. Account & Date Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1 flex items-center gap-1">
-              <Wallet className="w-3 h-3 text-pine-600" />
-              <span>
-                {entryMode === 'income' || (entryMode === 'people' && (peopleType === 'borrowed' || peopleType === 'holding' || peopleType === 'lent_repaid'))
-                  ? 'Received / Deposited Into'
-                  : 'Paid From Account'}
-              </span>
-            </label>
+            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+              <label className="flex items-center gap-1">
+                <Wallet className="w-3 h-3 text-pine-600" />
+                <span>
+                  {isPaidByContact
+                    ? 'Reference Account (Untouched)'
+                    : entryMode === 'income' || (entryMode === 'people' && (peopleType === 'borrowed' || peopleType === 'holding' || peopleType === 'lent_repaid'))
+                    ? 'Received / Deposited Into'
+                    : 'Paid From Account'}
+                </span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsAccountModalOpen(true)}
+                className="text-pine-600 hover:text-pine-700 flex items-center gap-1 font-semibold cursor-pointer lowercase"
+              >
+                <Plus className="w-3 h-3" />
+                <span>+ new account</span>
+              </button>
+            </div>
             <select
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
@@ -1253,22 +1552,20 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
     {/* Inline Asset Modal — opens without leaving QuickAdd */}
     <AssetModal
       isOpen={isAssetModalOpen}
-      onClose={() => {
+      onClose={() => setIsAssetModalOpen(false)}
+      onAssetCreated={(newAsset) => {
+        setSelectedAssetId(newAsset.id);
         setIsAssetModalOpen(false);
-        if (assets.length > 0 && !selectedAssetId) {
-          setSelectedAssetId(assets[assets.length - 1].id);
-        }
       }}
     />
 
     {/* Inline Liability Modal — opens without leaving QuickAdd */}
     <LiabilityModal
       isOpen={isLiabilityModalOpen}
-      onClose={() => {
+      onClose={() => setIsLiabilityModalOpen(false)}
+      onLiabilityCreated={(newLiability) => {
+        setSelectedLiabilityId(newLiability.id);
         setIsLiabilityModalOpen(false);
-        if (liabilities.length > 0 && !selectedLiabilityId) {
-          setSelectedLiabilityId(liabilities[liabilities.length - 1].id);
-        }
       }}
     />
     </>

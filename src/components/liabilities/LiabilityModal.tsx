@@ -11,12 +11,14 @@ interface LiabilityModalProps {
   isOpen: boolean;
   onClose: () => void;
   liabilityToEdit?: Liability;
+  onLiabilityCreated?: (newLiability: Liability) => void;
 }
 
 export const LiabilityModal: React.FC<LiabilityModalProps> = ({
   isOpen,
   onClose,
   liabilityToEdit,
+  onLiabilityCreated,
 }) => {
   const { addLiability, updateLiability, activeVault, accounts, addTransaction } = useVault();
 
@@ -136,6 +138,9 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
             linkedLiabilityId: newLiability.id,
             subType: 'regular',
           } as any);
+        }
+        if (onLiabilityCreated) {
+          onLiabilityCreated(newLiability);
         }
       }
       onClose();

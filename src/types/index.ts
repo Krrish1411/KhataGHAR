@@ -101,6 +101,15 @@ export interface Transaction {
   units?: number;
   unitPrice?: number;
   accrualMonth?: string; // e.g. '2026-08' for budget month matching
+  // Third-party payment support
+  paidByContactId?: string;
+  paidByContactName?: string;
+  // Multi-Party Group Split Support
+  groupSplit?: {
+    totalBill: number;
+    yourShare: number;
+    splits: Array<{ contactName: string; amount: number }>;
+  };
   updatedAt: string;
 }
 
@@ -147,6 +156,9 @@ export interface PeopleLedgerEntry {
   notes?: string;
   settlements: SettlementRecord[];
   importBatchId?: string; // Import batch tracking for clean rollback
+  // Custodial Asset Holding Location Tracking
+  heldInType?: 'account' | 'asset' | 'unallocated';
+  linkedAssetId?: string; // Asset where held funds are invested/parked (e.g. Liquid MF, Gold, FD)
   updatedAt: string;
 }
 
@@ -250,6 +262,9 @@ export interface Asset {
   sipDayOfMonth?: number;
   totalDividends?: number;
   importBatchId?: string; // Import batch tracking for clean rollback
+  // Custodial Asset Tagging (Asset held on behalf of someone)
+  custodialContactName?: string;
+  custodialAmount?: number;
   updatedAt: string;
 }
 
@@ -284,6 +299,7 @@ export interface Liability {
   benchmarkName?: string; // e.g. 'RBI Repo Rate'
   benchmarkRate?: number; // e.g. 6.50
   spread?: number; // e.g. 2.05
+  importBatchId?: string;
   updatedAt: string;
 }
 
@@ -301,11 +317,47 @@ export interface DocumentRecord {
   updatedAt: string;
 }
 
+// Encrypted Financial Notes Models
+export interface NoteFolder {
+  id: string;
+  vaultId: string;
+  name: string;
+  icon?: string;
+  color?: string;
+  isDefault?: boolean;
+  updatedAt: string;
+}
+
+export interface NoteAttachment {
+  id: string;
+  name: string;
+  type: 'image' | 'pdf' | 'document';
+  size: number;
+  mimeType: string;
+  dataUrl: string; // Base64 data url, encrypted in blob
+  wasCompressed?: boolean;
+  createdAt: string;
+}
+
+export interface VaultNote {
+  id: string;
+  vaultId: string;
+  folderId: string; // e.g. 'all', 'tax', 'bank', 'nominees', 'investments', 'agreements', or custom
+  title: string;
+  content: string; // Markdown or rich text
+  tags: string[];
+  isPinned: boolean;
+  color?: string;
+  attachments?: NoteAttachment[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Encrypted Row in Dexie IndexedDB
 export interface EncryptedRecord {
   id: string; // Plaintext UUID
   vaultId: string; // Plaintext UUID
-  type: 'account' | 'transaction' | 'category' | 'people' | 'budget' | 'goal' | 'asset' | 'liability' | 'document' | 'plan';
+  type: 'account' | 'transaction' | 'category' | 'people' | 'budget' | 'goal' | 'asset' | 'liability' | 'document' | 'plan' | 'note' | 'folder';
   iv: string; // Hex / Base64 IV
   ciphertext: string; // Base64 encrypted JSON
   updatedAt: string;
@@ -323,6 +375,8 @@ export interface VaultData {
   liabilities: Liability[];
   documents: DocumentRecord[];
   plannedExpenses?: PlannedExpense[];
+  notes?: VaultNote[];
+  folders?: NoteFolder[];
 }
 
 export interface FinancialRatios {

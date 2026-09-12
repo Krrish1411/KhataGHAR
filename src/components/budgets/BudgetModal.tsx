@@ -4,8 +4,9 @@ import { Input } from '../common/Input';
 import { Select } from '../common/Select';
 import { Button } from '../common/Button';
 import { useVault } from '../../context/VaultContext';
-import type { Budget, BudgetPeriod } from '../../types';
-import { PieChart } from 'lucide-react';
+import type { Budget, BudgetPeriod, Category } from '../../types';
+import { PieChart, Plus } from 'lucide-react';
+import { CategoryModal } from '../categories/CategoryModal';
 
 interface BudgetModalProps {
   isOpen: boolean;
@@ -27,6 +28,7 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
   const [categoryId, setCategoryId] = useState(
     budgetToEdit?.categoryId || (expenseCategories.length > 0 ? expenseCategories[0].id : '')
   );
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [amount, setAmount] = useState(budgetToEdit ? String(budgetToEdit.amount) : '');
   const [period, setPeriod] = useState<BudgetPeriod>(budgetToEdit?.period || 'monthly');
   const [rollover, setRollover] = useState(budgetToEdit?.rollover || false);
@@ -75,7 +77,8 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
   };
 
   return (
-    <Modal
+    <>
+      <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={
@@ -94,15 +97,27 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
           </div>
         )}
 
-        <Select
-          label="Category"
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
-          options={expenseCategories.map((c) => ({
-            value: c.id,
-            label: `${getCategoryEmoji(c.icon, c.type)} ${c.name}`,
-          }))}
-        />
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <span>Category</span>
+            <button
+              type="button"
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1 font-semibold lowercase cursor-pointer"
+            >
+              <Plus className="w-3 h-3" />
+              <span>+ new category</span>
+            </button>
+          </div>
+          <Select
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+            options={expenseCategories.map((c) => ({
+              value: c.id,
+              label: `${getCategoryEmoji(c.icon, c.type)} ${c.name}`,
+            }))}
+          />
+        </div>
 
         <Input
           type="number"
@@ -147,5 +162,17 @@ export const BudgetModal: React.FC<BudgetModalProps> = ({
         </div>
       </form>
     </Modal>
+
+    {/* Nested Category Modal */}
+    <CategoryModal
+      isOpen={isCategoryModalOpen}
+      onClose={() => setIsCategoryModalOpen(false)}
+      defaultType="expense"
+      onCategoryCreated={(newCat) => {
+        setCategoryId(newCat.id);
+        setIsCategoryModalOpen(false);
+      }}
+    />
+    </>
   );
 };

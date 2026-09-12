@@ -51,9 +51,9 @@ export function generateDemoDataset(vaultId: string, baseCurrency: CurrencyCode 
 
   const catSalary = mkCat('Salary', 'income', 'Briefcase', '#12855a', true);
   const catFreelance = mkCat('Freelance', 'income', 'Laptop', '#22c55e', false);
-  const catRent = mkCat('Rent', 'expense', 'Home', '#e11d48', true);
+  const catRent = mkCat('Rent', 'expense', 'Home', '#9f1239', true);
   const catGroceries = mkCat('Groceries', 'expense', 'ShoppingCart', '#0ea5e9', true);
-  const catDining = mkCat('Dining Out', 'expense', 'Utensils', '#f59e0b', false);
+  const catDining = mkCat('Dining Out', 'expense', 'Utensils', '#92400e', false);
   const catUtilities = mkCat('Utilities', 'expense', 'Zap', '#8b5cf6', true);
   const catTransport = mkCat('Transport & Fuel', 'expense', 'Car', '#6366f1', true);
   const catInvestments = mkCat('SIP & Investments', 'expense', 'TrendingUp', '#10b981', true);
@@ -80,6 +80,7 @@ export function generateDemoDataset(vaultId: string, baseCurrency: CurrencyCode 
     balance,
     initialBalance: balance,
     currency: baseCurrency,
+    balanceAsOfDate: toISO(now),
     tag: 'personal',
     isVisibleOnDashboard: true,
     updatedAt: nowISO,

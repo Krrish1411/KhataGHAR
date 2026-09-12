@@ -31,7 +31,7 @@ export const GoalModal: React.FC<GoalModalProps> = ({
   const [currency, setCurrency] = useState<CurrencyCode>(goalToEdit?.currency || activeVault?.currency || 'INR');
   const [notes, setNotes] = useState(goalToEdit?.notes || '');
   const [deductFromAvailableToSpend, setDeductFromAvailableToSpend] = useState<boolean>(
-    goalToEdit?.deductFromAvailableToSpend || false
+    goalToEdit?.deductFromAvailableToSpend ?? true
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');

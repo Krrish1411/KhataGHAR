@@ -15,7 +15,7 @@ export const STARTER_CATEGORY_DEFINITIONS: StarterCategoryDef[] = [
     type: 'expense',
     icon: 'Utensils',
     isEssential: false,
-    color: '#F59E0B',
+    color: '#92400E',
   },
   {
     name: 'Groceries',
@@ -43,14 +43,14 @@ export const STARTER_CATEGORY_DEFINITIONS: StarterCategoryDef[] = [
     type: 'expense',
     icon: 'Car',
     isEssential: true,
-    color: '#EC4899',
+    color: '#4F46E5',
   },
   {
     name: 'Health & Medical',
     type: 'expense',
     icon: 'Activity',
     isEssential: true,
-    color: '#EF4444',
+    color: '#9F1239',
   },
   {
     name: 'Insurance',
@@ -78,7 +78,7 @@ export const STARTER_CATEGORY_DEFINITIONS: StarterCategoryDef[] = [
     type: 'expense',
     icon: 'ShoppingBag',
     isEssential: false,
-    color: '#F43F5E',
+    color: '#701A75',
   },
   {
     name: 'Personal Care',
@@ -99,21 +99,21 @@ export const STARTER_CATEGORY_DEFINITIONS: StarterCategoryDef[] = [
     type: 'expense',
     icon: 'Gift',
     isEssential: false,
-    color: '#D946EF',
+    color: '#C026D3',
   },
   {
     name: 'Festivals & Events',
     type: 'expense',
     icon: 'Sparkle',
     isEssential: false,
-    color: '#F97316',
+    color: '#B45309',
   },
   {
     name: 'EMI & Loan Payments',
     type: 'expense',
     icon: 'CreditCard',
     isEssential: true,
-    color: '#E11D48',
+    color: '#881337',
   },
   {
     name: 'Investments & SIP',
@@ -178,7 +178,7 @@ export const STARTER_CATEGORY_DEFINITIONS: StarterCategoryDef[] = [
     type: 'income',
     icon: 'Coins',
     isEssential: true,
-    color: '#84CC16',
+    color: '#047857',
   },
   {
     name: 'Other Income',

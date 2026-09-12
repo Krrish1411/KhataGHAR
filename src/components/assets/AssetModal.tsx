@@ -12,12 +12,14 @@ interface AssetModalProps {
   isOpen: boolean;
   onClose: () => void;
   assetToEdit?: Asset;
+  onAssetCreated?: (newAsset: Asset) => void;
 }
 
 export const AssetModal: React.FC<AssetModalProps> = ({
   isOpen,
   onClose,
   assetToEdit,
+  onAssetCreated,
 }) => {
   const { addAsset, updateAsset, activeVault, accounts, addTransaction } = useVault();
 
@@ -252,6 +254,9 @@ export const AssetModal: React.FC<AssetModalProps> = ({
               unitPrice: purchaseUnitPrice ? parseFloat(purchaseUnitPrice) : numUnitPrice,
             } as any);
           }
+        }
+        if (onAssetCreated) {
+          onAssetCreated(newAsset);
         }
       }
       onClose();

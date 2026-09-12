@@ -13,12 +13,14 @@ interface AccountModalProps {
   isOpen: boolean;
   onClose: () => void;
   accountToEdit?: Account;
+  onAccountCreated?: (newAccount: Account) => void;
 }
 
 export const AccountModal: React.FC<AccountModalProps> = ({
   isOpen,
   onClose,
   accountToEdit,
+  onAccountCreated,
 }) => {
   const { addAccount, updateAccount, transactions, peopleLedger } = useVault();
 
@@ -113,7 +115,7 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           notes: notes.trim() || undefined,
         });
       } else {
-        await addAccount({
+        const newAcc = await addAccount({
           name: name.trim(),
           type,
           currency,
@@ -126,6 +128,9 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           accountNumberLast4: accountNumberLast4.trim() || undefined,
           notes: notes.trim() || undefined,
         });
+        if (onAccountCreated) {
+          onAccountCreated(newAcc);
+        }
       }
       onClose();
     } catch (err: any) {

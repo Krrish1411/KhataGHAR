@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { Button } from '../components/common/Button';
@@ -9,7 +10,7 @@ import { AnimatedNumber } from '../components/common/AnimatedNumber';
 import { formatCurrency, formatCompactCurrency, formatPercent } from '../utils/formatters';
 import { formatReadableDate, getDateRangePresets, getPreviousPeriodRange } from '../utils/dates';
 import { computeFinancialRatios } from '../services/ratios';
-import { exportFinancialReportPDF, exportTransactionsToCSV } from '../services/export';
+import { exportFinancialReportPDF, exportTransactionsToCSV, exportTransactionsToExcel } from '../services/export';
 import { PdfExportModal } from '../components/reports/PdfExportModal';
 import type { Category, Transaction } from '../types';
 import {
@@ -18,6 +19,7 @@ import {
   Calendar,
   Activity,
   FileText,
+  FileSpreadsheet,
   PieChart as PieIcon,
   TrendingUp,
   TrendingDown,
@@ -58,6 +60,9 @@ import {
 import { computeFinancialInsights, type FinancialInsight } from '../services/insights';
 
 export const ReportsView: React.FC = () => {
+  const navigate = useNavigate();
+  const goTo = (route: string) => navigate(route.startsWith('#') ? route.slice(1) : route);
+
   const { activeVault, transactions, accounts, categories, peopleLedger, budgets, assets, liabilities, plannedExpenses } =
     useVault();
   const { isPrivacyMode } = usePrivacy();
@@ -296,6 +301,68 @@ export const ReportsView: React.FC = () => {
     return Array.from(spendMap.values()).sort((a, b) => b.amount - a.amount);
   }, [currentPeriodTxs, categories]);
 
+  // Emergency Runway Survival Calculations (Explicitly for Reports)
+  const emergencySurvival = useMemo(() => {
+    // 1. Net available liquid cash (bank, cash, wallet, upi minus unencumbered custodial holdings)
+    const liquidAccounts = accounts
+      .filter((a) => ['bank', 'cash', 'wallet', 'upi'].includes(a.type))
+      .reduce((sum, a) => sum + Math.max(0, a.balance), 0);
+
+    const reservedLiquidHolding = peopleLedger
+      .filter((p) => p.status !== 'closed' && (p.type === 'holding' || p.type === 'borrowed'))
+      .reduce((sum, p) => {
+        if (p.type === 'holding' && (p.heldInType === 'asset' || p.linkedAssetId)) return sum;
+        const settled = (p.settlements || []).reduce((s, st) => s + st.amount, 0);
+        return sum + Math.max(0, p.amount - settled);
+      }, 0);
+
+    const netLiquid = Math.max(0, liquidAccounts - reservedLiquidHolding);
+
+    // 2. Essential outflow per month (essential categories normalized to 30 days + monthly debt EMIs)
+    const catMap = new Map<string, Category>(categories.map((c) => [c.id, c]));
+    let essentialExpenseSum = 0;
+    currentPeriodTxs.forEach((t) => {
+      if (t.type === 'expense') {
+        const cat = t.categoryId ? catMap.get(t.categoryId) : undefined;
+        if (cat?.isEssential) {
+          essentialExpenseSum += t.amount;
+        }
+      }
+    });
+
+    let daysInPeriod = 30;
+    if (selectedRange.start && selectedRange.end) {
+      const s = new Date(selectedRange.start + 'T00:00:00');
+      const e = new Date(selectedRange.end + 'T00:00:00');
+      daysInPeriod = Math.max(1, Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+    }
+
+    const monthlyEssentialSpend = (essentialExpenseSum / daysInPeriod) * 30;
+    const monthlyEMIs = liabilities.reduce((sum, l) => sum + (l.emiAmount || 0), 0);
+    const totalMonthlyEssentialOutflow = Math.max(0, monthlyEssentialSpend + monthlyEMIs);
+
+    // 3. Survival Runway (Months) = Liquid Balance / Monthly Essential Outflow
+    const runwayMonths = totalMonthlyEssentialOutflow > 0 ? netLiquid / totalMonthlyEssentialOutflow : 999;
+
+    // 4. Benchmarks: < 3 mos Fragile, 3-6 mos Adequate, >= 6 mos Fortress
+    let benchmark: 'fragile' | 'adequate' | 'fortress' = 'fortress';
+    if (runwayMonths < 3) benchmark = 'fragile';
+    else if (runwayMonths < 6) benchmark = 'adequate';
+
+    // 5. 6-Month Target Buffer and exact rupee gap
+    const target6MonthBuffer = totalMonthlyEssentialOutflow * 6;
+    const bufferGap = target6MonthBuffer - netLiquid;
+
+    return {
+      netLiquid,
+      totalMonthlyEssentialOutflow,
+      runwayMonths,
+      benchmark,
+      target6MonthBuffer,
+      bufferGap,
+    };
+  }, [accounts, peopleLedger, categories, currentPeriodTxs, selectedRange, liabilities]);
+
   // PDF Export
   const handleExportPDF = () => {
     if (!activeVault) return;
@@ -316,6 +383,12 @@ export const ReportsView: React.FC = () => {
   const handleExportCSV = () => {
     if (!activeVault) return;
     exportTransactionsToCSV(currentPeriodTxs, categories, accounts, activeVault);
+  };
+
+  // Excel Export
+  const handleExportExcel = () => {
+    if (!activeVault) return;
+    exportTransactionsToExcel(currentPeriodTxs, categories, accounts, activeVault);
   };
 
   // Delta Calculator Helper
@@ -648,6 +721,14 @@ export const ReportsView: React.FC = () => {
           </button>
 
           <button
+            onClick={handleExportExcel}
+            className="px-3.5 py-2 rounded-xl border border-line bg-card hover:bg-moss active:scale-[0.97] text-xs font-semibold text-ink flex items-center gap-1.5 cursor-pointer transition-all"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-pine-600" />
+            <span>Export Excel</span>
+          </button>
+
+          <button
             onClick={() => setIsPdfModalOpen(true)}
             className="px-4 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 active:scale-[0.97] text-white text-xs font-bold shadow-sm shadow-pine-900/20 flex items-center gap-1.5 cursor-pointer transition-all"
           >
@@ -741,7 +822,8 @@ export const ReportsView: React.FC = () => {
       </div>
 
       {/* REPORT CONTENT: P&L Statement vs Executive KPI Dossier */}
-      {reportViewMode === 'pnl' ? (
+      <div id="reports-dossier-capture" className="space-y-6">
+        {reportViewMode === 'pnl' ? (
         <PnLStatementSection
           currentPeriodTxs={currentPeriodTxs}
           categories={categories}
@@ -829,7 +911,7 @@ export const ReportsView: React.FC = () => {
                     Target: {insight.category}
                   </span>
                   <button
-                    onClick={() => (window.location.hash = insight.targetRoute)}
+                    onClick={() => goTo(insight.targetRoute)}
                     className="px-3.5 py-1.5 rounded-xl bg-card hover:bg-moss border border-line text-xs font-bold text-pine-700 dark:text-pine-300 flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 transition-all"
                   >
                     <span>{insight.actionLabel}</span>
@@ -918,6 +1000,184 @@ export const ReportsView: React.FC = () => {
               />
             </div>
             <span className="text-[11px] text-ink/45 block mt-0.5">Benchmark Target: 30%+</span>
+          </div>
+        </div>
+
+        {/* EMERGENCY RUNWAY SURVIVAL METER */}
+        <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 shadow-sm lift space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-line pb-3.5">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-2xl grid place-items-center shrink-0 border ${
+                  emergencySurvival.benchmark === 'fortress'
+                    ? 'bg-pine-100 dark:bg-pine-950/60 text-pine-700 dark:text-pine-300 border-pine-400/40'
+                    : emergencySurvival.benchmark === 'adequate'
+                    ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-400/40'
+                    : 'bg-flare-100 dark:bg-flare-950/60 text-flare-700 dark:text-flare-300 border-flare-400/40'
+                }`}
+              >
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-display font-extrabold text-sm text-ink">
+                    Emergency Runway Survival Meter
+                  </h3>
+                  <Badge
+                    tone={
+                      emergencySurvival.benchmark === 'fortress'
+                        ? 'pine'
+                        : emergencySurvival.benchmark === 'adequate'
+                        ? 'mari'
+                        : 'flare'
+                    }
+                    size="xs"
+                  >
+                    {emergencySurvival.benchmark === 'fortress'
+                      ? 'Fortress (≥ 6 Mos)'
+                      : emergencySurvival.benchmark === 'adequate'
+                      ? 'Adequate (3–6 Mos)'
+                      : 'Fragile (< 3 Mos)'}
+                  </Badge>
+                </div>
+                <p className="text-xs text-ink/50 mt-0.5">
+                  Unencumbered liquid cash endurance against essential recurring survival needs
+                </p>
+              </div>
+            </div>
+
+            <div className="text-left sm:text-right">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-ink/45 block">
+                Survival Endurance
+              </span>
+              <span
+                className={`font-display font-extrabold text-2xl num ${
+                  emergencySurvival.benchmark === 'fortress'
+                    ? 'text-pine-700 dark:text-pine-400'
+                    : emergencySurvival.benchmark === 'adequate'
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-flare-600'
+                }`}
+              >
+                {emergencySurvival.runwayMonths >= 999
+                  ? 'Self-Sustaining ✨'
+                  : `${emergencySurvival.runwayMonths.toFixed(1)} Months`}
+              </span>
+            </div>
+          </div>
+
+          {/* Progress Bar & Visual Benchmark Scale */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-[11px] font-bold">
+              <span className="text-flare-600">0 Mos (Critical)</span>
+              <span className="text-amber-600">3 Mos (Adequate Baseline)</span>
+              <span className="text-pine-700 dark:text-pine-400">6 Mos (Fortress Benchmark)</span>
+              <span className="text-ink/40">12+ Mos</span>
+            </div>
+
+            <div className="relative h-3.5 w-full bg-moss/70 dark:bg-card border border-line rounded-full overflow-hidden p-0.5">
+              {/* 3-month indicator line (25% mark) */}
+              <div className="absolute top-0 bottom-0 left-[25%] w-0.5 bg-line/80 z-10" />
+              {/* 6-month fortress target indicator line (50% mark) */}
+              <div className="absolute top-0 bottom-0 left-[50%] w-0.5 bg-line/80 z-10" />
+
+              {/* Progress fill */}
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${
+                  emergencySurvival.benchmark === 'fortress'
+                    ? 'bg-pine-600 dark:bg-pine-500'
+                    : emergencySurvival.benchmark === 'adequate'
+                    ? 'bg-amber-500'
+                    : 'bg-flare-500'
+                }`}
+                style={{
+                  width: `${Math.min(100, Math.max(2, (Math.min(12, emergencySurvival.runwayMonths) / 12) * 100))}%`,
+                }}
+              />
+            </div>
+          </div>
+
+          {/* 3-Pillar Rupee Breakdown */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+            <div className="p-3.5 rounded-xl bg-moss/40 border border-line flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-ink/45 block">
+                  Liquid Available
+                </span>
+                <div className="font-display font-extrabold text-lg text-ink num mt-1">
+                  <AnimatedNumber
+                    value={emergencySurvival.netLiquid}
+                    currency={baseCurrency}
+                    numberFormat={numberFormat}
+                    isPrivacyMode={isPrivacyMode}
+                  />
+                </div>
+              </div>
+              <span className="text-[11px] text-ink/50 mt-1">
+                Bank + Cash (Unencumbered)
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-moss/40 border border-line flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-ink/45 block">
+                  Monthly Essential Outflow
+                </span>
+                <div className="font-display font-extrabold text-lg text-flare-600 num mt-1">
+                  <AnimatedNumber
+                    value={emergencySurvival.totalMonthlyEssentialOutflow}
+                    currency={baseCurrency}
+                    numberFormat={numberFormat}
+                    isPrivacyMode={isPrivacyMode}
+                  />
+                </div>
+              </div>
+              <span className="text-[11px] text-ink/50 mt-1">
+                Needs Categories + Active EMIs
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-moss/40 border border-line flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-ink/45 block">
+                  6-Month Fortress Gap
+                </span>
+                <div
+                  className={`font-display font-extrabold text-lg num mt-1 ${
+                    emergencySurvival.bufferGap <= 0
+                      ? 'text-pine-700 dark:text-pine-400'
+                      : 'text-flare-600'
+                  }`}
+                >
+                  {emergencySurvival.bufferGap <= 0 ? (
+                    <>
+                      +
+                      <AnimatedNumber
+                        value={Math.abs(emergencySurvival.bufferGap)}
+                        currency={baseCurrency}
+                        numberFormat={numberFormat}
+                        isPrivacyMode={isPrivacyMode}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      -
+                      <AnimatedNumber
+                        value={emergencySurvival.bufferGap}
+                        currency={baseCurrency}
+                        numberFormat={numberFormat}
+                        isPrivacyMode={isPrivacyMode}
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
+              <span className="text-[11px] text-ink/50 mt-1">
+                {emergencySurvival.bufferGap <= 0
+                  ? 'Surplus above 6-month buffer ✨'
+                  : 'Shortfall needed for 6-month fortress'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -1930,6 +2190,7 @@ export const ReportsView: React.FC = () => {
       </div>
         </>
       )}
+      </div>
 
       {/* Comprehensive PDF Export Modal */}
       {isPdfModalOpen && activeVault && (

@@ -45,6 +45,8 @@ import {
   RotateCcw,
   Copy,
   Layers,
+  AlertCircle,
+  CheckCircle2,
 } from 'lucide-react';
 import { IconRenderer } from '../components/common/IconRenderer';
 import { APP_SHORTCUTS, formatKeyDisplay } from '../services/shortcuts';
@@ -62,6 +64,8 @@ export const SettingsView: React.FC = () => {
     assets,
     liabilities,
     documents,
+    notes,
+    folders,
     updateVaultSettings,
     addCategory,
     updateCategory,
@@ -168,6 +172,9 @@ export const SettingsView: React.FC = () => {
 
   // Backup Export State
   const [backupSecret, setBackupSecret] = useState('');
+  const [confirmBackupSecret, setConfirmBackupSecret] = useState('');
+  const [showBackupPassword, setShowBackupPassword] = useState(false);
+  const [showConfirmBackupPassword, setShowConfirmBackupPassword] = useState(false);
   const [use12WordPhrase, setUse12WordPhrase] = useState(false);
   const [generatedPhrase, setGeneratedPhrase] = useState('');
   const [copiedPhrase, setCopiedPhrase] = useState(false);
@@ -380,6 +387,11 @@ export const SettingsView: React.FC = () => {
       return;
     }
 
+    if (!use12WordPhrase && backupSecret !== confirmBackupSecret) {
+      alert('Backup passwords do not match. Please verify your confirmation password.');
+      return;
+    }
+
     setIsExporting(true);
     try {
       const backupJson = await exportVaultEncrypted(
@@ -394,6 +406,8 @@ export const SettingsView: React.FC = () => {
           assets,
           liabilities,
           documents,
+          notes,
+          folders,
         },
         backupSecret
       );
@@ -789,13 +803,82 @@ export const SettingsView: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <Input
-                type="password"
-                label="Backup Decryption Password"
-                placeholder="Password to protect this file…"
-                value={backupSecret}
-                onChange={(e) => setBackupSecret(e.target.value)}
-              />
+              <div className="space-y-3">
+                <div>
+                  <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                    <span>Backup Decryption Password</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowBackupPassword(!showBackupPassword)}
+                      className="text-pine-600 hover:text-pine-700 flex items-center gap-1 font-semibold cursor-pointer lowercase"
+                    >
+                      {showBackupPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      <span>{showBackupPassword ? 'hide' : 'show'}</span>
+                    </button>
+                  </div>
+                  <input
+                    type={showBackupPassword ? 'text' : 'password'}
+                    placeholder="Enter strong password (min 8 chars)…"
+                    value={backupSecret}
+                    onChange={(e) => setBackupSecret(e.target.value)}
+                    className="w-full rounded-xl border border-line bg-card px-3.5 py-2.5 text-xs text-ink font-mono placeholder:text-ink/30 outline-none focus:border-pine-500 focus:ring-2 focus:ring-pine-500/20"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                    <span>Confirm Backup Password</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmBackupPassword(!showConfirmBackupPassword)}
+                      className="text-pine-600 hover:text-pine-700 flex items-center gap-1 font-semibold cursor-pointer lowercase"
+                    >
+                      {showConfirmBackupPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      <span>{showConfirmBackupPassword ? 'hide' : 'show'}</span>
+                    </button>
+                  </div>
+                  <input
+                    type={showConfirmBackupPassword ? 'text' : 'password'}
+                    placeholder="Re-enter password to confirm…"
+                    value={confirmBackupSecret}
+                    onChange={(e) => setConfirmBackupSecret(e.target.value)}
+                    className={`w-full rounded-xl border bg-card px-3.5 py-2.5 text-xs text-ink font-mono placeholder:text-ink/30 outline-none transition-all ${
+                      confirmBackupSecret.length > 0
+                        ? backupSecret === confirmBackupSecret && backupSecret.length >= 8
+                          ? 'border-pine-500 ring-2 ring-pine-500/20'
+                          : 'border-flare-500 ring-2 ring-flare-500/20'
+                        : 'border-line focus:border-pine-500'
+                    }`}
+                  />
+                </div>
+
+                {/* Match indicator feedback */}
+                {confirmBackupSecret.length > 0 && (
+                  <div
+                    className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center gap-2 ${
+                      backupSecret === confirmBackupSecret && backupSecret.length >= 8
+                        ? 'bg-pine-50 dark:bg-pine-950/60 border-pine-200 dark:border-pine-800 text-pine-700 dark:text-pine-300'
+                        : 'bg-flare-50 dark:bg-flare-950/60 border-flare-200 dark:border-flare-800 text-flare-700 dark:text-flare-300'
+                    }`}
+                  >
+                    {backupSecret === confirmBackupSecret && backupSecret.length >= 8 ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-pine-600 shrink-0" />
+                        <span>Passwords match! You are safe to download your encrypted backup.</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-4 h-4 text-flare-600 shrink-0" />
+                        <span>
+                          {backupSecret !== confirmBackupSecret
+                            ? 'Passwords do not match. Please ensure both fields are identical to avoid losing access.'
+                            : 'Password must be at least 8 characters long.'}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
 
             <Button
@@ -803,6 +886,7 @@ export const SettingsView: React.FC = () => {
               variant="primary"
               size="sm"
               isLoading={isExporting}
+              disabled={!use12WordPhrase && (backupSecret.length < 8 || backupSecret !== confirmBackupSecret)}
             >
               <Download className="w-4 h-4 mr-1.5" />
               <span>Download Encrypted File</span>

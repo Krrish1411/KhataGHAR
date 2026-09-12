@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useVault } from '../context/VaultContext';
 import { usePrivacy } from '../context/PrivacyContext';
 import { Card } from '../components/common/Card';
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 
 export const BudgetsGoalsView: React.FC = () => {
+  const navigate = useNavigate();
   const { budgets, goals, transactions, categories, activeVault, deleteBudget, deleteGoal } =
     useVault();
   const { isPrivacyMode } = usePrivacy();
@@ -40,19 +42,21 @@ export const BudgetsGoalsView: React.FC = () => {
 
   const categoryLookup = useMemo(() => new Map<string, Category>(categories.map((c) => [c.id, c])), [categories]);
 
-  // Compute spend per budgeted category this month
+  // Compute spend per budgeted category this month with complete split transaction awareness
   const budgetStats = useMemo(() => {
     return budgets.map((b) => {
       const cat = categoryLookup.get(b.categoryId);
-      const spent = transactions
-        .filter(
-          (t) =>
-            t.type === 'expense' &&
-            t.categoryId === b.categoryId &&
-            t.date >= thisMonthRange.start &&
-            t.date <= thisMonthRange.end
-        )
-        .reduce((sum, t) => sum + t.amount, 0);
+      let spent = 0;
+      for (const t of transactions) {
+        if (t.type !== 'expense' || t.date < thisMonthRange.start || t.date > thisMonthRange.end) continue;
+        if (t.splits && t.splits.length > 0) {
+          for (const s of t.splits) {
+            if (s.categoryId === b.categoryId) spent += s.amount;
+          }
+        } else if (t.categoryId === b.categoryId) {
+          spent += t.amount;
+        }
+      }
 
       const percent = b.amount > 0 ? (spent / b.amount) * 100 : 0;
       const remaining = b.amount - spent;
@@ -140,7 +144,7 @@ export const BudgetsGoalsView: React.FC = () => {
           </div>
         </div>
         <button
-          onClick={() => (window.location.hash = '#/plans')}
+          onClick={() => navigate('/plans')}
           className="px-3.5 py-1.5 rounded-xl bg-card border border-line hover:border-pine-300 text-xs font-semibold text-pine-700 flex items-center gap-1.5 cursor-pointer transition-all self-start sm:self-auto shrink-0"
         >
           <span>View Planned Bills</span>

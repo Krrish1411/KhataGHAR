@@ -14,6 +14,8 @@ import type {
   VaultMeta,
   SettlementRecord,
   ValuationLog,
+  VaultNote,
+  NoteFolder,
 } from '../types';
 import { useAuth } from './AuthContext';
 import { db } from '../db';
@@ -22,6 +24,7 @@ import {
   bulkSaveEncryptedRecords,
   deleteRecord,
   generateUUID,
+  DEFAULT_NOTE_FOLDERS,
 } from '../services/storage';
 import { decryptData, verifyKey } from '../services/crypto';
 import { generateDemoDataset } from '../services/demoData';
@@ -47,6 +50,8 @@ interface VaultContextType {
   liabilities: Liability[];
   documents: DocumentRecord[];
   plannedExpenses: PlannedExpense[];
+  notes: VaultNote[];
+  folders: NoteFolder[];
   isDecrypting: boolean;
 
   // Account Operations
@@ -130,6 +135,13 @@ interface VaultContextType {
   addDocument: (doc: Omit<DocumentRecord, 'id' | 'vaultId' | 'createdAt' | 'updatedAt'>) => Promise<DocumentRecord>;
   deleteDocument: (id: string) => Promise<void>;
 
+  // Notes & Folders Operations
+  addNote: (note: Omit<VaultNote, 'id' | 'vaultId' | 'createdAt' | 'updatedAt'>) => Promise<VaultNote>;
+  updateNote: (note: VaultNote) => Promise<void>;
+  deleteNote: (id: string) => Promise<void>;
+  addFolder: (folder: Omit<NoteFolder, 'id' | 'vaultId' | 'updatedAt'>) => Promise<NoteFolder>;
+  deleteFolder: (id: string) => Promise<void>;
+
   // Vault Settings Operations
   updateVaultSettings: (updatedSettings: Partial<VaultMeta>) => Promise<void>;
 }
@@ -149,6 +161,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [plannedExpenses, setPlannedExpenses] = useState<PlannedExpense[]>([]);
+  const [notes, setNotes] = useState<VaultNote[]>([]);
+  const [folders, setFolders] = useState<NoteFolder[]>([]);
   const [isDecrypting, setIsDecrypting] = useState<boolean>(false);
 
   // Synchronous refs to prevent stale closure bugs during multi-step batch / import loops
@@ -162,6 +176,10 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   assetsRef.current = assets;
   const liabilitiesRef = useRef<Liability[]>(liabilities);
   liabilitiesRef.current = liabilities;
+  const notesRef = useRef<VaultNote[]>(notes);
+  notesRef.current = notes;
+  const foldersRef = useRef<NoteFolder[]>(folders);
+  foldersRef.current = folders;
 
   // Self-heal and auto-rebalance unbalanced settlements (e.g. 2k + 2k holding vs 4k return)
   const rebalancePeopleSettlements = async (
@@ -376,6 +394,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const liabs: Liability[] = [];
       const docs: DocumentRecord[] = [];
       const plans: PlannedExpense[] = [];
+      const nts: VaultNote[] = [];
+      const fldrs: NoteFolder[] = [];
 
       await Promise.all(
         records.map(async (row) => {
@@ -410,6 +430,12 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'plan':
                 plans.push(await decryptData<PlannedExpense>(row.iv, row.ciphertext, sessionKey));
+                break;
+              case 'note':
+                nts.push(await decryptData<VaultNote>(row.iv, row.ciphertext, sessionKey));
+                break;
+              case 'folder':
+                fldrs.push(await decryptData<NoteFolder>(row.iv, row.ciphertext, sessionKey));
                 break;
             }
           } catch (err) {
@@ -494,6 +520,24 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setLiabilities(liabs);
       setDocuments(docs);
       setPlannedExpenses(plans);
+
+      const loadedNotes = nts;
+      let loadedFolders = fldrs;
+      if (loadedFolders.length === 0) {
+        loadedFolders = DEFAULT_NOTE_FOLDERS.map((df) => ({
+          id: df.id,
+          vaultId: activeVault.id,
+          name: df.name,
+          icon: df.icon,
+          color: df.color,
+          updatedAt: new Date().toISOString(),
+        }));
+        await bulkSaveEncryptedRecords('folder', loadedFolders, sessionKey);
+      }
+      notesRef.current = loadedNotes;
+      foldersRef.current = loadedFolders;
+      setNotes(loadedNotes);
+      setFolders(loadedFolders);
     } catch (err) {
       console.error('Error loading vault data:', err);
     } finally {
@@ -644,16 +688,18 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Update connected account balances with precise 2-decimal rounding (strictly after baseline opening date)
     if (newTx.type === 'expense') {
-      accountsRef.current = accountsRef.current.map((acc) => {
-        if (acc.id === newTx.accountId) {
-          if (!isTxAfterBaseline(newTx.date, acc.balanceAsOfDate)) return acc;
-          const updated = { ...acc, balance: round2(acc.balance - newTx.amount), updatedAt: new Date().toISOString() };
-          saveEncryptedRecord('account', updated, sessionKey);
-          return updated;
-        }
-        return acc;
-      });
-      setAccounts(accountsRef.current);
+      if (!newTx.paidByContactName && !newTx.paidByContactId) {
+        accountsRef.current = accountsRef.current.map((acc) => {
+          if (acc.id === newTx.accountId) {
+            if (!isTxAfterBaseline(newTx.date, acc.balanceAsOfDate)) return acc;
+            const updated = { ...acc, balance: round2(acc.balance - newTx.amount), updatedAt: new Date().toISOString() };
+            saveEncryptedRecord('account', updated, sessionKey);
+            return updated;
+          }
+          return acc;
+        });
+        setAccounts(accountsRef.current);
+      }
     } else if (newTx.type === 'income') {
       accountsRef.current = accountsRef.current.map((acc) => {
         if (acc.id === newTx.accountId) {
@@ -888,7 +934,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const oldSourceAcc = accountsRef.current.find((a) => a.id === oldTx.accountId);
       if (oldSourceAcc && isTxAfterBaseline(oldTx.date, oldSourceAcc.balanceAsOfDate)) {
         if (oldTx.type === 'expense') {
-          balanceDeltas[oldTx.accountId] = (balanceDeltas[oldTx.accountId] || 0) + oldTx.amount;
+          if (!oldTx.paidByContactName && !oldTx.paidByContactId) {
+            balanceDeltas[oldTx.accountId] = (balanceDeltas[oldTx.accountId] || 0) + oldTx.amount;
+          }
         } else if (oldTx.type === 'income') {
           balanceDeltas[oldTx.accountId] = (balanceDeltas[oldTx.accountId] || 0) - oldTx.amount;
         } else if (oldTx.type === 'transfer') {
@@ -906,7 +954,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const newSourceAcc = accountsRef.current.find((a) => a.id === updated.accountId);
       if (newSourceAcc && isTxAfterBaseline(updated.date, newSourceAcc.balanceAsOfDate)) {
         if (updated.type === 'expense') {
-          balanceDeltas[updated.accountId] = (balanceDeltas[updated.accountId] || 0) - updated.amount;
+          if (!updated.paidByContactName && !updated.paidByContactId) {
+            balanceDeltas[updated.accountId] = (balanceDeltas[updated.accountId] || 0) - updated.amount;
+          }
         } else if (updated.type === 'income') {
           balanceDeltas[updated.accountId] = (balanceDeltas[updated.accountId] || 0) + updated.amount;
         } else if (updated.type === 'transfer') {
@@ -1158,7 +1208,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (sourceAcc && isTxAfterBaseline(txToDel.date, sourceAcc.balanceAsOfDate)) {
         if (txToDel.type === 'expense') {
-          balanceDeltas[txToDel.accountId] = (balanceDeltas[txToDel.accountId] || 0) + txToDel.amount;
+          if (!txToDel.paidByContactName && !txToDel.paidByContactId) {
+            balanceDeltas[txToDel.accountId] = (balanceDeltas[txToDel.accountId] || 0) + txToDel.amount;
+          }
         } else if (txToDel.type === 'income') {
           balanceDeltas[txToDel.accountId] = (balanceDeltas[txToDel.accountId] || 0) - txToDel.amount;
         } else if (txToDel.type === 'transfer') {
@@ -1376,8 +1428,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         (batchTxs.length === 0 && (p.notes?.includes('Imported from statement:') || p.notes?.includes('Settled on import:')))
     );
     const batchAssets = assetsRef.current.filter((a) => a.importBatchId === importBatchId);
+    const batchLiabilities = liabilitiesRef.current.filter((l) => l.importBatchId === importBatchId);
 
-    if (batchTxs.length === 0 && batchPeople.length === 0 && batchAssets.length === 0) return 0;
+    if (batchTxs.length === 0 && batchPeople.length === 0 && batchAssets.length === 0 && batchLiabilities.length === 0) return 0;
 
     // Calculate reverse balance deltas from transactions (strictly if after baseline)
     const balanceDeltas: Record<string, number> = {};
@@ -1448,13 +1501,22 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
 
-      // Revert any linked liability reductions
+      // Revert any linked liability changes (payments or loan disbursements)
       if (tx.linkedLiabilityId) {
         const liab = liabilitiesRef.current.find((l) => l.id === tx.linkedLiabilityId);
         if (liab) {
+          const isLoanReceived =
+            tx.type === 'income' ||
+            (tx as any).subType === 'loan_received' ||
+            (tx.tags && tx.tags.includes('loan-disbursement'));
+
+          const updatedBalance = isLoanReceived
+            ? Math.max(0, round2(liab.outstandingBalance - tx.amount))
+            : round2(liab.outstandingBalance + tx.amount);
+
           const updatedLiab: Liability = {
             ...liab,
-            outstandingBalance: round2(liab.outstandingBalance + tx.amount),
+            outstandingBalance: updatedBalance,
             updatedAt: new Date().toISOString(),
           };
           liabilitiesRef.current = liabilitiesRef.current.map((l) => (l.id === updatedLiab.id ? updatedLiab : l));
@@ -1561,6 +1623,16 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       assetsRef.current = assetsRef.current.filter((a) => !assetIds.has(a.id));
       setAssets(assetsRef.current);
       for (const id of assetIds) {
+        await deleteRecord(id);
+      }
+    }
+
+    // Delete batch liabilities (if created from this batch)
+    if (batchLiabilities.length > 0) {
+      const liabIds = new Set(batchLiabilities.map((l) => l.id));
+      liabilitiesRef.current = liabilitiesRef.current.filter((l) => !liabIds.has(l.id));
+      setLiabilities(liabilitiesRef.current);
+      for (const id of liabIds) {
         await deleteRecord(id);
       }
     }
@@ -2150,14 +2222,29 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // 2. Advance recurrence or mark paid
     if (plan.recurrence === 'monthly') {
-      const cur = new Date(plan.dueDate);
-      cur.setMonth(cur.getMonth() + 1);
-      const nextDue = cur.toISOString().split('T')[0];
+      const parts = plan.dueDate.split('-');
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10); // 1-12
+      const d = parseInt(parts[2], 10);
+      let nextYear = y;
+      let nextMonth = m + 1;
+      if (nextMonth > 12) {
+        nextMonth = 1;
+        nextYear += 1;
+      }
+      const daysInTargetMonth = new Date(nextYear, nextMonth, 0).getDate();
+      const nextDay = Math.min(d, daysInTargetMonth);
+      const nextDue = `${nextYear}-${String(nextMonth).padStart(2, '0')}-${String(nextDay).padStart(2, '0')}`;
       await updatePlannedExpense(planId, { dueDate: nextDue, paidDate: date });
     } else if (plan.recurrence === 'yearly') {
-      const cur = new Date(plan.dueDate);
-      cur.setFullYear(cur.getFullYear() + 1);
-      const nextDue = cur.toISOString().split('T')[0];
+      const parts = plan.dueDate.split('-');
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      const d = parseInt(parts[2], 10);
+      const nextYear = y + 1;
+      const daysInTargetMonth = new Date(nextYear, m, 0).getDate();
+      const nextDay = Math.min(d, daysInTargetMonth);
+      const nextDue = `${nextYear}-${String(m).padStart(2, '0')}-${String(nextDay).padStart(2, '0')}`;
       await updatePlannedExpense(planId, { dueDate: nextDue, paidDate: date });
     } else {
       await updatePlannedExpense(planId, { status: 'paid', paidDate: date });
@@ -2502,6 +2589,63 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await deleteRecord(id);
   };
 
+  // Notes & Folders Operations
+  const addNote = async (
+    data: Omit<VaultNote, 'id' | 'vaultId' | 'createdAt' | 'updatedAt'>
+  ): Promise<VaultNote> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const newNote: VaultNote = {
+      ...data,
+      id: generateUUID(),
+      vaultId: activeVault.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    notesRef.current = [newNote, ...notesRef.current];
+    setNotes(notesRef.current);
+    await saveEncryptedRecord('note', newNote, sessionKey);
+    return newNote;
+  };
+
+  const updateNote = async (note: VaultNote): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const updated: VaultNote = {
+      ...note,
+      updatedAt: new Date().toISOString(),
+    };
+    notesRef.current = notesRef.current.map((n) => (n.id === updated.id ? updated : n));
+    setNotes(notesRef.current);
+    await saveEncryptedRecord('note', updated, sessionKey);
+  };
+
+  const deleteNote = async (id: string): Promise<void> => {
+    notesRef.current = notesRef.current.filter((n) => n.id !== id);
+    setNotes(notesRef.current);
+    await deleteRecord(id);
+  };
+
+  const addFolder = async (
+    data: Omit<NoteFolder, 'id' | 'vaultId' | 'updatedAt'>
+  ): Promise<NoteFolder> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const newFolder: NoteFolder = {
+      ...data,
+      id: generateUUID(),
+      vaultId: activeVault.id,
+      updatedAt: new Date().toISOString(),
+    };
+    foldersRef.current = [...foldersRef.current, newFolder];
+    setFolders(foldersRef.current);
+    await saveEncryptedRecord('folder', newFolder, sessionKey);
+    return newFolder;
+  };
+
+  const deleteFolder = async (id: string): Promise<void> => {
+    foldersRef.current = foldersRef.current.filter((f) => f.id !== id);
+    setFolders(foldersRef.current);
+    await deleteRecord(id);
+  };
+
   // Vault Settings Operations
   const updateVaultSettings = async (updatedSettings: Partial<VaultMeta>): Promise<void> => {
     if (!activeVault) return;
@@ -2528,6 +2672,10 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await bulkSaveEncryptedRecords('liability', demo.liabilities, sessionKey);
     await bulkSaveEncryptedRecords('plan', demo.plannedExpenses, sessionKey);
 
+    await reloadVaultData();
+  };
+
+  const reloadVaultData = async (): Promise<void> => {
     await loadVaultData();
   };
 
@@ -2536,7 +2684,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       value={{
         activeVault,
         loadDemoData,
-        reloadVaultData: loadVaultData,
+        reloadVaultData,
         accounts,
         transactions,
         categories,
@@ -2547,6 +2695,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         liabilities,
         documents,
         plannedExpenses,
+        notes,
+        folders,
         isDecrypting,
         addAccount,
         updateAccount,
@@ -2592,6 +2742,11 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteLiability,
         addDocument,
         deleteDocument,
+        addNote,
+        updateNote,
+        deleteNote,
+        addFolder,
+        deleteFolder,
         updateVaultSettings,
       }}
     >

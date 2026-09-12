@@ -20,6 +20,8 @@ import {
   CheckCircle2,
   Calendar,
 } from 'lucide-react';
+import { AccountModal } from '../components/accounts/AccountModal';
+import { CategoryModal } from '../components/categories/CategoryModal';
 
 export const PlansView: React.FC = () => {
   const {
@@ -42,6 +44,7 @@ export const PlansView: React.FC = () => {
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
   const [payAttribution, setPayAttribution] = useState<'due' | 'payment'>('due');
   const [isPaying, setIsPaying] = useState(false);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
 
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
@@ -397,9 +400,17 @@ export const PlansView: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
-                From Account
-              </label>
+              <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                <span>From Account</span>
+                <button
+                  type="button"
+                  onClick={() => setIsAccountModalOpen(true)}
+                  className="text-pine-600 hover:text-pine-700 flex items-center gap-1 font-semibold cursor-pointer lowercase"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>+ new account</span>
+                </button>
+              </div>
               <select
                 value={payAccountId}
                 onChange={(e) => setPayAccountId(e.target.value)}
@@ -484,6 +495,16 @@ export const PlansView: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* Nested Account Modal */}
+      <AccountModal
+        isOpen={isAccountModalOpen}
+        onClose={() => setIsAccountModalOpen(false)}
+        onAccountCreated={(newAcc) => {
+          setPayAccountId(newAcc.id);
+          setIsAccountModalOpen(false);
+        }}
+      />
     </div>
   );
 };
@@ -503,6 +524,7 @@ const PlanModal: React.FC<PlanModalProps> = ({ isOpen, onClose, plan }) => {
   const [dueDate, setDueDate] = useState('');
   const [recurrence, setRecurrence] = useState<'once' | 'monthly' | 'yearly'>('monthly');
   const [categoryId, setCategoryId] = useState('');
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -582,7 +604,8 @@ const PlanModal: React.FC<PlanModalProps> = ({ isOpen, onClose, plan }) => {
   const expenseCategories = categories.filter((c) => c.type === 'expense');
 
   return (
-    <Modal
+    <>
+      <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={plan ? 'Edit Planned Expense' : 'Plan an Expense'}
@@ -669,9 +692,17 @@ const PlanModal: React.FC<PlanModalProps> = ({ isOpen, onClose, plan }) => {
         </div>
 
         <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
-            Category
-          </label>
+          <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+            <span>Category</span>
+            <button
+              type="button"
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="text-pine-600 hover:text-pine-700 flex items-center gap-1 font-semibold cursor-pointer lowercase"
+            >
+              <Plus className="w-3 h-3" />
+              <span>+ new category</span>
+            </button>
+          </div>
           <select
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
@@ -718,5 +749,17 @@ const PlanModal: React.FC<PlanModalProps> = ({ isOpen, onClose, plan }) => {
         </div>
       </form>
     </Modal>
+
+    {/* Nested Category Modal */}
+    <CategoryModal
+      isOpen={isCategoryModalOpen}
+      onClose={() => setIsCategoryModalOpen(false)}
+      defaultType="expense"
+      onCategoryCreated={(newCat) => {
+        setCategoryId(newCat.id);
+        setIsCategoryModalOpen(false);
+      }}
+    />
+    </>
   );
 };

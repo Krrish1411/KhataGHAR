@@ -11,7 +11,7 @@ import { EditSettlementModal } from '../components/people/EditSettlementModal';
 import { IconRenderer } from '../components/common/IconRenderer';
 import { formatCurrency } from '../utils/formatters';
 import { formatReadableDate, getDateRangePresets } from '../utils/dates';
-import { exportTransactionsToCSV } from '../services/export';
+import { exportUnifiedTransactionsToCSV, exportTransactionsToExcel } from '../services/export';
 import type { Transaction, Category, Account, Asset, Liability, PeopleLedgerEntry, SettlementRecord } from '../types';
 import {
   ArrowLeftRight,
@@ -29,6 +29,9 @@ import {
   Wallet,
   X,
   Layers,
+  FileSpreadsheet,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 
 export type UnifiedEntryFlow = 'inflow' | 'outflow' | 'transfer';
@@ -101,6 +104,7 @@ export const TransactionsView: React.FC = () => {
     settlement: SettlementRecord;
   } | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [expandedSplitIds, setExpandedSplitIds] = useState<Set<string>>(new Set());
   const [isReconciling, setIsReconciling] = useState(false);
 
   const baseCurrency = activeVault?.currency || 'INR';
@@ -459,9 +463,24 @@ export const TransactionsView: React.FC = () => {
     }
   };
 
+  const toggleSplitExpand = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedSplitIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const handleExportCSV = () => {
     if (!activeVault) return;
-    exportTransactionsToCSV(transactions, categories, accounts, activeVault);
+    exportUnifiedTransactionsToCSV(filteredEntries, categories, accounts, activeVault, 'Filtered_Ledger');
+  };
+
+  const handleExportExcel = () => {
+    if (!activeVault) return;
+    exportTransactionsToExcel(filteredEntries, categories, accounts, activeVault, 'Filtered_Ledger');
   };
 
   // Badge render helper
@@ -662,9 +681,19 @@ export const TransactionsView: React.FC = () => {
           <button
             onClick={handleExportCSV}
             className="px-3.5 py-2 rounded-xl border border-line bg-card hover:bg-moss active:scale-[0.97] text-xs font-semibold text-ink flex items-center gap-1.5 cursor-pointer transition-all"
+            title="Export filtered records as CSV"
           >
             <Download className="w-3.5 h-3.5 text-pine-600" />
             <span>Export CSV</span>
+          </button>
+
+          <button
+            onClick={handleExportExcel}
+            className="px-3.5 py-2 rounded-xl border border-line bg-card hover:bg-moss active:scale-[0.97] text-xs font-semibold text-ink flex items-center gap-1.5 cursor-pointer transition-all"
+            title="Export filtered records as Excel (.xlsx)"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-pine-600" />
+            <span>Export Excel</span>
           </button>
 
           <button
@@ -895,122 +924,193 @@ export const TransactionsView: React.FC = () => {
                     const isOutflow = entry.flow === 'outflow';
                     const isInflow = entry.flow === 'inflow';
                     const isSelected = selectedEntryId === entry.id || txToEdit?.id === entry.originalId;
+                    const rawTx = entry.rawTransaction;
+                    const isSplit = Boolean(rawTx?.splits && rawTx.splits.length > 0);
+                    const isExpanded = expandedSplitIds.has(entry.id);
 
                     return (
-                      <tr
-                        key={entry.id}
-                        onClick={() => setSelectedEntryId(selectedEntryId === entry.id ? null : entry.id)}
-                        className={`transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'bg-pine-50/90 dark:bg-pine-950/70 ring-1 ring-inset ring-pine-500 font-medium'
-                            : 'hover:bg-moss/40'
-                        }`}
-                      >
-                        {/* Date */}
-                        <td className="py-2.5 px-3.5 text-ink/60 font-mono text-xs whitespace-nowrap">
-                          {formatReadableDate(entry.date)}
-                        </td>
-
-                        {/* Flow / Type */}
-                        <td className="py-2.5 px-3 whitespace-nowrap">
-                          {renderTypeBadge(entry.type)}
-                        </td>
-
-                        {/* Category / Entity / Person */}
-                        <td className="py-2.5 px-3">
-                          {renderEntityBadge(entry)}
-                        </td>
-
-                        {/* Description / Note */}
-                        <td className="py-2.5 px-3 min-w-0">
-                          <div className="truncate">
-                            <span className="font-semibold text-ink">{entry.title}</span>
-                            {entry.subtitle && (
-                              <span className="text-[11px] text-ink/45 block truncate font-normal">
-                                {entry.subtitle}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Account */}
-                        <td className="py-2.5 px-3 whitespace-nowrap">
-                          {entry.type === 'transfer' && toAcc ? (
-                            <div className="flex items-center gap-1 text-[11px] font-medium">
-                              <span className="text-ink/75 truncate max-w-[70px]">{acc?.name || 'Account'}</span>
-                              <span className="text-ink/40 shrink-0">→</span>
-                              <span className="font-bold text-mari-600 truncate max-w-[70px]">{toAcc.name}</span>
-                            </div>
-                          ) : acc ? (
-                            <div className="flex items-center gap-1.5 text-xs text-ink/80 truncate">
-                              <Wallet className="w-3 h-3 text-ink/40 shrink-0" />
-                              <span className="truncate">{acc.name}</span>
-                            </div>
-                          ) : (
-                            <span className="text-ink/30 italic text-[11px]">Unlinked</span>
-                          )}
-                        </td>
-
-                        {/* Amount */}
-                        <td
-                          className={`py-2.5 px-3 text-right font-display font-extrabold text-sm num tabular-nums whitespace-nowrap ${
-                            isOutflow
-                              ? 'text-flare-600'
-                              : isInflow
-                              ? 'text-pine-700 dark:text-pine-400'
-                              : 'text-ink'
+                      <React.Fragment key={entry.id}>
+                        <tr
+                          onClick={() => setSelectedEntryId(selectedEntryId === entry.id ? null : entry.id)}
+                          className={`transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-pine-50/90 dark:bg-pine-950/70 ring-1 ring-inset ring-pine-500 font-medium'
+                              : 'hover:bg-moss/40'
                           }`}
                         >
-                          <div>
-                            {isOutflow ? '-' : isInflow ? '+' : ''}
-                            <AnimatedNumber
-                              value={entry.amount}
-                              currency={baseCurrency}
-                              numberFormat={numberFormat}
-                              isPrivacyMode={isPrivacyMode}
-                            />
-                          </div>
-                          {entry.type === 'asset_sale' && entry.realizedGain !== undefined && (
-                            <div
-                              className={`text-[10px] font-semibold mt-0.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md ${
-                                entry.realizedGain >= 0
-                                  ? 'text-pine-700 dark:text-pine-300 bg-pine-500/10 border border-pine-500/20'
-                                  : 'text-flare-600 dark:text-flare-400 bg-flare-500/10 border border-flare-500/20'
-                              }`}
-                            >
-                              {entry.realizedGain >= 0 ? '📈 Gain: +' : '📉 Loss: -'}
-                              {formatCurrency(Math.abs(entry.realizedGain), baseCurrency, numberFormat, isPrivacyMode)}
-                            </div>
-                          )}
-                        </td>
+                          {/* Date */}
+                          <td className="py-2.5 px-3.5 text-ink/60 font-mono text-xs whitespace-nowrap">
+                            {formatReadableDate(entry.date)}
+                          </td>
 
-                        {/* Actions (Always right-aligned, fixed width, never moves left) */}
-                        <td className="py-2.5 px-3.5 text-right whitespace-nowrap">
-                          <div
-                            className="flex items-center justify-end gap-1"
-                            onClick={(e) => e.stopPropagation()}
+                          {/* Flow / Type */}
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            {renderTypeBadge(entry.type)}
+                          </td>
+
+                          {/* Category / Entity / Person */}
+                          <td className="py-2.5 px-3">
+                            {renderEntityBadge(entry)}
+                          </td>
+
+                          {/* Description / Note */}
+                          <td className="py-2.5 px-3 min-w-0">
+                            <div className="truncate">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold text-ink truncate">{entry.title}</span>
+                                {isSplit && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => toggleSplitExpand(entry.id, e)}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-skyx-100 dark:bg-skyx-950/60 text-skyx-700 dark:text-skyx-300 border border-skyx-300/60 dark:border-skyx-700/50 hover:bg-skyx-200/70 transition-colors shrink-0 cursor-pointer"
+                                    title="Toggle split line items"
+                                  >
+                                    <Layers className="w-2.5 h-2.5" />
+                                    <span>Split ({rawTx!.splits!.length})</span>
+                                    {isExpanded ? (
+                                      <ChevronDown className="w-2.5 h-2.5" />
+                                    ) : (
+                                      <ChevronRight className="w-2.5 h-2.5" />
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+                              {entry.subtitle && (
+                                <span className="text-[11px] text-ink/45 block truncate font-normal">
+                                  {entry.subtitle}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Account */}
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            {entry.type === 'transfer' && toAcc ? (
+                              <div className="flex items-center gap-1 text-[11px] font-medium">
+                                <span className="text-ink/75 truncate max-w-[70px]">{acc?.name || 'Account'}</span>
+                                <span className="text-ink/40 shrink-0">→</span>
+                                <span className="font-bold text-mari-600 truncate max-w-[70px]">{toAcc.name}</span>
+                              </div>
+                            ) : acc ? (
+                              <div className="flex items-center gap-1.5 text-xs text-ink/80 truncate">
+                                <Wallet className="w-3 h-3 text-ink/40 shrink-0" />
+                                <span className="truncate">{acc.name}</span>
+                              </div>
+                            ) : (
+                              <span className="text-ink/30 italic text-[11px]">Unlinked</span>
+                            )}
+                          </td>
+
+                          {/* Amount */}
+                          <td
+                            className={`py-2.5 px-3 text-right font-display font-extrabold text-sm num tabular-nums whitespace-nowrap ${
+                              isOutflow
+                                ? 'text-flare-600'
+                                : isInflow
+                                ? 'text-pine-700 dark:text-pine-400'
+                                : 'text-ink'
+                            }`}
                           >
-                            <button
-                              type="button"
-                              onClick={() => handleEditEntry(entry)}
-                              className="p-1.5 text-ink/40 hover:text-pine-600 hover:bg-pine-50 dark:hover:bg-pine-950/40 rounded-lg cursor-pointer transition-colors"
-                              title="Edit entry"
-                              aria-label="Edit entry"
+                            <div>
+                              {isOutflow ? '-' : isInflow ? '+' : ''}
+                              <AnimatedNumber
+                                value={entry.amount}
+                                currency={baseCurrency}
+                                numberFormat={numberFormat}
+                                isPrivacyMode={isPrivacyMode}
+                              />
+                            </div>
+                            {entry.type === 'asset_sale' && entry.realizedGain !== undefined && (
+                              <div
+                                className={`text-[10px] font-semibold mt-0.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md ${
+                                  entry.realizedGain >= 0
+                                    ? 'text-pine-700 dark:text-pine-300 bg-pine-500/10 border border-pine-500/20'
+                                    : 'text-flare-600 dark:text-flare-400 bg-flare-500/10 border border-flare-500/20'
+                                }`}
+                              >
+                                {entry.realizedGain >= 0 ? '📈 Gain: +' : '📉 Loss: -'}
+                                {formatCurrency(Math.abs(entry.realizedGain), baseCurrency, numberFormat, isPrivacyMode)}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-2.5 px-3.5 text-right whitespace-nowrap">
+                            <div
+                              className="flex items-center justify-end gap-1"
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteEntry(entry)}
-                              className="p-1.5 text-ink/40 hover:text-flare-600 hover:bg-flare-50 dark:hover:bg-flare-950/40 rounded-lg cursor-pointer transition-colors"
-                              title="Delete entry"
-                              aria-label="Delete entry"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                              <button
+                                type="button"
+                                onClick={() => handleEditEntry(entry)}
+                                className="p-1.5 text-ink/40 hover:text-pine-600 hover:bg-pine-50 dark:hover:bg-pine-950/40 rounded-lg cursor-pointer transition-colors"
+                                title="Edit entry"
+                                aria-label="Edit entry"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteEntry(entry)}
+                                className="p-1.5 text-ink/40 hover:text-flare-600 hover:bg-flare-50 dark:hover:bg-flare-950/40 rounded-lg cursor-pointer transition-colors"
+                                title="Delete entry"
+                                aria-label="Delete entry"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Split Accordion Row */}
+                        {isSplit && isExpanded && (
+                          <tr key={`${entry.id}-split-details`} className="bg-moss/25 dark:bg-slate-900/40 border-b border-line">
+                            <td colSpan={7} className="py-2.5 px-4 pl-12">
+                              <div className="rounded-xl border border-line bg-card/90 p-3 space-y-2">
+                                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-ink/50 border-b border-line/60 pb-1.5">
+                                  <span className="flex items-center gap-1.5">
+                                    <Layers className="w-3.5 h-3.5 text-pine-600" />
+                                    Itemized Split Allocation ({rawTx!.splits!.length} items)
+                                  </span>
+                                  <span className="font-mono text-ink/70">
+                                    Parent Total: {formatCurrency(entry.amount, baseCurrency, numberFormat, isPrivacyMode)}
+                                  </span>
+                                </div>
+                                <div className="divide-y divide-line/40 text-xs">
+                                  {rawTx!.splits!.map((split, sIdx) => {
+                                    const splitCat = categoryLookup.get(split.categoryId || '');
+                                    const splitPct = entry.amount > 0 ? ((split.amount / entry.amount) * 100).toFixed(1) : '0';
+                                    return (
+                                      <div key={sIdx} className="py-1.5 flex items-center justify-between gap-3 hover:bg-moss/40 rounded px-1.5">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <span
+                                            className="w-2 h-2 rounded-full shrink-0"
+                                            style={{ backgroundColor: splitCat?.color || '#0ea5e9' }}
+                                          />
+                                          <span className="font-semibold text-ink truncate">
+                                            {splitCat?.name || 'Uncategorized'}
+                                          </span>
+                                          {split.note && (
+                                            <span className="text-ink/45 truncate text-[11px]">
+                                              — {split.note}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0 font-mono text-[11.5px]">
+                                          <span className="text-ink/40 text-[10.5px]">({splitPct}%)</span>
+                                          <span className="font-bold text-ink">
+                                            {formatCurrency(split.amount, baseCurrency, numberFormat, isPrivacyMode)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
@@ -1025,6 +1125,9 @@ export const TransactionsView: React.FC = () => {
                 const isOutflow = entry.flow === 'outflow';
                 const isInflow = entry.flow === 'inflow';
                 const isSelected = selectedEntryId === entry.id;
+                const rawTx = entry.rawTransaction;
+                const isSplit = Boolean(rawTx?.splits && rawTx.splits.length > 0);
+                const isExpanded = expandedSplitIds.has(entry.id);
 
                 return (
                   <div
@@ -1077,11 +1180,53 @@ export const TransactionsView: React.FC = () => {
 
                     {/* Middle row: Title & Subtitle */}
                     <div>
-                      <div className="font-semibold text-ink text-xs line-clamp-1">{entry.title}</div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold text-ink text-xs line-clamp-1">{entry.title}</span>
+                        {isSplit && (
+                          <button
+                            type="button"
+                            onClick={(e) => toggleSplitExpand(entry.id, e)}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-skyx-100 dark:bg-skyx-950/60 text-skyx-700 dark:text-skyx-300 border border-skyx-300/60 dark:border-skyx-700/50 hover:bg-skyx-200/70 shrink-0 cursor-pointer"
+                          >
+                            <Layers className="w-2.5 h-2.5" />
+                            <span>Split ({rawTx!.splits!.length})</span>
+                            {isExpanded ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRight className="w-2.5 h-2.5" />}
+                          </button>
+                        )}
+                      </div>
                       {entry.subtitle && (
                         <div className="text-[11px] text-ink/50 line-clamp-1">{entry.subtitle}</div>
                       )}
                     </div>
+
+                    {/* Split Line Items Accordion for Mobile */}
+                    {isSplit && isExpanded && (
+                      <div className="rounded-xl border border-line bg-card/90 p-2.5 space-y-1.5 mt-2 text-xs">
+                        <div className="text-[10.5px] font-bold uppercase tracking-wider text-ink/50 border-b border-line/50 pb-1">
+                          Split Line Items ({rawTx!.splits!.length})
+                        </div>
+                        <div className="divide-y divide-line/40">
+                          {rawTx!.splits!.map((split, sIdx) => {
+                            const splitCat = categoryLookup.get(split.categoryId || '');
+                            return (
+                              <div key={sIdx} className="py-1 flex items-center justify-between text-[11.5px]">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span
+                                    className="w-2 h-2 rounded-full shrink-0"
+                                    style={{ backgroundColor: splitCat?.color || '#0ea5e9' }}
+                                  />
+                                  <span className="font-semibold text-ink truncate">{splitCat?.name || 'Uncategorized'}</span>
+                                  {split.note && <span className="text-ink/40 truncate text-[10.5px]">— {split.note}</span>}
+                                </div>
+                                <span className="font-mono font-bold text-ink shrink-0">
+                                  {formatCurrency(split.amount, baseCurrency, numberFormat, isPrivacyMode)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Bottom row: Date & Account on left, Action buttons on right */}
                     <div className="flex items-center justify-between gap-2 pt-1 border-t border-line/40 text-xs">

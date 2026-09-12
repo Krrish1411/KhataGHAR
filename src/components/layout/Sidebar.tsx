@@ -19,6 +19,7 @@ import {
   IndianRupee,
   CalendarClock,
   Download,
+  StickyNote,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
@@ -51,6 +52,7 @@ const NAV_GROUPS = [
   {
     label: 'Tools',
     items: [
+      { path: '/notes', label: 'Financial Notes', icon: StickyNote },
       { path: '/import', label: 'Import Data', icon: FileSpreadsheet },
       { path: '/documents', label: 'Document Vault', icon: FolderLock },
       { path: '/family', label: 'Vault Hub', icon: Home },

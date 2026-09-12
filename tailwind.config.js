@@ -55,6 +55,7 @@ export default {
 
         // Sky / Blue (Custodial / People / Lent / Borrowed)
         skyx: {
+          50: '#f0f7fc',
           100: '#e2f0f9',
           200: '#bedef2',
           300: '#91c7e9',
@@ -62,6 +63,9 @@ export default {
           500: '#388dcb',
           600: '#2273a8',
           700: '#1b5c86',
+          800: '#164869',
+          900: '#123953',
+          950: '#0a2131',
         },
 
         // Backward compatibility

@@ -325,9 +325,9 @@ export const InteractiveWealthChart: React.FC<InteractiveWealthChartProps> = ({
           <defs>
             {/* Ambient Area Gradient */}
             <linearGradient id="wealthAreaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#F59E0B" stopOpacity={0.28} />
-              <stop offset="40%" stopColor="#F59E0B" stopOpacity={0.08} />
-              <stop offset="100%" stopColor="#F59E0B" stopOpacity={0.0} />
+              <stop offset="0%" stopColor="#12855a" stopOpacity={0.28} />
+              <stop offset="40%" stopColor="#12855a" stopOpacity={0.08} />
+              <stop offset="100%" stopColor="#12855a" stopOpacity={0.0} />
             </linearGradient>
 
             {/* Glowing Stroke Filter */}
@@ -363,7 +363,7 @@ export const InteractiveWealthChart: React.FC<InteractiveWealthChartProps> = ({
             <path
               d={pathD}
               fill="none"
-              stroke="#F59E0B"
+              stroke="#12855a"
               strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -378,7 +378,7 @@ export const InteractiveWealthChart: React.FC<InteractiveWealthChartProps> = ({
                 y1={padTop}
                 x2={activeCoord.x}
                 y2={height - padBottom}
-                stroke="#F59E0B"
+                stroke="#12855a"
                 strokeWidth="1.2"
                 strokeDasharray="3 3"
                 className="opacity-70"
@@ -387,7 +387,7 @@ export const InteractiveWealthChart: React.FC<InteractiveWealthChartProps> = ({
                 cx={activeCoord.x}
                 cy={activeCoord.y}
                 r="6"
-                fill="#F59E0B"
+                fill="#12855a"
                 className="animate-pulse"
               />
               <circle

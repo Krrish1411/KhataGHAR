@@ -17,6 +17,8 @@ import type {
   PlannedExpense,
   CurrencyCode,
   NumberFormatType,
+  VaultNote,
+  NoteFolder,
 } from '../types';
 import {
   generateSalt,
@@ -27,6 +29,15 @@ import {
   decryptData,
 } from './crypto';
 import { generateStarterCategories } from '../utils/categories';
+
+export const DEFAULT_NOTE_FOLDERS: Array<{ id: string; name: string; icon: string; color: string }> = [
+  { id: 'tax', name: 'Tax & ITR Filing', icon: 'Receipt', color: '#475569' },
+  { id: 'bank', name: 'Bank & Lockers', icon: 'Landmark', color: '#0d9488' },
+  { id: 'nominees', name: 'Nominees & Legal', icon: 'Shield', color: '#881337' },
+  { id: 'investments', name: 'Investments & Plans', icon: 'TrendingUp', color: '#059669' },
+  { id: 'agreements', name: 'Agreements & IOUs', icon: 'FileText', color: '#92400e' },
+  { id: 'general', name: 'Personal Memos', icon: 'Sparkles', color: '#6366f1' },
+];
 
 export function generateUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -174,6 +185,8 @@ export async function unlockVault(
     liabilities: [],
     documents: [],
     plannedExpenses: [],
+    notes: [],
+    folders: [],
   };
 
   await Promise.all(
@@ -228,6 +241,16 @@ export async function unlockVault(
           case 'plan': {
             const item = await decryptData<PlannedExpense>(row.iv, row.ciphertext, key);
             data.plannedExpenses!.push(item);
+            break;
+          }
+          case 'note': {
+            const item = await decryptData<VaultNote>(row.iv, row.ciphertext, key);
+            data.notes!.push(item);
+            break;
+          }
+          case 'folder': {
+            const item = await decryptData<NoteFolder>(row.iv, row.ciphertext, key);
+            data.folders!.push(item);
             break;
           }
         }

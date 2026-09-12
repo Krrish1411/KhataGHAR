@@ -567,6 +567,7 @@ export const ImportView: React.FC = () => {
             emiAmount: 0,
             currency: baseCurrency,
             notes: `Auto-created from statement import: ${defaultDesc}`,
+            importBatchId: batchId,
           });
           return created.id;
         }
@@ -607,17 +608,6 @@ export const ImportView: React.FC = () => {
           isRecurring: false,
           importBatchId: batchId,
         });
-        // Increase liability outstanding balance if linked
-        if (finalLiabId && !t.linkedLiabilityId?.startsWith('new-liability:')) {
-          const liab = liabilities.find((l) => l.id === finalLiabId);
-          if (liab) {
-            await updateLiability({
-              ...liab,
-              outstandingBalance: Math.round((liab.outstandingBalance + t.amount) * 100) / 100,
-              updatedAt: new Date().toISOString(),
-            });
-          }
-        }
       }
 
       // 5. People Ledger Entries (New Lent, Borrowed, Custodial Holding)

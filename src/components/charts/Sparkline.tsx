@@ -41,24 +41,24 @@ export const Sparkline: React.FC<SparklineProps> = ({
 
   const colorConfig = {
     emerald: {
-      stroke: '#10B981',
-      fillStart: 'rgba(16, 185, 129, 0.25)',
-      fillEnd: 'rgba(16, 185, 129, 0.0)',
+      stroke: '#12855a',
+      fillStart: 'rgba(18, 133, 90, 0.25)',
+      fillEnd: 'rgba(18, 133, 90, 0.0)',
     },
     rose: {
-      stroke: '#F43F5E',
-      fillStart: 'rgba(244, 63, 94, 0.25)',
-      fillEnd: 'rgba(244, 63, 94, 0.0)',
+      stroke: '#9f1239',
+      fillStart: 'rgba(159, 18, 57, 0.25)',
+      fillEnd: 'rgba(159, 18, 57, 0.0)',
     },
     amber: {
-      stroke: '#F59E0B',
-      fillStart: 'rgba(245, 158, 11, 0.25)',
-      fillEnd: 'rgba(245, 158, 11, 0.0)',
+      stroke: '#92400e',
+      fillStart: 'rgba(146, 64, 14, 0.25)',
+      fillEnd: 'rgba(146, 64, 14, 0.0)',
     },
     sky: {
-      stroke: '#0EA5E9',
-      fillStart: 'rgba(14, 165, 233, 0.25)',
-      fillEnd: 'rgba(14, 165, 233, 0.0)',
+      stroke: '#0284c7',
+      fillStart: 'rgba(2, 132, 199, 0.25)',
+      fillEnd: 'rgba(2, 132, 199, 0.0)',
     },
   }[activeColor];
 

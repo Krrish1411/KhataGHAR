@@ -26,7 +26,9 @@ import {
   ShieldAlert,
   Database,
   RefreshCw,
+  ArrowRightLeft,
 } from 'lucide-react';
+import { RelocateHoldingModal } from '../components/accounts/RelocateHoldingModal';
 
 export const AccountsView: React.FC = () => {
   const { accounts, transactions, peopleLedger, activeVault, deleteAccount, updateAccount, loadDemoData, reconcileAccounts } = useVault();
@@ -38,6 +40,7 @@ export const AccountsView: React.FC = () => {
   const [accountToEdit, setAccountToEdit] = useState<Account | undefined>(undefined);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [relocateSourceAccount, setRelocateSourceAccount] = useState<Account | null>(null);
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('all');
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>('all');
 
@@ -53,8 +56,8 @@ export const AccountsView: React.FC = () => {
   const accountHeldMap = useMemo(() => {
     const map = new Map<string, number>();
     peopleLedger.forEach((p) => {
-      if (p.type === 'holding' && p.accountId) {
-        const settled = p.settlements.reduce((sum, s) => sum + s.amount, 0);
+      if (p.type === 'holding' && p.accountId && p.heldInType !== 'asset') {
+        const settled = (p.settlements || []).reduce((sum, s) => sum + s.amount, 0);
         const remaining = Math.max(0, p.amount - settled);
         if (remaining > 0) {
           const current = map.get(p.accountId) || 0;
@@ -531,7 +534,7 @@ export const AccountsView: React.FC = () => {
 
                   {/* Custodial Holding Pill if holding money for someone */}
                   {heldAmount > 0 && (
-                    <div className="mt-2.5 p-2.5 rounded-xl bg-mari-100/70 dark:bg-mari-950/40 border border-mari-400/35 text-xs space-y-1">
+                    <div className="mt-2.5 p-2.5 rounded-xl bg-mari-100/70 dark:bg-mari-950/40 border border-mari-400/35 text-xs space-y-2">
                       <div className="flex items-center justify-between font-semibold text-mari-700 dark:text-mari-300 text-[11px]">
                         <span className="flex items-center gap-1">
                           <ShieldAlert className="w-3 h-3" />
@@ -548,7 +551,7 @@ export const AccountsView: React.FC = () => {
                       </div>
                       <div className="flex items-center justify-between text-[10px] text-ink/50 pt-1 border-t border-mari-400/20">
                         <span>Your Unencumbered Portion:</span>
-                        <span className="font-mono font-bold text-ink tabular-nums num">
+                        <span className={`font-mono font-bold tabular-nums num ${ownFunds < 0 ? 'text-flare-600' : 'text-ink'}`}>
                           <AnimatedNumber
                             value={ownFunds}
                             currency={account.currency}
@@ -557,6 +560,18 @@ export const AccountsView: React.FC = () => {
                           />
                         </span>
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRelocateSourceAccount(account);
+                        }}
+                        className="w-full py-1 px-2 rounded-lg bg-white/70 dark:bg-navy-900/70 hover:bg-white dark:hover:bg-navy-900 text-[10.5px] font-bold text-mari-700 dark:text-mari-300 border border-mari-300/40 dark:border-mari-700/40 flex items-center justify-center gap-1 cursor-pointer transition-all shadow-2xs"
+                      >
+                        <ArrowRightLeft className="w-3 h-3" />
+                        <span>Move Holding to Another Account / Asset</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -593,6 +608,13 @@ export const AccountsView: React.FC = () => {
           initialType="transfer"
         />
       )}
+
+      {/* Relocate Custodial Holding Modal */}
+      <RelocateHoldingModal
+        isOpen={!!relocateSourceAccount}
+        onClose={() => setRelocateSourceAccount(null)}
+        sourceAccount={relocateSourceAccount}
+      />
     </div>
   );
 };
