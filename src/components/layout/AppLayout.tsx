@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { BottomNav } from './BottomNav';
@@ -19,6 +19,8 @@ export const AppLayout: React.FC = () => {
   const { activeVault, exitDemoVault } = useAuth();
   const { togglePrivacy } = usePrivacy();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isNotesView = location.pathname === '/notes';
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -114,8 +116,8 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div
-      style={{ zoom: 1.05 }}
-      className="min-h-screen flex bg-ground text-ink transition-colors"
+      style={{ zoom: isNotesView ? 1 : 1.05 }}
+      className={`${isNotesView ? 'h-screen overflow-hidden' : 'min-h-screen'} flex bg-ground text-ink transition-colors`}
     >
       {/* Desktop Sidebar + Mobile Drawer */}
       <Sidebar
@@ -124,10 +126,10 @@ export const AppLayout: React.FC = () => {
       />
 
       {/* Main Content Column */}
-      <div className="flex-1 flex flex-col min-w-0 pb-20 md:pb-8">
+      <div className={`flex-1 flex flex-col min-w-0 ${isNotesView ? 'h-screen overflow-hidden pb-0' : 'pb-20 md:pb-8'}`}>
         {/* Demo Mode Top Banner */}
         {isDemoMode && (
-          <div className="bg-gradient-to-r from-pine-900 via-pine-800 to-pine-950 text-white px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 border-b border-pine-700/60 shadow-xs">
+          <div className="shrink-0 bg-gradient-to-r from-pine-900 via-pine-800 to-pine-950 text-white px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 border-b border-pine-700/60 shadow-xs">
             <div className="flex items-center gap-2 font-medium">
               <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
               <span>
@@ -160,7 +162,7 @@ export const AppLayout: React.FC = () => {
           onOpenWelcome={() => setIsWelcomeOpen(true)}
         />
 
-        <main className="flex-1 px-3 sm:px-6 lg:px-8 py-5 w-full">
+        <main className={`flex-1 w-full min-h-0 ${isNotesView ? 'px-3 sm:px-6 lg:px-8 py-3.5 flex flex-col overflow-hidden' : 'px-3 sm:px-6 lg:px-8 py-5'}`}>
           <Outlet />
         </main>
       </div>

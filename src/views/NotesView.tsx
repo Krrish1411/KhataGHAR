@@ -161,6 +161,39 @@ export const NotesView: React.FC = () => {
     }
   }, [activeNote?.id, notes.length, selectedNoteId]);
 
+  // Track editor states in ref to avoid stale closures in debounced auto-save
+  const editorStateRef = useRef({
+    title,
+    content,
+    folderId,
+    isPinned,
+    color,
+    icon,
+    tags,
+    attachments,
+  });
+
+  useEffect(() => {
+    editorStateRef.current = {
+      title,
+      content,
+      folderId,
+      isPinned,
+      color,
+      icon,
+      tags,
+      attachments,
+    };
+  }, [title, content, folderId, isPinned, color, icon, tags, attachments]);
+
+  // Auto-resize textarea height dynamically so document canvas scrolls smoothly as one unit without nested scroll jumping
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.max(350, ta.scrollHeight)}px`;
+  }, [content, mode]);
+
   // Debounced Auto-Save
   const triggerSave = (updates: Partial<VaultNote>) => {
     if (!activeNote) return;
@@ -171,14 +204,7 @@ export const NotesView: React.FC = () => {
       try {
         await updateNote({
           ...activeNote,
-          title,
-          content,
-          folderId,
-          isPinned,
-          color,
-          icon,
-          tags,
-          attachments,
+          ...editorStateRef.current,
           ...updates,
         });
         setIsSaved(true);
@@ -434,27 +460,27 @@ export const NotesView: React.FC = () => {
 
   return (
     <div
-      className={`flex gap-4.5 h-[calc(100vh-80px)] min-h-[580px] select-none transition-all ${
-        isFullscreen ? 'fixed inset-0 z-50 p-4 bg-ground' : 'w-full'
+      className={`flex gap-4.5 h-full w-full select-none overflow-hidden transition-all ${
+        isFullscreen ? 'fixed inset-0 z-50 p-4 bg-ground' : ''
       }`}
     >
       {/* ---------------------------------------------------- */}
       {/* LEFT PANEL: FOLDERS & NOTES TREE NAVIGATOR           */}
       {/* ---------------------------------------------------- */}
       <div
-        className={`w-64 sm:w-72 shrink-0 bg-card rounded-2xl border border-line p-3 flex flex-col shadow-xs overflow-hidden ${
+        className={`w-64 sm:w-72 shrink-0 bg-card rounded-2xl border border-line p-3 flex flex-col shadow-xs overflow-hidden h-full ${
           mobileView === 'editor' && !isFullscreen ? 'hidden lg:flex' : 'flex'
         }`}
       >
         {/* Search Notes Bar */}
         <div className="relative mb-3">
-          <Search className="w-3.5 h-3.5 text-ink/40 absolute left-3 top-2.5" />
+          <Search className="w-4 h-4 text-ink/40 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             placeholder="Search notes..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8.5 pr-3 py-1.5 bg-slate-50 dark:bg-navy-900/80 rounded-xl border border-line text-xs font-medium text-ink placeholder:text-ink/40 outline-none focus:border-pine-500/60 transition-colors"
+            className="w-full pl-9 pr-3 py-2 bg-moss/70 dark:bg-navy-900/70 rounded-xl border border-line text-xs font-medium text-ink placeholder:text-ink/40 outline-none focus:border-pine-600/60 transition-colors"
           />
         </div>
 
@@ -471,7 +497,7 @@ export const NotesView: React.FC = () => {
             </button>
             <button
               onClick={handleCreateNewNote}
-              className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer ml-1"
+              className="text-xs font-bold text-pine-700 dark:text-pine-400 hover:text-pine-800 dark:hover:text-pine-300 hover:underline cursor-pointer ml-1"
             >
               + Note
             </button>
@@ -485,8 +511,8 @@ export const NotesView: React.FC = () => {
             onClick={() => setSelectedFolderId('all')}
             className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
               selectedFolderId === 'all'
-                ? 'bg-blue-50/90 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                : 'text-ink/75 hover:bg-moss hover:text-ink'
+                ? 'bg-pine-50/90 dark:bg-pine-950/60 text-pine-900 dark:text-pine-200 font-bold border border-pine-200/80 dark:border-pine-800/60 shadow-2xs'
+                : 'text-ink/75 hover:bg-moss hover:text-ink border border-transparent'
             }`}
           >
             <div className="flex items-center gap-2 truncate">
@@ -514,8 +540,8 @@ export const NotesView: React.FC = () => {
                   }}
                   className={`group flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                     isSelected && selectedFolderId !== 'all'
-                      ? 'bg-blue-50/90 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                      : 'text-ink/75 hover:bg-moss hover:text-ink'
+                      ? 'bg-pine-50/90 dark:bg-pine-950/60 text-pine-900 dark:text-pine-200 font-bold border border-pine-200/80 dark:border-pine-800/60 shadow-2xs'
+                      : 'text-ink/75 hover:bg-moss hover:text-ink border border-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-1.5 truncate">
@@ -570,7 +596,7 @@ export const NotesView: React.FC = () => {
                           }}
                           className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
                             isNoteActive
-                              ? 'bg-blue-50/90 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/80 text-blue-700 dark:text-blue-300 font-bold shadow-2xs'
+                              ? 'bg-pine-50/90 dark:bg-pine-950/70 border border-pine-200 dark:border-pine-800/80 text-pine-950 dark:text-pine-100 font-bold shadow-2xs'
                               : 'text-ink/70 hover:bg-moss hover:text-ink border border-transparent'
                           }`}
                         >
@@ -623,12 +649,12 @@ export const NotesView: React.FC = () => {
               {selectedFolderId === 'all' ? 'All Notes' : currentFolder?.name || 'Notes'}
             </span>
 
-            <span className="text-[11px] font-semibold text-ink/50 bg-slate-100 dark:bg-navy-900 px-2 py-0.5 rounded-full font-mono">
+            <span className="text-[11px] font-semibold text-ink/60 bg-moss/80 dark:bg-navy-900 px-2 py-0.5 rounded-full font-mono border border-line/50">
               {selectedFolderId === 'all' ? notes.length : notes.filter((n) => n.folderId === folderId).length} notes
             </span>
 
             <span className="flex items-center gap-1 text-[11px] font-mono text-ink/45 ml-1">
-              <Lock className="w-3 h-3 text-pine-600" />
+              <Lock className="w-3 h-3 text-pine-600 dark:text-pine-400" />
               <span>{isSaved ? 'Saved' : 'Saving…'}</span>
             </span>
           </div>
@@ -636,13 +662,13 @@ export const NotesView: React.FC = () => {
           {/* Right: Actions */}
           <div className="flex items-center gap-2">
             {/* Segmented [Write | Preview] Pill */}
-            <div className="flex items-center p-0.5 bg-slate-100 dark:bg-navy-900 rounded-lg border border-line/60">
+            <div className="flex items-center p-0.5 bg-moss/80 dark:bg-navy-900/80 rounded-lg border border-line/60">
               <button
                 type="button"
                 onClick={() => setMode('write')}
                 className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
                   mode === 'write'
-                    ? 'bg-blue-600 text-white shadow-2xs'
+                    ? 'bg-pine-700 dark:bg-pine-600 text-white shadow-2xs'
                     : 'text-ink/60 hover:text-ink'
                 }`}
               >
@@ -653,7 +679,7 @@ export const NotesView: React.FC = () => {
                 onClick={() => setMode('preview')}
                 className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
                   mode === 'preview'
-                    ? 'bg-blue-600 text-white shadow-2xs'
+                    ? 'bg-pine-700 dark:bg-pine-600 text-white shadow-2xs'
                     : 'text-ink/60 hover:text-ink'
                 }`}
               >
@@ -699,7 +725,7 @@ export const NotesView: React.FC = () => {
             {/* + Note Button */}
             <button
               onClick={handleCreateNewNote}
-              className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center gap-1 cursor-pointer transition-colors"
+              className="px-3.5 py-1.5 rounded-xl bg-pine-700 hover:bg-pine-800 dark:bg-pine-600 dark:hover:bg-pine-500 text-white text-xs font-bold shadow-xs flex items-center gap-1 cursor-pointer transition-colors"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>Note</span>
@@ -760,7 +786,7 @@ export const NotesView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsFolderMenuOpen(!isFolderMenuOpen)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-navy-900 hover:bg-slate-200 dark:hover:bg-navy-800 text-xs font-semibold text-ink cursor-pointer transition-colors"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-moss/80 dark:bg-navy-900/60 hover:bg-moss dark:hover:bg-navy-800 text-xs font-semibold text-ink cursor-pointer transition-colors border border-line/50"
                 >
                   <IconRenderer name={currentFolder.icon || 'Folder'} className="w-3.5 h-3.5 text-pine-600 dark:text-pine-400 shrink-0" />
                   <span className="truncate">{currentFolder.name}</span>
@@ -772,7 +798,7 @@ export const NotesView: React.FC = () => {
                     <div className="px-3 py-1 text-[10px] font-bold text-ink/40 uppercase tracking-wider">
                       Assign Folder
                     </div>
-                    <div className="max-h-56 overflow-y-auto py-0.5 space-y-0.5">
+                    <div className="max-h-56 overflow-y-auto py-0.5 space-y-0.5 custom-scrollbar">
                       {allFolders.map((f) => {
                         const isFSelected = f.id === folderId;
                         return (
@@ -786,7 +812,7 @@ export const NotesView: React.FC = () => {
                             }}
                             className={`w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-left transition-colors cursor-pointer ${
                               isFSelected
-                                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                                ? 'bg-pine-50 dark:bg-pine-950/60 text-pine-900 dark:text-pine-200 font-bold'
                                 : 'text-ink/80 hover:bg-moss hover:text-ink'
                             }`}
                           >
@@ -795,7 +821,7 @@ export const NotesView: React.FC = () => {
                               <span className="truncate">{f.name}</span>
                             </div>
                             {isFSelected && (
-                              <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 ml-2" />
+                              <CheckCircle2 className="w-3.5 h-3.5 text-pine-600 dark:text-pine-400 shrink-0 ml-2" />
                             )}
                           </button>
                         );
@@ -808,7 +834,7 @@ export const NotesView: React.FC = () => {
                           setIsFolderMenuOpen(false);
                           setIsNewFolderOpen(true);
                         }}
-                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-moss transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-pine-700 dark:text-pine-400 hover:bg-moss transition-colors cursor-pointer"
                       >
                         <FolderPlus className="w-3.5 h-3.5" />
                         <span>New Folder…</span>
@@ -819,20 +845,20 @@ export const NotesView: React.FC = () => {
               </div>
 
               {/* Timestamp Pill */}
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-navy-900 text-xs font-medium text-ink/65">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-moss/80 dark:bg-navy-900/60 text-xs font-medium text-ink/65 border border-line/50">
                 <span className="text-xs">📅</span>
                 <span>{formattedDate}</span>
               </div>
 
               {/* Words & Reading Time Pill */}
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-navy-900 text-xs font-medium text-ink/65">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-moss/80 dark:bg-navy-900/60 text-xs font-medium text-ink/65 border border-line/50">
                 <span className="text-xs">📖</span>
                 <span>{stats.words} words • {stats.readTime}m read</span>
               </div>
 
               {/* Security Pill */}
-              <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60 text-xs font-bold">
-                <Lock className="w-3 h-3 text-blue-600" />
+              <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-pine-50/90 dark:bg-pine-950/60 text-pine-800 dark:text-pine-300 border border-pine-200/60 dark:border-pine-800/60 text-xs font-bold">
+                <Lock className="w-3 h-3 text-pine-600 dark:text-pine-400" />
                 <span>AES-256</span>
               </div>
             </div>
@@ -852,7 +878,7 @@ export const NotesView: React.FC = () => {
                     setContent(e.target.value);
                     triggerSave({ content: e.target.value });
                   }}
-                  className="w-full flex-1 min-h-[350px] bg-transparent border-0 outline-none focus:outline-none focus:ring-0 resize-none text-[13.5px] text-ink placeholder:text-ink/30 font-sans leading-relaxed px-0 py-1"
+                  className="w-full bg-transparent border-0 outline-none focus:outline-none focus:ring-0 resize-none text-[13.5px] text-ink placeholder:text-ink/30 font-sans leading-relaxed px-0 py-1 overflow-hidden"
                 />
               )}
             </div>
@@ -867,7 +893,7 @@ export const NotesView: React.FC = () => {
                   {attachments.map((att) => (
                     <div
                       key={att.id}
-                      className="p-2 rounded-xl border border-line bg-slate-50 dark:bg-navy-900/60 flex items-center justify-between gap-1.5 text-xs group"
+                      className="p-2 rounded-xl border border-line bg-moss/70 dark:bg-navy-900/60 flex items-center justify-between gap-1.5 text-xs group"
                     >
                       <div
                         onClick={() => att.type === 'image' && setViewingAttachment(att)}
@@ -1057,23 +1083,23 @@ export const NotesView: React.FC = () => {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-navy-900 hover:bg-slate-200 dark:hover:bg-navy-800 text-ink text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+              className="px-2.5 py-1 rounded-lg bg-moss/80 dark:bg-navy-900/60 hover:bg-moss dark:hover:bg-navy-800 text-ink text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors border border-line/40"
             >
-              <ImageIcon className="w-3.5 h-3.5 text-pine-600" />
+              <ImageIcon className="w-3.5 h-3.5 text-pine-600 dark:text-pine-400" />
               <span>Photo</span>
             </button>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-navy-900 hover:bg-slate-200 dark:hover:bg-navy-800 text-ink text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+              className="px-2.5 py-1 rounded-lg bg-moss/80 dark:bg-navy-900/60 hover:bg-moss dark:hover:bg-navy-800 text-ink text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors border border-line/40"
             >
-              <Video className="w-3.5 h-3.5 text-blue-600" />
+              <Video className="w-3.5 h-3.5 text-pine-600 dark:text-pine-400" />
               <span>Video</span>
             </button>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-navy-900 hover:bg-slate-200 dark:hover:bg-navy-800 text-ink text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+              className="px-2.5 py-1 rounded-lg bg-moss/80 dark:bg-navy-900/60 hover:bg-moss dark:hover:bg-navy-800 text-ink text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors border border-line/40"
             >
               <Mic className="w-3.5 h-3.5 text-rose-500" />
               <span>Record</span>
@@ -1081,7 +1107,7 @@ export const NotesView: React.FC = () => {
           </div>
 
           {/* Far Right Status */}
-          <div className="flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0 ml-3">
+          <div className="flex items-center gap-1 text-xs font-bold text-pine-700 dark:text-pine-400 shrink-0 ml-3">
             <Lock className="w-3.5 h-3.5" />
             <span>AES-256</span>
           </div>
@@ -1109,7 +1135,7 @@ export const NotesView: React.FC = () => {
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-ink/70">Folder Icon</label>
-              <div className="flex items-center gap-1.5 flex-wrap p-2 bg-slate-50 dark:bg-navy-900 rounded-xl border border-line">
+              <div className="flex items-center gap-1.5 flex-wrap p-2 bg-moss/70 dark:bg-navy-900/60 rounded-xl border border-line">
                 {['📁', '💼', '🏡', '🛡️', '📊', '📜', '🏷️', '🔐', '🏦', '💎', '📅', '📝'].map((ic) => (
                   <button
                     key={ic}
@@ -1117,7 +1143,7 @@ export const NotesView: React.FC = () => {
                     onClick={() => setNewFolderIcon(ic)}
                     className={`w-8 h-8 rounded-lg text-base grid place-items-center cursor-pointer transition-all ${
                       newFolderIcon === ic
-                        ? 'bg-white dark:bg-navy-700 shadow-xs ring-2 ring-brand-500 scale-110'
+                        ? 'bg-white dark:bg-navy-700 shadow-xs ring-2 ring-pine-500 scale-110'
                         : 'hover:bg-white/60'
                     }`}
                   >
