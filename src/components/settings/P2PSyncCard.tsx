@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { useAuth } from '../../context/AuthContext';
 import { useVault } from '../../context/VaultContext';
-import { P2PSyncSession, type P2PProgress } from '../../services/p2pSync';
-import { importPlainSnapshot } from '../../services/backup';
-import type { VaultData } from '../../types';
+import { syncEngine } from '../../services/sync/syncEngine';
+import { P2PSyncModal } from '../sync/P2PSyncModal';
 import {
   Smartphone,
   Laptop,
@@ -15,126 +14,28 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertCircle,
-  Copy,
-  Check,
+  Crown,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
 
 export const P2PSyncCard: React.FC = () => {
-  const { activeVault, refreshVaultList, setSessionCredentials } = useAuth();
-  const {
-    accounts,
-    transactions,
-    categories,
-    peopleLedger,
-    budgets,
-    goals,
-    assets,
-    liabilities,
-    documents,
-    plannedExpenses,
-    notes,
-    folders,
-    reloadVaultData,
-  } = useVault();
+  const { activeVault } = useAuth();
+  const { accounts, transactions } = useVault();
 
-  const getDecryptedVaultData = (): VaultData => ({
-    accounts,
-    transactions,
-    categories,
-    peopleLedger,
-    budgets,
-    goals,
-    assets,
-    liabilities,
-    documents,
-    plannedExpenses,
-    notes,
-    folders,
-  });
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [syncStatus, setSyncStatus] = useState(syncEngine.getStatus());
+  const [connectedPeer, setConnectedPeer] = useState(syncEngine.getConnectedPeer());
+  const [isMasterEstablished, setIsMasterEstablished] = useState(() => syncEngine.isMasterEstablished());
 
-  const [activeMode, setActiveMode] = useState<'send' | 'receive'>('send');
-  const [sessionPin, setSessionPin] = useState<string | null>(null);
-  const [inputPin, setInputPin] = useState('');
-  const [progress, setProgress] = useState<P2PProgress>({
-    status: 'idle',
-    message: '',
-  });
-  const [hasCopiedPin, setHasCopiedPin] = useState(false);
-  const [syncSession, setSyncSession] = useState<P2PSyncSession | null>(null);
-
-  // Host session (Send data to another phone/PC)
-  const handleStartHostSession = async () => {
-    if (!activeVault) return;
-    const session = new P2PSyncSession((p) => {
-      setProgress(p);
-      if (p.pin) setSessionPin(p.pin);
+  useEffect(() => {
+    const unsub = syncEngine.onStatusChange((status, peer) => {
+      setSyncStatus(status);
+      if (peer) setConnectedPeer(peer);
+      setIsMasterEstablished(syncEngine.isMasterEstablished());
     });
-    setSyncSession(session);
-
-    try {
-      const data = getDecryptedVaultData();
-      const payload = {
-        vaultMeta: activeVault,
-        data,
-        timestamp: new Date().toISOString(),
-      };
-      await session.hostSession(payload);
-    } catch (err: any) {
-      setProgress({
-        status: 'error',
-        message: 'Failed to initialize pairing session: ' + err.message,
-      });
-    }
-  };
-
-  // Client session (Receive data by entering 6-digit PIN)
-  const handleJoinSession = async () => {
-    if (!inputPin.trim()) return;
-
-    const session = new P2PSyncSession((p) => {
-      setProgress(p);
-    });
-    setSyncSession(session);
-
-    try {
-      await session.joinSession(inputPin.trim(), async (receivedPayload) => {
-        if (!receivedPayload.vaultMeta || !receivedPayload.data) {
-          throw new Error('Invalid vault payload received.');
-        }
-
-        const snapshotJson = JSON.stringify({
-          app: 'KhataGHAR',
-          format: 'khataghar-portable-snapshot',
-          version: 2,
-          isEncrypted: false,
-          vaultMeta: receivedPayload.vaultMeta,
-          data: receivedPayload.data,
-        });
-
-        const imported = await importPlainSnapshot(
-          snapshotJson,
-          inputPin.trim(),
-          `${receivedPayload.vaultMeta.name} (Synced)`
-        );
-
-        await refreshVaultList();
-        setSessionCredentials(imported.vault, imported.key);
-        await reloadVaultData();
-      });
-    } catch (err: any) {
-      setProgress({
-        status: 'error',
-        message: 'Sync failed: ' + err.message,
-      });
-    }
-  };
-
-  const handleCopyPin = () => {
-    if (!sessionPin) return;
-    navigator.clipboard.writeText(sessionPin.replace(/\s+/g, ''));
-    setHasCopiedPin(true);
-    setTimeout(() => setHasCopiedPin(false), 2000);
-  };
+    return unsub;
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -148,7 +49,7 @@ export const P2PSyncCard: React.FC = () => {
         </p>
       </div>
 
-      {/* Main Sync Card */}
+      {/* Main Card */}
       <div className="rounded-2xl border border-line bg-card p-5 sm:p-6 space-y-5 shadow-sm lift">
         {/* Device pairing illustration banner */}
         <div className="flex items-center justify-between p-4 rounded-xl bg-pine-50/70 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 flex-wrap gap-3">
@@ -170,135 +71,91 @@ export const P2PSyncCard: React.FC = () => {
           </div>
         </div>
 
-        {/* Segmented Mode Selector: Send vs Receive */}
-        <div className="flex p-1 rounded-xl bg-moss border border-line max-w-sm">
-          <button
-            onClick={() => {
-              setActiveMode('send');
-              setProgress({ status: 'idle', message: '' });
-              setSessionPin(null);
-            }}
-            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeMode === 'send'
-                ? 'bg-card text-ink shadow-2xs border border-line'
-                : 'text-ink/60 hover:text-ink'
-            }`}
-          >
-            <Laptop className="w-3.5 h-3.5 text-pine-600" />
-            <span>Send from this Device</span>
-          </button>
-          <button
-            onClick={() => {
-              setActiveMode('receive');
-              setProgress({ status: 'idle', message: '' });
-              setSessionPin(null);
-            }}
-            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeMode === 'receive'
-                ? 'bg-card text-ink shadow-2xs border border-line'
-                : 'text-ink/60 hover:text-ink'
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5 text-pine-600" />
-            <span>Receive on this Device</span>
-          </button>
-        </div>
-
-        {/* Send Mode: Generate PIN */}
-        {activeMode === 'send' && (
-          <div className="space-y-4">
-            {!sessionPin ? (
-              <div className="space-y-2">
-                <p className="text-xs text-ink/70">
-                  Ready to stream current vault <b>"{activeVault?.name}"</b> to another phone or computer.
-                </p>
-                <Button
-                  onClick={handleStartHostSession}
-                  variant="primary"
-                  size="sm"
-                >
-                  <KeyRound className="w-3.5 h-3.5 mr-1.5" />
-                  <span>Generate 6-Digit Pairing PIN</span>
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-3 p-5 rounded-xl border border-line bg-card/60 text-center">
-                <span className="text-xs text-ink/60 font-semibold block">
-                  Enter this PIN on your target device:
-                </span>
-
-                <div className="flex items-center justify-center gap-3">
-                  <div className="font-mono font-black text-3xl sm:text-4xl text-pine-700 dark:text-pine-400 tracking-wider">
-                    {sessionPin}
-                  </div>
-                  <button
-                    onClick={handleCopyPin}
-                    className="p-2 rounded-xl border border-line bg-card hover:bg-moss text-ink/70 transition-colors cursor-pointer"
-                    title="Copy PIN"
-                  >
-                    {hasCopiedPin ? <Check className="w-4 h-4 text-pine-600" /> : <Copy className="w-4 h-4" />}
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-center gap-2 text-xs text-ink/50 pt-1">
-                  <span className="w-2 h-2 rounded-full bg-pine-500 animate-ping" />
-                  <span>Listening for connection…</span>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Receive Mode: Enter 6-digit PIN */}
-        {activeMode === 'receive' && (
-          <div className="space-y-4">
-            <p className="text-xs text-ink/70">
-              Enter the 6-digit pairing PIN shown on the sending device:
-            </p>
-
-            <div className="flex items-center gap-2 max-w-sm">
-              <input
-                type="text"
-                placeholder="e.g. 849201"
-                maxLength={7}
-                value={inputPin}
-                onChange={(e) => setInputPin(e.target.value)}
-                className="flex-1 px-3.5 py-2 rounded-xl border border-line bg-card font-mono text-lg font-bold tracking-widest text-ink placeholder:text-ink/30 outline-none focus:border-pine-500"
-              />
-              <Button
-                onClick={handleJoinSession}
-                variant="primary"
-                size="sm"
-                disabled={!inputPin.trim() || progress.status === 'connecting'}
-              >
-                <span>Connect & Sync</span>
-              </Button>
+        {/* Live Pairing Status Bar */}
+        <div className="p-4 rounded-xl border border-line bg-moss/50 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span
+              className={`w-3 h-3 rounded-full shrink-0 ${
+                syncStatus === 'connected'
+                  ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50'
+                  : syncStatus === 'syncing'
+                  ? 'bg-amber-500 animate-ping'
+                  : syncStatus === 'waiting'
+                  ? 'bg-amber-400 animate-pulse'
+                  : syncStatus === 'connecting'
+                  ? 'bg-blue-500 animate-spin'
+                  : 'bg-ink/30'
+              }`}
+            />
+            <div>
+              <span className="font-bold text-xs text-ink block">
+                {syncStatus === 'connected'
+                  ? `Paired with ${connectedPeer?.deviceName || 'Remote Peer'}`
+                  : syncStatus === 'syncing'
+                  ? 'Transferring encrypted vault data...'
+                  : syncStatus === 'waiting'
+                  ? 'Waiting for device to connect...'
+                  : 'No active device pair linked'}
+              </span>
+              <span className="text-[11px] text-ink/50 block">
+                {isMasterEstablished
+                  ? 'Primary master established: vaults mirror cleanly with zero duplication.'
+                  : 'First-time setup: select which device is master to avoid clutter.'}
+              </span>
             </div>
           </div>
-        )}
 
-        {/* Status Message Strip */}
-        {progress.message && (
-          <div
-            className={`p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 ${
-              progress.status === 'synced'
-                ? 'bg-pine-50 dark:bg-pine-950/40 border-pine-200 text-pine-700 dark:text-pine-300'
-                : progress.status === 'error'
-                ? 'bg-flare-50 dark:bg-flare-950/40 border-flare-200 text-flare-700 dark:text-flare-300'
-                : 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 text-indigo-700 dark:text-indigo-300'
-            }`}
+          <Button
+            onClick={() => setIsModalOpen(true)}
+            variant="primary"
+            size="sm"
           >
-            {progress.status === 'synced' ? (
-              <CheckCircle2 className="w-4 h-4 text-pine-600 shrink-0" />
-            ) : progress.status === 'error' ? (
-              <AlertCircle className="w-4 h-4 text-flare-600 shrink-0" />
-            ) : (
-              <RefreshCw className="w-4 h-4 text-indigo-600 animate-spin shrink-0" />
-            )}
-            <span>{progress.message}</span>
+            <KeyRound className="w-3.5 h-3.5 mr-1.5" />
+            <span>Open P2P Sync Hub</span>
+          </Button>
+        </div>
+
+        {/* Feature Points */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs text-ink/70">
+          <div className="p-3 rounded-xl border border-line bg-card/60 space-y-1">
+            <div className="font-bold text-ink flex items-center gap-1.5">
+              <Crown className="w-3.5 h-3.5 text-amber-500" />
+              <span>Master Device Selection</span>
+            </div>
+            <p className="text-[11px] text-ink/50">
+              Pick which device holds verified data so initial sync clones cleanly without duplicates.
+            </p>
           </div>
-        )}
+
+          <div className="p-3 rounded-xl border border-line bg-card/60 space-y-1">
+            <div className="font-bold text-ink flex items-center gap-1.5">
+              <ArrowLeftRight className="w-3.5 h-3.5 text-pine-600" />
+              <span>Instant Local Relay</span>
+            </div>
+            <p className="text-[11px] text-ink/50">
+              Zero open ports, zero port-forwarding. Works seamlessly across Wi-Fi and mobile networks.
+            </p>
+          </div>
+
+          <div className="p-3 rounded-xl border border-line bg-card/60 space-y-1">
+            <div className="font-bold text-ink flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Native Notifications</span>
+            </div>
+            <p className="text-[11px] text-ink/50">
+              Get immediate alerts on desktop & Android when a sync completes or pairing links.
+            </p>
+          </div>
+        </div>
       </div>
+
+      {/* P2P Sync Dialog Modal */}
+      {isModalOpen && (
+        <P2PSyncModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

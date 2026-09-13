@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session } = require('electron');
+const { app, BrowserWindow, ipcMain, session, Notification } = require('electron');
 const path = require('path');
 const db = require('./db.cjs');
 
@@ -151,6 +151,22 @@ function registerIpcHandlers() {
       try { global.gc(); } catch {}
     }
     return { success: true };
+  });
+
+  ipcMain.handle('show-notification', async (_event, options) => {
+    try {
+      if (Notification.isSupported()) {
+        new Notification({
+          title: options?.title || 'KhataGHAR',
+          body: options?.body || '',
+          icon: path.join(__dirname, '../build/icon.png'),
+        }).show();
+        return true;
+      }
+    } catch (e) {
+      console.warn('Electron notification error:', e);
+    }
+    return false;
   });
 }
 

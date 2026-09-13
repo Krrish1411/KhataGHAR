@@ -24,4 +24,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getMemoryUsage: () => ipcRenderer.invoke('system-memory-usage'),
     clearCache: () => ipcRenderer.invoke('system-clear-cache'),
   },
+
+  notification: {
+    show: (options) => ipcRenderer.invoke('show-notification', options),
+  },
 });

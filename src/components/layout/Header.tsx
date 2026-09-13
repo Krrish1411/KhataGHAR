@@ -21,12 +21,14 @@ import {
   IndianRupee,
   HelpCircle,
   KeyRound,
+  ArrowLeftRight,
 } from 'lucide-react';
 
 interface HeaderProps {
   onOpenQuickAdd: () => void;
   onToggleMobileMenu: () => void;
   onOpenWelcome?: () => void;
+  onOpenSync?: () => void;
 }
 
 const THEME_PRESETS: Array<{ id: ThemePalette; name: string; isDark: boolean; color: string }> = [
@@ -40,7 +42,7 @@ const THEME_PRESETS: Array<{ id: ThemePalette; name: string; isDark: boolean; co
   { id: 'graphite', name: 'Monochrome', isDark: true, color: '#18181b' },
 ];
 
-export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMenu, onOpenWelcome }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMenu, onOpenWelcome, onOpenSync }) => {
   const { activeVault, allVaults, lockVault, unlockVaultWithPassword } = useAuth();
   const { isPrivacyMode, togglePrivacy } = usePrivacy();
   const { currentPalette, setTheme } = useTheme();
@@ -204,6 +206,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
           >
             {isPrivacyMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
           </button>
+
+          {/* P2P Sync Hub Button */}
+          {onOpenSync && (
+            <button
+              onClick={onOpenSync}
+              title="P2P Device Sync (6-Digit PIN)"
+              className="p-2 rounded-xl bg-card border border-line text-ink/70 hover:border-pine-300 transition-colors cursor-pointer"
+              aria-label="Open P2P Device Sync"
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5 text-pine-600" />
+            </button>
+          )}
 
           {/* PaisaBook 8-Theme Palette Selector */}
           <div className="relative">

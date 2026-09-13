@@ -26,6 +26,7 @@ import { cn } from '../../utils/cn';
 interface SidebarProps {
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
+  onOpenSync?: () => void;
 }
 
 // Nav grouped into logical sections — clear labels for 100% discoverability
@@ -67,7 +68,7 @@ const NAV_GROUPS = [
   },
 ];
 
-export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile, onOpenSync }) => {
   const [isInstallOpen, setIsInstallOpen] = useState(false);
 
   useEffect(() => {
@@ -95,7 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
       {/* Sidebar Container */}
       <aside
         className={cn(
-          'fixed md:sticky top-0 left-0 z-40 h-screen w-64 flex flex-col',
+          'fixed md:sticky top-0 left-0 z-40 h-screen w-64 flex flex-col shrink-0',
           'bg-card',
           'border-r border-line',
           'transition-transform duration-200 ease-out md:translate-x-0',
@@ -170,6 +171,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
             </div>
           ))}
         </nav>
+
+        {/* P2P Device Sync Action */}
+        {onOpenSync && (
+          <div className="px-3 pb-1.5 flex-shrink-0">
+            <button
+              onClick={() => {
+                onCloseMobile?.();
+                onOpenSync();
+              }}
+              className="w-full flex items-center justify-between py-2 px-3 rounded-xl bg-card hover:bg-moss border border-line text-xs font-bold text-ink/80 hover:text-ink transition-all cursor-pointer shadow-2xs group"
+            >
+              <div className="flex items-center gap-2">
+                <ArrowLeftRight className="w-3.5 h-3.5 text-pine-600 group-hover:rotate-180 transition-transform duration-300" />
+                <span>P2P Device Sync</span>
+              </div>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-xs" />
+            </button>
+          </div>
+        )}
 
         {/* Install Standalone App CTA */}
         <div className="px-3 pb-2 flex-shrink-0">

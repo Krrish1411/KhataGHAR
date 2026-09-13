@@ -9,6 +9,7 @@ import { WelcomeModal } from '../common/WelcomeModal';
 import { OnboardingModal } from '../security/OnboardingModal';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
+import { P2PSyncModal } from '../sync/P2PSyncModal';
 import { useAuth } from '../../context/AuthContext';
 import { usePrivacy } from '../../context/PrivacyContext';
 import { Sparkles, ArrowRight, LogOut, Keyboard } from 'lucide-react';
@@ -27,6 +28,7 @@ export const AppLayout: React.FC = () => {
   const [quickAddType, setQuickAddType] = useState<TransactionEntryMode>('expense');
   const [isNewVaultOpen, setIsNewVaultOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [isWelcomeOpen, setIsWelcomeOpen] = useState(() => !localStorage.getItem('khataghar_welcome_seen'));
 
   const effectiveShortcuts = useMemo(
@@ -117,16 +119,17 @@ export const AppLayout: React.FC = () => {
   return (
     <div
       style={{ zoom: isNotesView ? 1 : 1.05 }}
-      className={`${isNotesView ? 'h-screen overflow-hidden' : 'min-h-screen'} flex bg-ground text-ink transition-colors`}
+      className="h-screen overflow-hidden flex bg-ground text-ink transition-colors"
     >
-      {/* Desktop Sidebar + Mobile Drawer */}
+      {/* Desktop Fixed Sidebar + Mobile Drawer */}
       <Sidebar
         isMobileOpen={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
+        onOpenSync={() => setIsSyncModalOpen(true)}
       />
 
-      {/* Main Content Column */}
-      <div className={`flex-1 flex flex-col min-w-0 ${isNotesView ? 'h-screen overflow-hidden pb-0' : 'pb-20 md:pb-8'}`}>
+      {/* Main Content Column (Scrolls independently while Sidebar remains fixed) */}
+      <div className={`flex-1 flex flex-col min-w-0 h-screen overflow-y-auto overflow-x-hidden custom-scrollbar ${isNotesView ? 'overflow-hidden pb-0' : 'pb-20 md:pb-8'}`}>
         {/* Demo Mode Top Banner */}
         {isDemoMode && (
           <div className="shrink-0 bg-gradient-to-r from-pine-900 via-pine-800 to-pine-950 text-white px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 border-b border-pine-700/60 shadow-xs">
@@ -160,12 +163,21 @@ export const AppLayout: React.FC = () => {
           onOpenQuickAdd={() => setIsQuickAddOpen(true)}
           onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           onOpenWelcome={() => setIsWelcomeOpen(true)}
+          onOpenSync={() => setIsSyncModalOpen(true)}
         />
 
         <main className={`flex-1 w-full min-h-0 ${isNotesView ? 'px-3 sm:px-6 lg:px-8 py-3.5 flex flex-col overflow-hidden' : 'px-3 sm:px-6 lg:px-8 py-5'}`}>
           <Outlet />
         </main>
       </div>
+
+      {/* P2P Device Sync Modal */}
+      {isSyncModalOpen && (
+        <P2PSyncModal
+          isOpen={isSyncModalOpen}
+          onClose={() => setIsSyncModalOpen(false)}
+        />
+      )}
 
       {/* Mobile Bottom Navigation */}
       <BottomNav

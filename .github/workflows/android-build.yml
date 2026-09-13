@@ -31,13 +31,10 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --include=dev
 
       - name: Build web application
         run: npm run build
-
-      - name: Sync Capacitor Android
-        run: npx cap sync android
 
       - name: Accept Android SDK Licenses
         run: |
@@ -48,6 +45,12 @@ jobs:
           if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
             yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           fi
+
+      - name: Sync Capacitor Android
+        run: |
+          mkdir -p android/app/src/main/assets/public
+          cp -r dist/* android/app/src/main/assets/public/
+          npx cap sync android
 
       - name: Build Android APK via Gradle
         run: |
