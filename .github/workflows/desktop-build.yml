@@ -15,7 +15,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: windows-latest
+            platform_flag: --win
+            artifact_name: KhataGHAR-Desktop-Windows
+            artifact_path: release/*.exe
+          - os: ubuntu-latest
+            platform_flag: --linux
+            artifact_name: KhataGHAR-Desktop-Linux
+            artifact_path: |
+              release/*.AppImage
+              release/*.deb
+          - os: macos-latest
+            platform_flag: --mac
+            artifact_name: KhataGHAR-Desktop-macOS
+            artifact_path: |
+              release/*.dmg
+              release/*.zip
 
     steps:
       - name: Checkout repository
@@ -34,16 +50,14 @@ jobs:
         run: npm run build
 
       - name: Build Desktop Binaries
-        run: npx --yes electron-builder --publish never
+        run: npx electron-builder ${{ matrix.platform_flag }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload Desktop Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: KhataGHAR-Desktop-${{ matrix.os }}
-          path: |
-            release/*.exe
-            release/*.AppImage
-            release/*.deb
-            release/*.dmg
-            release/*.zip
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
           retention-days: 14
+

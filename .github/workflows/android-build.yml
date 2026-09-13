@@ -23,9 +23,6 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
@@ -38,19 +35,17 @@ jobs:
       - name: Build web application
         run: npm run build
 
-      - name: Initialize or Sync Capacitor Android
-        run: |
-          if [ ! -d "android" ]; then
-            npx --yes @capacitor/cli add android
-          fi
-          npx --yes @capacitor/cli sync android
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+
+      - name: Accept Android SDK Licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Build Android APK via Gradle
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
-          ./gradlew assembleRelease || true
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
@@ -59,10 +54,3 @@ jobs:
           path: android/app/build/outputs/apk/debug/*.apk
           retention-days: 14
 
-      - name: Upload Release APK Artifact
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: KhataGHAR-Android-Release-APK
-          path: android/app/build/outputs/apk/release/*.apk
-          retention-days: 14

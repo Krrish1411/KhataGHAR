@@ -50,6 +50,7 @@
     "artifactName": "KhataGHAR-${version}.${ext}"
   },
   "mac": {
+    "identity": null,
     "target": [
       {
         "target": "dmg",

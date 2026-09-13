@@ -2,6 +2,8 @@
   "name": "khata-ghar",
   "private": true,
   "version": "1.0.0",
+  "description": "KhataGHAR — Sovereign Wealth Operating System",
+  "author": "KhataGHAR",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -14,6 +16,7 @@
     "cap:open": "cap open android"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.2",
     "clsx": "^2.1.1",
     "dexie": "^4.0.11",
     "html2canvas": "^1.4.1",
@@ -28,12 +31,16 @@
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
     "@tailwindcss/forms": "^0.5.10",
     "@types/node": "^22.13.4",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
     "javascript-obfuscator": "^5.7.0",
     "postcss": "^8.5.2",
     "tailwindcss": "^3.4.17",

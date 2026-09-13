@@ -37,3 +37,6 @@ temp/
 
 # OS files
 Thumbs.db
+
+# Electron build release
+release/
