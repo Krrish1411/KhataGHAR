@@ -26,6 +26,7 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: '#0a0f0c',
     title: 'KhataGHAR — Sovereign Wealth Operating System',
+    icon: path.join(__dirname, '../build/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,

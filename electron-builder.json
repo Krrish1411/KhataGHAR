@@ -13,6 +13,7 @@
   ],
   "asar": true,
   "win": {
+    "icon": "build/icon.ico",
     "target": [
       {
         "target": "nsis",
@@ -36,6 +37,8 @@
     "artifactName": "KhataGHAR-Portable-${version}.exe"
   },
   "linux": {
+    "icon": "build/icons",
+    "maintainer": "KhataGHAR <support@khataghar.org>",
     "target": [
       {
         "target": "AppImage",
@@ -50,6 +53,7 @@
     "artifactName": "KhataGHAR-${version}.${ext}"
   },
   "mac": {
+    "icon": "build/icon.icns",
     "identity": null,
     "target": [
       {

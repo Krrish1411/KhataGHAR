@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "description": "KhataGHAR — Sovereign Wealth Operating System",
-  "author": "KhataGHAR",
+  "author": "KhataGHAR <support@khataghar.org>",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
