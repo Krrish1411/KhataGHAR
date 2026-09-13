@@ -1,11 +1,50 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import JavaScriptObfuscator from 'javascript-obfuscator';
+
+// Custom plugin for production code protection & anti-reverse-engineering
+function codeProtectionPlugin() {
+  return {
+    name: 'khataghar-code-protection',
+    apply: 'build' as const,
+    enforce: 'post' as const,
+    renderChunk(code: string, chunk: any) {
+      // Obfuscate application core logic chunks (skip pure third-party vendor libraries to maintain high runtime performance)
+      if (chunk.name?.includes('vendor') || chunk.fileName?.includes('vendor')) {
+        return null;
+      }
+
+      const result = JavaScriptObfuscator.obfuscate(code, {
+        compact: true,
+        controlFlowFlattening: true,
+        controlFlowFlatteningThreshold: 0.35,
+        numbersToExpressions: true,
+        simplify: true,
+        stringArray: true,
+        stringArrayEncoding: ['base64'],
+        stringArrayThreshold: 0.7,
+        splitStrings: true,
+        splitStringsChunkLength: 12,
+        identifierNamesGenerator: 'hexadecimal',
+        renameGlobals: false,
+        transformObjectKeys: false, // Preserves React JSX props and DOM attributes
+        deadCodeInjection: false,   // Keeps RAM and bundle size compact
+        disableConsoleOutput: true,
+      });
+
+      return {
+        code: result.getObfuscatedCode(),
+        map: null,
+      };
+    },
+  };
+}
 
 export default defineConfig({
   base: './',
   build: {
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
         manualChunks: {
@@ -19,6 +58,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    codeProtectionPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',

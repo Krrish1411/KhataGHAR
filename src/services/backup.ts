@@ -100,7 +100,7 @@ export async function importVaultEncrypted(
   backupJsonString: string,
   backupSecret: string,
   newVaultNameOverride?: string
-): Promise<{ vault: VaultMeta; data: VaultData }> {
+): Promise<{ vault: VaultMeta; data: VaultData; key: CryptoKey }> {
   const backupObj = JSON.parse(backupJsonString) as BackupFileStructure;
 
   if (backupObj.header?.app !== 'KhataGhar') {
@@ -209,6 +209,7 @@ export async function importVaultEncrypted(
   return {
     vault: restoredVault,
     data: parsed.data,
+    key: newVaultKey,
   };
 }
 
@@ -224,3 +225,78 @@ export function downloadFile(content: string, filename: string, mimeType: string
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// Restore Vault from Unencrypted Portable Snapshot (.khataghar)
+export async function importPlainSnapshot(
+  snapshotJsonString: string,
+  masterPassword: string,
+  overrideName?: string
+): Promise<{ vault: VaultMeta; data: VaultData; key: CryptoKey }> {
+  const parsed = JSON.parse(snapshotJsonString);
+  const data: VaultData = parsed.data;
+  if (!data) throw new Error('Invalid snapshot: missing data payload.');
+
+  const sourceMeta = parsed.vaultMeta || {};
+  const newVaultSalt = generateSalt();
+  const newVaultKey = await deriveKey(masterPassword, newVaultSalt);
+  const verifier = await generateVerifier(newVaultKey);
+
+  const restoredVault: VaultMeta = {
+    ...sourceMeta,
+    id: generateUUID(),
+    name: overrideName || (sourceMeta.name ? `${sourceMeta.name} (Restored)` : 'Restored Vault'),
+    currency: sourceMeta.currency || 'INR',
+    numberFormat: sourceMeta.numberFormat || 'indian',
+    fyStartMonth: sourceMeta.fyStartMonth || 4,
+    includeInFamilyOverview: sourceMeta.includeInFamilyOverview ?? true,
+    autoLockMinutes: sourceMeta.autoLockMinutes ?? 15,
+    exchangeRates: sourceMeta.exchangeRates || { USD: 83.5, EUR: 90.2, GBP: 105.4, AED: 22.7, SGD: 62.1, CAD: 61.2, AUD: 54.8 },
+    isPrimary: false,
+    createdAt: new Date().toISOString(),
+    salt: newVaultSalt,
+    verifier,
+  };
+
+  await db.vaults.put(restoredVault);
+
+  const encryptedRecords: Array<{ id: string; vaultId: string; type: any; iv: string; ciphertext: string; updatedAt: string }> = [];
+
+  const types: Array<{ type: any; items: any[] }> = [
+    { type: 'account', items: data.accounts || [] },
+    { type: 'transaction', items: data.transactions || [] },
+    { type: 'category', items: data.categories || [] },
+    { type: 'people', items: data.peopleLedger || [] },
+    { type: 'budget', items: data.budgets || [] },
+    { type: 'goal', items: data.goals || [] },
+    { type: 'asset', items: data.assets || [] },
+    { type: 'liability', items: data.liabilities || [] },
+    { type: 'document', items: data.documents || [] },
+    { type: 'plan', items: data.plannedExpenses || [] },
+    { type: 'note', items: (data as any).notes || [] },
+    { type: 'folder', items: (data as any).folders || [] },
+  ];
+
+  for (const group of types) {
+    for (const item of group.items) {
+      item.vaultId = restoredVault.id;
+      const enc = await encryptData(item, newVaultKey);
+      encryptedRecords.push({
+        id: item.id,
+        vaultId: restoredVault.id,
+        type: group.type,
+        iv: enc.iv,
+        ciphertext: enc.ciphertext,
+        updatedAt: item.updatedAt || new Date().toISOString(),
+      });
+    }
+  }
+
+  await db.records.bulkPut(encryptedRecords);
+
+  return {
+    vault: restoredVault,
+    data,
+    key: newVaultKey,
+  };
+}
+

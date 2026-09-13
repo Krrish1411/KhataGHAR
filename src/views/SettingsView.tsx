@@ -10,12 +10,6 @@ import { Card } from '../components/common/Card';
 import { PasswordStrengthMeter } from '../components/security/PasswordStrengthMeter';
 import { OnboardingModal } from '../components/security/OnboardingModal';
 import { SyncMergedVaultModal } from '../components/vault/SyncMergedVaultModal';
-import {
-  exportVaultEncrypted,
-  importVaultEncrypted,
-  downloadFile,
-  generate12WordPassphrase,
-} from '../services/backup';
 import { changeVaultPassword, deleteVaultCompletely } from '../services/storage';
 import { isAcceptablePassword, hashStringSHA256, deriveKey, encryptData } from '../services/crypto';
 import type { CurrencyCode, NumberFormatType, Account, Transaction } from '../types';
@@ -48,9 +42,13 @@ import {
   Layers,
   AlertCircle,
   CheckCircle2,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { IconRenderer } from '../components/common/IconRenderer';
 import { APP_SHORTCUTS, formatKeyDisplay } from '../services/shortcuts';
+import { UniversalBackupCard } from '../components/settings/UniversalBackupCard';
+import { P2PSyncCard } from '../components/settings/P2PSyncCard';
+import { StorageDiagnosticsCard } from '../components/settings/StorageDiagnosticsCard';
 
 export const SettingsView: React.FC = () => {
   const { activeVault, sessionKey, lockVault, refreshVaultList, setActiveVaultMeta, setSessionCredentials } =
@@ -80,6 +78,7 @@ export const SettingsView: React.FC = () => {
 
   const [vaultNameInput, setVaultNameInput] = useState(activeVault?.name || '');
   const [vaultNameSuccess, setVaultNameSuccess] = useState('');
+  const [activeTab, setActiveTab] = useState<'general' | 'security' | 'storage' | 'backups' | 'sync'>('general');
 
   useEffect(() => {
     if (activeVault?.name) {
@@ -204,22 +203,6 @@ export const SettingsView: React.FC = () => {
   const [passwordChangeSuccess, setPasswordChangeSuccess] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
-  // Backup Export State
-  const [backupSecret, setBackupSecret] = useState('');
-  const [confirmBackupSecret, setConfirmBackupSecret] = useState('');
-  const [showBackupPassword, setShowBackupPassword] = useState(false);
-  const [showConfirmBackupPassword, setShowConfirmBackupPassword] = useState(false);
-  const [use12WordPhrase, setUse12WordPhrase] = useState(false);
-  const [generatedPhrase, setGeneratedPhrase] = useState('');
-  const [copiedPhrase, setCopiedPhrase] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-
-  // Backup Restore State
-  const [restoreFileText, setRestoreFileText] = useState('');
-  const [restoreSecret, setRestoreSecret] = useState('');
-  const [restoreError, setRestoreError] = useState('');
-  const [restoreSuccess, setRestoreSuccess] = useState('');
-  const [isRestoring, setIsRestoring] = useState(false);
 
   const handleUpdateBaseCurrency = async (val: CurrencyCode) => {
     await updateVaultSettings({ currency: val });
@@ -406,92 +389,6 @@ export const SettingsView: React.FC = () => {
     }
   };
 
-  // Generate 12-Word Passphrase for Backup
-  const handleGenerate12Word = () => {
-    const phrase = generate12WordPassphrase();
-    setGeneratedPhrase(phrase);
-    setBackupSecret(phrase);
-  };
-
-  // Export Encrypted Backup
-  const handleExportBackup = async () => {
-    if (!activeVault || !sessionKey) return;
-    if (!backupSecret || backupSecret.length < 8) {
-      alert('Please provide a backup password or passphrase of at least 8 characters.');
-      return;
-    }
-
-    if (!use12WordPhrase && backupSecret !== confirmBackupSecret) {
-      alert('Backup passwords do not match. Please verify your confirmation password.');
-      return;
-    }
-
-    setIsExporting(true);
-    try {
-      const backupJson = await exportVaultEncrypted(
-        activeVault,
-        {
-          accounts,
-          transactions,
-          categories,
-          peopleLedger,
-          budgets,
-          goals,
-          assets,
-          liabilities,
-          documents,
-          notes,
-          folders,
-        },
-        backupSecret
-      );
-
-      const dateStr = new Date().toISOString().split('T')[0];
-      const filename = `KhataGhar_Backup_${activeVault.name.replace(/\s+/g, '_')}_${dateStr}.khataghar`;
-      downloadFile(backupJson, filename, 'application/json');
-    } catch (err: any) {
-      alert(`Export failed: ${err.message}`);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  // Handle file select for restore
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setRestoreFileText(event.target?.result as string);
-      setRestoreError('');
-    };
-    reader.readAsText(file);
-  };
-
-  // Restore Vault Handler
-  const handleRestoreBackup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!restoreFileText || !restoreSecret) {
-      setRestoreError('Please select a backup file and provide its password / phrase.');
-      return;
-    }
-
-    setIsRestoring(true);
-    setRestoreError('');
-    setRestoreSuccess('');
-
-    try {
-      const restored = await importVaultEncrypted(restoreFileText, restoreSecret);
-      setRestoreSuccess(`Vault "${restored.vault.name}" successfully restored and encrypted!`);
-      await refreshVaultList();
-      setActiveVaultMeta(restored.vault);
-    } catch (err: any) {
-      setRestoreError(err.message || 'Failed to decrypt and restore backup file.');
-    } finally {
-      setIsRestoring(false);
-    }
-  };
 
   // Delete Vault Completely
   const handleDeleteVault = async () => {
@@ -525,11 +422,42 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* General & Formatting Preferences */}
-      <div className="space-y-3">
-        <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink/75 px-1">
-          General & Formatting Preferences
-        </h3>
+      {/* 5-Tab Navigation Bar */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 border-b border-line">
+        {[
+          { id: 'general', label: 'General & Preferences', icon: Settings },
+          { id: 'security', label: 'Security & Camouflage', icon: ShieldCheck },
+          { id: 'storage', label: 'Storage & SQLite', icon: Database },
+          { id: 'backups', label: 'Backups & Migration', icon: Download },
+          { id: 'sync', label: 'P2P Device Sync', icon: ArrowLeftRight },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+                isActive
+                  ? 'bg-pine-700 text-white shadow-xs'
+                  : 'text-ink/65 hover:text-ink hover:bg-moss'
+              }`}
+            >
+              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-pine-600'}`} />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* TAB 1: General & Preferences */}
+      {activeTab === 'general' && (
+        <div className="space-y-8">
+          {/* General & Formatting Preferences */}
+          <div className="space-y-3">
+            <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink/75 px-1">
+              General & Formatting Preferences
+            </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
           {/* Vault Name / Renaming */}
@@ -700,542 +628,9 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       </div>
+          
 
-            {/* 2-Column Responsive Grid: Eliminates dead space & balances cards side by side */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        {/* Left Column: Access, Backups & Datasets */}
-        <div className="space-y-6">
-{/* Master Password Re-Encryption */}
-      <div className="space-y-3">
-        <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink/75 px-1 flex items-center gap-2">
-          <KeyRound className="w-4 h-4 text-pine-600" />
-          <span>Change Master Password (Re-encrypt Vault)</span>
-        </h3>
-
-        <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-4 shadow-sm lift">
-          <p className="text-xs text-ink/60 leading-relaxed">
-            Changing your password derives a new PBKDF2-SHA256 key and re-encrypts every single record in this vault atomically.
-          </p>
-
-          {passwordChangeSuccess && (
-            <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold">
-              {passwordChangeSuccess}
-            </div>
-          )}
-
-          {passwordChangeError && (
-            <div className="p-3 rounded-xl bg-flare-100/70 border border-flare-500/30 text-flare-600 text-xs font-semibold">
-              {passwordChangeError}
-            </div>
-          )}
-
-          <form onSubmit={handleChangePassword} className="space-y-3">
-            <Input
-              type="password"
-              label="New Master Password"
-              placeholder="Enter new password…"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-            />
-
-            {newPassword && <PasswordStrengthMeter password={newPassword} />}
-
-            <Input
-              type="password"
-              label="Confirm New Password"
-              placeholder="Re-enter new password…"
-              value={confirmNewPassword}
-              onChange={(e) => setConfirmNewPassword(e.target.value)}
-              required
-            />
-
-            <Button
-              type="submit"
-              variant="primary"
-              size="sm"
-              isLoading={isChangingPassword}
-            >
-              <span>Update Password & Re-encrypt</span>
-            </Button>
-          </form>
-        </div>
-      </div>
-
-      {/* Backup & Export */}
-      <div className="space-y-3">
-        <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink/75 px-1 flex items-center gap-2">
-          <Download className="w-4 h-4 text-pine-600" />
-          <span>Export Encrypted Backup (.khataghar)</span>
-        </h3>
-
-        <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-4 shadow-sm lift">
-          <p className="text-xs text-ink/60 leading-relaxed">
-            Export a zero-knowledge encrypted backup file containing all accounts, transactions, documents, and ledger entries.
-          </p>
-
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-xs text-ink">
-              <input
-                type="checkbox"
-                id="use12words"
-                checked={use12WordPhrase}
-                onChange={(e) => {
-                  setUse12WordPhrase(e.target.checked);
-                  if (e.target.checked) handleGenerate12Word();
-                  else {
-                    setGeneratedPhrase('');
-                    setBackupSecret('');
-                  }
-                }}
-                className="rounded text-pine-600 focus:ring-pine-500 w-4 h-4 cursor-pointer"
-              />
-              <label htmlFor="use12words" className="cursor-pointer font-semibold">
-                Generate 12-Word Passphrase for this backup
-              </label>
-            </div>
-
-            {use12WordPhrase && generatedPhrase ? (
-              <div className="p-3.5 rounded-xl bg-moss/70 border border-line space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-pine-700 dark:text-pine-400 block">
-                    Write down these 12 words in order:
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(generatedPhrase);
-                        setCopiedPhrase(true);
-                        setTimeout(() => setCopiedPhrase(false), 2000);
-                      }}
-                      className="px-2 py-1 rounded-lg border border-line bg-card hover:bg-moss text-[10.5px] font-semibold text-ink flex items-center gap-1 cursor-pointer transition-all"
-                    >
-                      {copiedPhrase ? <Check className="w-3 h-3 text-pine-600" /> : <Copy className="w-3 h-3 text-pine-600" />}
-                      <span>{copiedPhrase ? 'Copied' : 'Copy'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const blob = new Blob([`KhataGHAR 12-Word Recovery Key\nCreated: ${new Date().toLocaleString()}\nVault: ${activeVault?.name}\n\nRecovery Words:\n${generatedPhrase}\n\nKeep this file private and secure!`], { type: 'text/plain' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `${(activeVault?.name || 'khataghar').toLowerCase().replace(/\s+/g, '_')}_recovery_key.txt`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }}
-                      className="px-2 py-1 rounded-lg border border-line bg-card hover:bg-moss text-[10.5px] font-semibold text-ink flex items-center gap-1 cursor-pointer transition-all"
-                    >
-                      <Download className="w-3 h-3 text-pine-600" />
-                      <span>Download .txt</span>
-                    </button>
-                  </div>
-                </div>
-                <div className="p-2.5 rounded-lg bg-card border border-line font-mono text-xs font-bold text-ink tracking-wide select-all">
-                  {generatedPhrase}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div>
-                  <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
-                    <span>Backup Decryption Password</span>
-                    <button
-                      type="button"
-                      onClick={() => setShowBackupPassword(!showBackupPassword)}
-                      className="text-pine-600 hover:text-pine-700 flex items-center gap-1 font-semibold cursor-pointer lowercase"
-                    >
-                      {showBackupPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                      <span>{showBackupPassword ? 'hide' : 'show'}</span>
-                    </button>
-                  </div>
-                  <input
-                    type={showBackupPassword ? 'text' : 'password'}
-                    placeholder="Enter strong password (min 8 chars)…"
-                    value={backupSecret}
-                    onChange={(e) => setBackupSecret(e.target.value)}
-                    className="w-full rounded-xl border border-line bg-card px-3.5 py-2.5 text-xs text-ink font-mono placeholder:text-ink/30 outline-none focus:border-pine-500 focus:ring-2 focus:ring-pine-500/20"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
-                    <span>Confirm Backup Password</span>
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmBackupPassword(!showConfirmBackupPassword)}
-                      className="text-pine-600 hover:text-pine-700 flex items-center gap-1 font-semibold cursor-pointer lowercase"
-                    >
-                      {showConfirmBackupPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                      <span>{showConfirmBackupPassword ? 'hide' : 'show'}</span>
-                    </button>
-                  </div>
-                  <input
-                    type={showConfirmBackupPassword ? 'text' : 'password'}
-                    placeholder="Re-enter password to confirm…"
-                    value={confirmBackupSecret}
-                    onChange={(e) => setConfirmBackupSecret(e.target.value)}
-                    className={`w-full rounded-xl border bg-card px-3.5 py-2.5 text-xs text-ink font-mono placeholder:text-ink/30 outline-none transition-all ${
-                      confirmBackupSecret.length > 0
-                        ? backupSecret === confirmBackupSecret && backupSecret.length >= 8
-                          ? 'border-pine-500 ring-2 ring-pine-500/20'
-                          : 'border-flare-500 ring-2 ring-flare-500/20'
-                        : 'border-line focus:border-pine-500'
-                    }`}
-                  />
-                </div>
-
-                {/* Match indicator feedback */}
-                {confirmBackupSecret.length > 0 && (
-                  <div
-                    className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center gap-2 ${
-                      backupSecret === confirmBackupSecret && backupSecret.length >= 8
-                        ? 'bg-pine-50 dark:bg-pine-950/60 border-pine-200 dark:border-pine-800 text-pine-700 dark:text-pine-300'
-                        : 'bg-flare-50 dark:bg-flare-950/60 border-flare-200 dark:border-flare-800 text-flare-700 dark:text-flare-300'
-                    }`}
-                  >
-                    {backupSecret === confirmBackupSecret && backupSecret.length >= 8 ? (
-                      <>
-                        <CheckCircle2 className="w-4 h-4 text-pine-600 shrink-0" />
-                        <span>Passwords match! You are safe to download your encrypted backup.</span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="w-4 h-4 text-flare-600 shrink-0" />
-                        <span>
-                          {backupSecret !== confirmBackupSecret
-                            ? 'Passwords do not match. Please ensure both fields are identical to avoid losing access.'
-                            : 'Password must be at least 8 characters long.'}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <Button
-              onClick={handleExportBackup}
-              variant="primary"
-              size="sm"
-              isLoading={isExporting}
-              disabled={!use12WordPhrase && (backupSecret.length < 8 || backupSecret !== confirmBackupSecret)}
-            >
-              <Download className="w-4 h-4 mr-1.5" />
-              <span>Download Encrypted File</span>
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Ledger Maintenance & Demo Data */}
-      <div className="space-y-3">
-        <h3 className="font-display font-bold text-xs uppercase tracking-wider text-pine-700 dark:text-pine-400 px-1 flex items-center gap-2">
-          <Database className="w-4 h-4 text-pine-600" />
-          <span>Ledger Maintenance & Demo Data</span>
-        </h3>
-
-        <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-4 shadow-sm lift">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-ink/70">Current Ledger Size</span>
-            <span className="font-mono font-bold text-ink num">
-              {transactions.length} entries · {accounts.length} accounts · {peopleLedger.length} people records
-            </span>
-          </div>
-
-          {/* Reconcile Section */}
-          <div className="pt-3 border-t border-line/60 space-y-2">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="space-y-0.5">
-                <div className="font-bold text-xs text-ink flex items-center gap-1.5">
-                  <RefreshCw className="w-3.5 h-3.5 text-pine-600" />
-                  <span>Reconcile Account Balances</span>
-                </div>
-                <p className="text-[11px] text-ink/50 leading-relaxed">
-                  Recalculates all balances from the complete double-entry transaction ledger and people records, preserving opening balances.
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                isLoading={isReconciling}
-                onClick={handleReconcile}
-                className="shrink-0"
-              >
-                <RefreshCw className="w-3.5 h-3.5 mr-1.5 text-pine-600" />
-                <span>Reconcile Balances</span>
-              </Button>
-            </div>
-            {reconcileSuccess && (
-              <div className="p-2.5 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-pine-600 shrink-0" />
-                <span>{reconcileSuccess}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Demo Data Section */}
-          <div className="pt-3 border-t border-line/60 space-y-2">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="space-y-0.5">
-                <div className="font-bold text-xs text-ink flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-pine-600" />
-                  <span>Load Realistic Indian Demo Data</span>
-                </div>
-                <p className="text-[11px] text-ink/50 leading-relaxed">
-                  Populates 4 accounts (HDFC, Cash, Paytm, SBI Credit Card), 4 months of transactions, custodial funds, budgets & goals.
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                isLoading={isLoadingDemo}
-                onClick={handleLoadDemo}
-                className="shrink-0"
-              >
-                <Sparkles className="w-3.5 h-3.5 mr-1.5 text-pine-600" />
-                <span>Load Demo Data</span>
-              </Button>
-            </div>
-            {demoSuccess && (
-              <div className="p-2.5 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-pine-600 shrink-0" />
-                <span>{demoSuccess}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-              </div>
-
-        {/* Right Column: Decoy Camouflage, Recovery & Danger Zone */}
-        <div className="space-y-6">
-{/* Duress PIN & Decoy Vault */}
-      <div className="space-y-3">
-        <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink/75 px-1 flex items-center gap-2">
-          <EyeOff className="w-4 h-4 text-mari-600" />
-          <span>Duress PIN & Decoy Vault (Physical Coercion Shield)</span>
-        </h3>
-
-        <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-4 shadow-sm lift">
-          {/* Plain language explanation banner */}
-          <div className="p-3.5 rounded-xl bg-mari-100/60 dark:bg-mari-950/40 border border-mari-400/40 space-y-1 text-xs">
-            <span className="font-bold text-mari-800 dark:text-mari-300 flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5" />
-              What is a Duress PIN & Decoy Vault?
-            </span>
-            <p className="text-ink/75 leading-relaxed">
-              If an attacker, thief, or hostile party forces you to unlock your phone, enter your <b>Decoy PIN</b> instead of your master password.
-              The app opens seamlessly into a harmless, believable decoy ledger without any warning banner.
-            </p>
-          </div>
-
-          {decoyMsg && (
-            <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold">
-              {decoyMsg}
-            </div>
-          )}
-
-          {decoyErr && (
-            <div className="p-3 rounded-xl bg-flare-100/70 border border-flare-500/30 text-flare-600 text-xs font-semibold">
-              {decoyErr}
-            </div>
-          )}
-
-          <form onSubmit={handleSaveDecoy} className="space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-line">
-              <div>
-                <span className="block text-xs font-bold text-ink">
-                  Enable Decoy Vault Protection
-                </span>
-                <span className="block text-[11px] text-ink/50">
-                  {activeVault?.decoyConfig?.enabled ? 'Active — protected by Decoy PIN' : 'Currently disabled'}
-                </span>
-              </div>
-              <input
-                type="checkbox"
-                checked={decoyEnabled}
-                onChange={(e) => setDecoyEnabled(e.target.checked)}
-                className="w-4 h-4 rounded text-pine-600 accent-pine-600"
-              />
-            </div>
-
-            {decoyEnabled && (
-              <div className="space-y-3 pt-1">
-                <div>
-                  <label className="block text-xs font-semibold text-ink mb-1.5">
-                    Decoy Mode Type
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setDecoyMode('mirror_scaled')}
-                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                        decoyMode === 'mirror_scaled'
-                          ? 'border-pine-500 bg-pine-50/80 dark:bg-pine-950/60 text-ink ring-2 ring-pine-500 ring-offset-1 ring-offset-card shadow-sm scale-[1.01]'
-                          : 'border-line bg-moss/50 text-ink/65 hover:text-ink'
-                      }`}
-                    >
-                      <span className="block text-xs font-bold">1. Mirror Camouflage (Recommended)</span>
-                      <span className="block text-[11px] text-ink/60 mt-0.5">
-                        Shows your real merchants and dates, but scaled down to small pocket balances (₹1k–₹4k). Completely strips properties, gold, and documents!
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setDecoyMode('full_dummy')}
-                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                        decoyMode === 'full_dummy'
-                          ? 'border-pine-500 bg-pine-50/80 dark:bg-pine-950/60 text-ink ring-2 ring-pine-500 ring-offset-1 ring-offset-card shadow-sm scale-[1.01]'
-                          : 'border-line bg-moss/50 text-ink/65 hover:text-ink'
-                      }`}
-                    >
-                      <span className="block text-xs font-bold">2. Full Innocent Dummy</span>
-                      <span className="block text-[11px] text-ink/60 mt-0.5">
-                        Loads an independent preset ledger with harmless mundane expenses (milk, vegetables, chai) and tiny pocket cash.
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                {decoyMode === 'mirror_scaled' && (
-                  <div>
-                    <Select
-                      label="Balance Reduction Scale Factor"
-                      value={String(decoyScaleFactor)}
-                      onChange={(e) => setDecoyScaleFactor(Number(e.target.value))}
-                      options={[
-                        { value: '20', label: '20× Reduction (e.g. ₹50,000 becomes ₹2,500)' },
-                        { value: '25', label: '25× Reduction (e.g. ₹1,00,000 becomes ₹4,000)' },
-                        { value: '50', label: '50× Reduction (e.g. ₹1,00,000 becomes ₹2,000)' },
-                        { value: '100', label: '100× Reduction (Ultra modest)' },
-                      ]}
-                      helperText="Divides real amounts and balances so your recent history looks genuine but poor"
-                    />
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Input
-                    type="password"
-                    label={activeVault?.decoyConfig?.pinHash ? 'Update Decoy PIN (Optional)' : 'Set Decoy PIN (4–8 digits)'}
-                    placeholder="e.g. 1984 or 4321"
-                    value={decoyPin}
-                    onChange={(e) => setDecoyPin(e.target.value)}
-                  />
-                  <Input
-                    type="password"
-                    label="Confirm Decoy PIN"
-                    placeholder="Re-enter PIN…"
-                    value={confirmDecoyPin}
-                    onChange={(e) => setConfirmDecoyPin(e.target.value)}
-                  />
-                </div>
-              </div>
-            )}
-
-            <Button type="submit" variant="primary" size="sm">
-              <span>Save Decoy Vault Settings</span>
-            </Button>
-          </form>
-        </div>
-      </div>
-
-      {/* Restore Backup */}
-      <div className="space-y-3">
-        <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink/75 px-1 flex items-center gap-2">
-          <Upload className="w-4 h-4 text-pine-600" />
-          <span>Restore Encrypted Backup File</span>
-        </h3>
-
-        <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-4 shadow-sm lift">
-          <p className="text-xs text-ink/60 leading-relaxed">
-            Restore a `.khataghar` backup file from another device or cold storage.
-          </p>
-
-          {restoreSuccess && (
-            <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold">
-              {restoreSuccess}
-            </div>
-          )}
-
-          {restoreError && (
-            <div className="p-3 rounded-xl bg-flare-100/70 border border-flare-500/30 text-flare-600 text-xs font-semibold">
-              {restoreError}
-            </div>
-          )}
-
-          <form onSubmit={handleRestoreBackup} className="space-y-3">
-            <div>
-              <label className="block text-xs font-semibold text-ink mb-1">
-                Select .khataghar file
-              </label>
-              <input
-                type="file"
-                accept=".khataghar,.json"
-                onChange={handleFileSelect}
-                className="block w-full text-xs text-ink/60 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-moss file:text-ink hover:file:bg-pine-50 cursor-pointer"
-                required
-              />
-            </div>
-
-            <Input
-              type="password"
-              label="Backup Password or 12-Word Phrase"
-              placeholder="Enter backup secret…"
-              value={restoreSecret}
-              onChange={(e) => setRestoreSecret(e.target.value)}
-              required
-            />
-
-            <Button
-              type="submit"
-              variant="primary"
-              size="sm"
-              isLoading={isRestoring}
-            >
-              <Upload className="w-4 h-4 mr-1.5" />
-              <span>Decrypt & Restore Vault</span>
-            </Button>
-          </form>
-        </div>
-      </div>
-
-      {/* Danger Zone */}
-      <div className="space-y-3">
-        <h3 className="font-display font-bold text-xs text-flare-600 uppercase tracking-wider px-1 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4" />
-          <span>Danger Zone</span>
-        </h3>
-
-        <div className="rounded-2xl border border-flare-500/40 bg-flare-100/10 w-full p-5 sm:p-6 space-y-3 shadow-sm">
-          <div>
-            <h4 className="font-display font-bold text-sm text-ink">
-              Delete This Vault Irreversibly
-            </h4>
-            <p className="text-xs text-ink/50 mt-0.5">
-              Permanently wipes every encrypted record in "{activeVault?.name}" from this device's IndexedDB.
-            </p>
-          </div>
-
-          <Button
-            onClick={handleDeleteVault}
-            variant="danger"
-            size="sm"
-          >
-            <Trash2 className="w-4 h-4 mr-1.5" />
-            <span>Delete "{activeVault?.name}"</span>
-          </Button>
-        </div>
-      </div>
-
-        </div>
-      </div>
-
-      {/* ── CATEGORY MANAGEMENT ─────────────────────────────────── */}
+          {/* ── CATEGORY MANAGEMENT ─────────────────────────────────── */}
       <div className="rounded-2xl border border-line bg-card p-5 sm:p-6 space-y-4 shadow-sm lift">
         <div className="flex items-center justify-between pb-2 border-b border-line gap-2 flex-wrap">
           <div className="flex items-center gap-2">
@@ -1674,6 +1069,318 @@ export const SettingsView: React.FC = () => {
           })}
         </div>
       </div>
+
+          {/* End of General Formatting Cards */}
+        </div>
+      )}
+
+      {/* TAB 2: Security & Camouflage */}
+      {activeTab === 'security' && (
+        <div className="space-y-6">
+          {/* Master Password Re-Encryption */}
+          <div className="space-y-3">
+            <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink/75 px-1 flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-pine-600" />
+              <span>Change Master Password (Re-encrypt Vault)</span>
+            </h3>
+
+            <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-4 shadow-sm lift">
+              <p className="text-xs text-ink/60 leading-relaxed">
+                Changing your password derives a new PBKDF2-SHA256 key and re-encrypts every single record in this vault atomically.
+              </p>
+
+              {passwordChangeSuccess && (
+                <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold">
+                  {passwordChangeSuccess}
+                </div>
+              )}
+
+              {passwordChangeError && (
+                <div className="p-3 rounded-xl bg-flare-100/70 border border-flare-500/30 text-flare-600 text-xs font-semibold">
+                  {passwordChangeError}
+                </div>
+              )}
+
+              <form onSubmit={handleChangePassword} className="space-y-3">
+                <Input
+                  type="password"
+                  label="New Master Password"
+                  placeholder="Enter new password…"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                />
+
+                {newPassword && <PasswordStrengthMeter password={newPassword} />}
+
+                <Input
+                  type="password"
+                  label="Confirm New Password"
+                  placeholder="Re-enter new password…"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  required
+                />
+
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  isLoading={isChangingPassword}
+                >
+                  <span>Update Password & Re-encrypt</span>
+                </Button>
+              </form>
+            </div>
+          </div>
+
+          {/* Duress PIN & Decoy Vault */}
+          <div className="space-y-3">
+            <h3 className="font-display font-bold text-xs uppercase tracking-wider text-ink/75 px-1 flex items-center gap-2">
+              <EyeOff className="w-4 h-4 text-mari-600" />
+              <span>Duress PIN & Decoy Vault (Physical Coercion Shield)</span>
+            </h3>
+
+            <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-4 shadow-sm lift">
+              <div className="p-3.5 rounded-xl bg-mari-100/60 dark:bg-mari-950/40 border border-mari-400/40 space-y-1 text-xs">
+                <span className="font-bold text-mari-800 dark:text-mari-300 flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5" />
+                  What is a Duress PIN & Decoy Vault?
+                </span>
+                <p className="text-ink/75 leading-relaxed">
+                  If an attacker, thief, or hostile party forces you to unlock your phone, enter your <b>Decoy PIN</b> instead of your master password.
+                  The app opens seamlessly into a harmless, believable decoy ledger without any warning banner.
+                </p>
+              </div>
+
+              {decoyMsg && (
+                <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold">
+                  {decoyMsg}
+                </div>
+              )}
+
+              {decoyErr && (
+                <div className="p-3 rounded-xl bg-flare-100/70 border border-flare-500/30 text-flare-600 text-xs font-semibold">
+                  {decoyErr}
+                </div>
+              )}
+
+              <form onSubmit={handleSaveDecoy} className="space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-line">
+                  <div>
+                    <span className="block text-xs font-bold text-ink">
+                      Enable Decoy Vault Protection
+                    </span>
+                    <span className="block text-[11px] text-ink/50">
+                      {activeVault?.decoyConfig?.enabled ? 'Active — protected by Decoy PIN' : 'Currently disabled'}
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={decoyEnabled}
+                    onChange={(e) => setDecoyEnabled(e.target.checked)}
+                    className="w-4 h-4 rounded text-pine-600 accent-pine-600"
+                  />
+                </div>
+
+                {decoyEnabled && (
+                  <div className="space-y-3 pt-1">
+                    <div>
+                      <label className="block text-xs font-semibold text-ink mb-1.5">
+                        Decoy Mode Type
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDecoyMode('mirror_scaled')}
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                            decoyMode === 'mirror_scaled'
+                              ? 'border-pine-500 bg-pine-50/80 dark:bg-pine-950/60 text-ink ring-2 ring-pine-500 ring-offset-1 ring-offset-card shadow-sm scale-[1.01]'
+                              : 'border-line bg-moss/50 text-ink/65 hover:text-ink'
+                          }`}
+                        >
+                          <span className="block text-xs font-bold">1. Mirror Camouflage (Recommended)</span>
+                          <span className="block text-[11px] text-ink/60 mt-0.5">
+                            Shows your real merchants and dates, but scaled down to small pocket balances (₹1k–₹4k). Completely strips properties, gold, and documents!
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setDecoyMode('full_dummy')}
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                            decoyMode === 'full_dummy'
+                              ? 'border-pine-500 bg-pine-50/80 dark:bg-pine-950/60 text-ink ring-2 ring-pine-500 ring-offset-1 ring-offset-card shadow-sm scale-[1.01]'
+                              : 'border-line bg-moss/50 text-ink/65 hover:text-ink'
+                          }`}
+                        >
+                          <span className="block text-xs font-bold">2. Full Innocent Dummy</span>
+                          <span className="block text-[11px] text-ink/60 mt-0.5">
+                            Loads an independent preset ledger with harmless mundane expenses (milk, vegetables, chai) and tiny pocket cash.
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-line">
+                      <Input
+                        type="password"
+                        label="Decoy PIN (Numeric Only)"
+                        placeholder="e.g. 1234 or 9999"
+                        value={decoyPin}
+                        onChange={(e) => setDecoyPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                        helperText="Use a 4–8 digit PIN distinct from your master password."
+                        required
+                      />
+
+                      <Input
+                        type="password"
+                        label="Confirm Decoy PIN"
+                        placeholder="Re-enter decoy PIN…"
+                        value={confirmDecoyPin}
+                        onChange={(e) => setConfirmDecoyPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                        required
+                      />
+                    </div>
+
+                    <Button type="submit" variant="primary" size="sm">
+                      <span>Save Decoy Protection</span>
+                    </Button>
+                  </div>
+                )}
+              </form>
+            </div>
+          </div>
+
+          {/* Danger Zone */}
+          <div className="space-y-3">
+            <h3 className="font-display font-bold text-xs text-flare-600 uppercase tracking-wider px-1 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              <span>Danger Zone</span>
+            </h3>
+
+            <div className="rounded-2xl border border-flare-500/40 bg-flare-100/10 w-full p-5 sm:p-6 space-y-3 shadow-sm">
+              <div>
+                <h4 className="font-display font-bold text-sm text-ink">
+                  Delete This Vault Irreversibly
+                </h4>
+                <p className="text-xs text-ink/50 mt-0.5">
+                  Permanently wipes every encrypted record in "{activeVault?.name}" from this device's storage.
+                </p>
+              </div>
+
+              <Button
+                onClick={handleDeleteVault}
+                variant="danger"
+                size="sm"
+              >
+                <Trash2 className="w-4 h-4 mr-1.5" />
+                <span>Delete "{activeVault?.name}"</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: Storage & SQLite */}
+      {activeTab === 'storage' && (
+        <div className="space-y-6">
+          <StorageDiagnosticsCard />
+
+          {/* Ledger Maintenance & Demo Data */}
+          <div className="space-y-3">
+            <h3 className="font-display font-bold text-xs uppercase tracking-wider text-pine-700 dark:text-pine-400 px-1 flex items-center gap-2">
+              <Database className="w-4 h-4 text-pine-600" />
+              <span>Ledger Maintenance & Demo Data</span>
+            </h3>
+
+            <div className="rounded-2xl border border-line bg-card w-full p-5 sm:p-6 space-y-4 shadow-sm lift">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-ink/70">Current Ledger Size</span>
+                <span className="font-mono font-bold text-ink num">
+                  {transactions.length} entries · {accounts.length} accounts · {peopleLedger.length} people records
+                </span>
+              </div>
+
+              {/* Reconcile Section */}
+              <div className="pt-3 border-t border-line/60 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-xs text-ink flex items-center gap-1.5">
+                      <RefreshCw className="w-3.5 h-3.5 text-pine-600" />
+                      <span>Reconcile Account Balances</span>
+                    </div>
+                    <p className="text-[11px] text-ink/50 leading-relaxed">
+                      Recalculates all balances from the complete double-entry transaction ledger and people records, preserving opening balances.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    isLoading={isReconciling}
+                    onClick={handleReconcile}
+                    className="shrink-0"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5 text-pine-600" />
+                    <span>Reconcile Balances</span>
+                  </Button>
+                </div>
+                {reconcileSuccess && (
+                  <div className="p-2.5 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-pine-600 shrink-0" />
+                    <span>{reconcileSuccess}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Demo Data Section */}
+              <div className="pt-3 border-t border-line/60 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-xs text-ink flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-pine-600" />
+                      <span>Load Realistic Indian Demo Data</span>
+                    </div>
+                    <p className="text-[11px] text-ink/50 leading-relaxed">
+                      Populates 4 accounts (HDFC, Cash, Paytm, SBI Credit Card), 4 months of transactions, custodial funds, budgets & goals.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    isLoading={isLoadingDemo}
+                    onClick={handleLoadDemo}
+                    className="shrink-0"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 mr-1.5 text-pine-600" />
+                    <span>Load Demo Data</span>
+                  </Button>
+                </div>
+                {demoSuccess && (
+                  <div className="p-2.5 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-pine-800 dark:text-pine-200 text-xs font-semibold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-pine-600 shrink-0" />
+                    <span>{demoSuccess}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: Backups & Migration */}
+      {activeTab === 'backups' && (
+        <div className="space-y-6">
+          <UniversalBackupCard />
+        </div>
+      )}
+
+      {/* TAB 5: P2P Device Sync */}
+      {activeTab === "sync" && (
+        <div className="space-y-6">
+          <P2PSyncCard />
+        </div>
+      )}
 
       {/* Onboarding Modal */}
       {isNewVaultOpen && (
