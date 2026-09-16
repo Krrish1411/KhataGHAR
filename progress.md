@@ -208,13 +208,47 @@ Implemented a full, sovereign-friendly patronage architecture honoring Krish Pat
     - Activates the session immediately with `refreshVaultList()` and `setSessionCredentials(vault, key)`.
   - **Result**: A user opens KhataGHAR on their phone, clicks "Sync from Existing Device", types the 6-digit PIN and password, and is instantly on their dashboard with their complete financial vault.
 
+### 3.10 Welcome Screen Redraft, Mobile Top Bar Optimization & CI Workflow Hardening (`src/components/welcome/WelcomeLandingView.tsx` & `.github/workflows/*`)
+- **Mobile Top Bar & Layout Bug Fix**:
+  - **Root Cause Identified**: The welcome screen had `style={{ zoom: 1.25 }}` at root, shrinking effective viewport width on mobile and causing the "Back to Vault Lock" button to line-break into a 4-line vertical box ("Back \n to \n Vault \n Lock") and squish header buttons against the screen edge.
+  - **Resolution**:
+    - Removed root zoom and applied standard viewport-relative scaling.
+    - Added safe-area padding (`style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}`) to header for notched Android and iOS displays.
+    - Header actions upgraded with `whitespace-nowrap`, `shrink-0`, and responsive text/icon labels (e.g. `<span className="hidden sm:inline">Back to Lock</span><span className="sm:hidden">Lock</span>`).
+    - Buy Me a Coffee button displays as a compact gold icon button on mobile screens and expands to include text on `sm` screens.
+- **Complete Redraft Matching Lifelog Architecture & Depth**:
+  - Rebuilt [`WelcomeLandingView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/welcome/WelcomeLandingView.tsx) adopting the structure, typography, and visual hierarchy of Lifelog (`Lifelog-main/src/views/Welcome.tsx`), styled to KhataGHAR's sovereign emerald/pine wealth theme.
+  - **Sticky Header**: Brand logo, version badge (`v1.0.0 Sovereign`), open-source status, anchor links (Live Sandbox, Capabilities, Why KhataGHAR, Downloads, Source Code, Philosophy), theme toggle, GitHub button, Buy Me a Coffee button, and Launch/Create action.
+  - **Hero Section**:
+    - Trust pill (*100% Free & Open Source (MIT) · Zero Telemetry · Offline AES-256-GCM · Direct P2P Sync**).
+    - Display headline: *"The Sovereign Wealth Operating System."*
+    - Psychological reassurance banner: *"Massive Financial Power, Zero Overwhelm"*.
+    - Value pillars strip: Speed (*Sub-5ms Boot*), Security (*Hardware AES-256*), Pricing (*$0 · No Paywalls*), License (*MIT Open Source*).
+  - **Interactive 3-Tab Financial Sandbox**:
+    1. *SIP Compounding*: Live sliders for monthly SIP (₹2,000–₹50,000), expected CAGR (8%–18%), and horizon (3–25 years) with real-time future value and wealth gain calculations.
+    2. *Cashflow Burn Radar*: Sliders for monthly burn and liquid reserves calculating exact emergency survival months with color-coded safety badges.
+    3. *Duress PIN Decoy Simulator*: Live interactive toggle demonstrating how entering decoy PIN `0000` flips the display from ₹54.8L net worth to ₹2,450 pocket cash while keeping true assets completely invisible.
+  - **Loss Aversion Comparison**: Detailed 2-column comparison against commercial cloud finance SaaS (SMS scraping, loan telemarketing, server leaks vs. client-side AES-256-GCM and zero permissions).
+  - **8 Institutional Capabilities Grid**: Deep dives into Smart SIP lot merging, Duress decoy PIN, Burn radar, Debt accelerator, Double-entry accounting, Custodial funds, Schedule-AL compliance, and P2P sync.
+  - **Cross-Platform Downloads Hub**:
+    - Cards for Windows (.exe), macOS (.dmg), Linux (.AppImage/.deb), Android (.apk), iOS (PWA), and Web App.
+    - Expandable iOS Safari step-by-step guide (Share > Add to Home Screen).
+    - Expandable Android APK Safety Center featuring VirusTotal 0/70 clean scan audit, cryptographic SHA-256 checksum copy command, zero-permissions manifest audit, and 1-tap sandboxed PWA option.
+  - **The Sovereign Covenant & Independent Funding**: Forever-free core ledger guarantee, optional future Pro add-ons roadmap, and P2P sync relay donation notice.
+  - **Creator Philosophy & Manifesto**: *"Why I Built KhataGHAR"* by Krish Patel with Buy Me a Coffee patronage button and GitHub link.
+- **GitHub Actions CI/CD Pipeline Hardening**:
+  - **No Automated Release Builds on Main**: Removed `branches: [main]` trigger from `android-build.yml` and `desktop-build.yml`. Release builds only run via `workflow_dispatch` (manual) or release tags (`v*.*.*`).
+  - **Artifact Retention Limits**: Set `retention-days: 1` across `android-build.yml`, `desktop-build.yml`, and `ci.yml` to conserve GitHub storage and minute quotas.
+  - **Capacitor CLI Node.js 22 Upgrade**: Upgraded Node.js setup from `20` to `22` across all workflow files, resolving the Capacitor 8 build failure (`The Capacitor CLI requires NodeJS >=22.0.0`).
+  - **Release Configuration**: Configured `release.yml` with Node 22 and `prerelease: true` for alpha/beta releases.
+
 ---
 
 ## 4. Verification & Build Integrity
 
 - **TypeScript Compilation**: `npx tsc -b` passed with **0 errors**.
-- **Production Web Bundle**: `npm run build` compiled successfully in **41.02s** (dist generated with 23 precached PWA entries).
-- **Capacitor Android Sync**: `npx cap sync android` completed in **0.153s** with **0 errors**.
+- **Production Web Bundle**: `npm run build` compiled successfully in **31.63s** (dist generated with 23 precached PWA entries).
+- **Capacitor Android Sync**: `npx cap sync android` completed in **0.113s** with **0 errors**.
 - **Cross-Platform Compatibility**: Tested and verified on Linux desktop and Android Capacitor WebView.
 
 ---
@@ -240,3 +274,6 @@ When adding new features or modifying existing pages in KhataGHAR:
    - Patronage prompts must remain respectful ("support not on face").
    - Users must always have a 1-click option to snooze or permanently disable in-app prompts.
    - Reassure users upon dismissal that KhataGHAR is 100% free, private, and offline forever.
+7. **Release Invariants**:
+   - Do NOT create git release tags or trigger CI release builds without the user's explicit consent.
+   - All workflow artifacts must adhere to `retention-days: 1`.

@@ -11,6 +11,7 @@ export default {
         // PaisaBook Semantic Theme Tokens
         ink: 'var(--color-ink)',
         moss: 'var(--color-moss)',
+        ground: 'var(--color-moss)',
         card: 'var(--color-card)',
         line: 'var(--color-line)',
 
