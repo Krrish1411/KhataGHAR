@@ -1,24 +1,26 @@
 {
-  "version": "1.0.0-beta.1",
-  "tagName": "v1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
+  "tagName": "v1.0.0-beta.2",
   "releaseDate": "2026-09-16",
   "minRequiredVersion": "1.0.0-beta.1",
-  "htmlUrl": "https://github.com/Krrish1411/KhataGHAR/releases/tag/v1.0.0-beta.1",
+  "htmlUrl": "https://github.com/Krrish1411/KhataGHAR/releases/tag/v1.0.0-beta.2",
   "changelog": [
-    "Unified Cross-Platform Releases: Direct binary asset delivery for Android APK, Windows Setup & Portable, Linux AppImage/DEB/tar.gz, macOS DMG/ZIP, and Web PWA.",
-    "Automated In-App Update Engine: Background 24-hour version verification with beta channel support and platform auto-detection.",
-    "Native Mobile Parity: CORS bypass via CapacitorHttp and service worker cache isolation on Android.",
-    "Institutional Financial Ledger: Full zero-knowledge client-side AES-256-GCM encrypted persistence."
+    "Brand Identity Overhaul: Multi-platform native graphical icon suite for Desktop (Windows ICO, macOS ICNS, Linux PNG), Android Adaptive Launcher, and Web PWA.",
+    "Global Dynamic P2P Sync: Duplex background sync listener directly in VaultContext, echo loop prevention, and Master Device reset selection.",
+    "Native Scheduled Notifications: High-importance reminders notification channel with customizable lead times (1-7 days before) on bills and goals.",
+    "Financial Calculators Suite: 6 institutional calculators (SIP, Step-Up, Lumpsum, SWP, FIRE Runway, Loan Schedule with full Amortization & Prepayments).",
+    "Reconciliation Diff Modal: Side-by-side stored vs ledger balance comparison with selective per-account reconciliation and demo data safety guard.",
+    "Lifelog Mobile Parity: Safe area insets, native status bar synchronization, hardware back button routing, tactile haptics, and AST Markdown Notes parser."
   ],
   "downloads": {
-    "windows": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-Windows-Setup-1.0.0-beta.1.exe",
-    "windowsPortable": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-Windows-Portable-1.0.0-beta.1.exe",
-    "linux": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-Linux-1.0.0-beta.1-x64.AppImage",
-    "linuxDeb": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-Linux-1.0.0-beta.1-x64.deb",
-    "linuxTar": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-Linux-1.0.0-beta.1-x64.tar.gz",
-    "mac": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-macOS-1.0.0-beta.1-x64.dmg",
-    "macZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-macOS-1.0.0-beta.1-x64.zip",
-    "android": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-Android-v1.0.0-beta.1.apk",
-    "webZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/khata-ghar-v1.0.0-beta.1.zip"
+    "windows": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-Windows-Setup-1.0.0-beta.2.exe",
+    "windowsPortable": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-Windows-Portable-1.0.0-beta.2.exe",
+    "linux": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-Linux-1.0.0-beta.2-x64.AppImage",
+    "linuxDeb": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-Linux-1.0.0-beta.2-x64.deb",
+    "linuxTar": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-Linux-1.0.0-beta.2-x64.tar.gz",
+    "mac": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-macOS-1.0.0-beta.2-x64.dmg",
+    "macZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-macOS-1.0.0-beta.2-x64.zip",
+    "android": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-Android-v1.0.0-beta.2.apk",
+    "webZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/khata-ghar-v1.0.0-beta.2.zip"
   }
 }

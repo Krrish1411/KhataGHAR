@@ -41,18 +41,21 @@ jobs:
           files: khata-ghar-${{ github.ref_name }}.zip
           prerelease: true
           body: |
-            ## KhataGHAR ${{ github.ref_name }}
+            ## KhataGHAR ${{ github.ref_name }} — Sovereign Wealth Operating System
 
-            ### Installation
-            1. Download the `khata-ghar-${{ github.ref_name }}.zip` below
-            2. Extract to any static hosting provider (GitHub Pages, Netlify, Vercel, etc.)
-            3. Open `index.html` in your browser — **no server required**
+            ### 🚀 What's New in ${{ github.ref_name }}
+            - 🎨 **Brand Identity Overhaul**: Complete multi-platform native icon suite for Windows (multi-res ICO 16-256px), macOS (ICNS 16-1024px), Linux (PNGs 16-512px), Android Adaptive Launcher (#1c263e backdrop), and Web PWA.
+            - ⚡ **Global Dynamic P2P Sync Engine**: Duplex background sync listener directly in VaultContext, echo loop prevention, and Master Device reset selection.
+            - 🔔 **Native Scheduled Reminders**: High-importance notifications channel with customizable lead times (1-7 days before) on bills and goals.
+            - 🧮 **Financial Calculators Suite**: 6 institutional calculators (SIP, Step-Up, Lumpsum, SWP, FIRE Runway, Loan Schedule with full Amortization & Prepayments) starting from 0% baseline.
+            - ⚖️ **Reconciliation Diff Modal**: Side-by-side stored vs ledger balance comparison with selective per-account reconciliation and demo data safety guard.
+            - 📱 **Lifelog Mobile Parity**: Safe area insets, native status bar synchronization, hardware back button routing, tactile haptics, and AST Markdown Notes parser.
 
-            ### Features
-            - 🔒 AES-GCM encrypted IndexedDB vault (zero cloud, zero server)
-            - 📊 Full financial dashboard with Net Worth, Cashflow Forecast, Burn Radar
-            - 🎭 Duress PIN & Decoy Vault (Mirror-Scaled or Full-Dummy mode)
-            - 📄 Rich PDF export with configurable sections
-            - 🏦 Asset & Liability tracker (Indian Income Tax Schedule AL compliant)
-            - 💡 Financial Health Score, Debt Payoff Simulator, What-If sliders
-            - 👨‍👩‍👧 Family Hub, Plans, Documents vault
+            ### 📦 Direct Downloads
+            - **Android APK**: Attached below as `KhataGHAR-Android-${{ github.ref_name }}.apk`
+            - **Windows**: Setup & Portable `.exe` executables attached below
+            - **Linux**: AppImage, Debian `.deb`, and `tar.gz` packages attached below
+            - **macOS**: DMG & ZIP packages attached below
+            - **Web Static PWA**: `khata-ghar-${{ github.ref_name }}.zip` (extract and open `index.html`)
+
+            *See [CHANGELOG.md](https://github.com/Krrish1411/KhataGHAR/blob/main/CHANGELOG.md) for complete technical commit history.*

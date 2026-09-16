@@ -516,3 +516,15 @@ The legacy application icon utilized a plain white Rupee symbol on a monochrome 
 2. **Capacitor Mobile Sync**: `npx cap sync android` completed in 0.086s, copying web assets and updating all 3 plugins.
 3. **Electron Desktop Multi-Platform Package Validation**: `npx electron-builder --dir --linux --win` built both Linux and Windows unpacked targets without error, successfully embedding the new ICO and PNG resources.
 
+---
+
+## 8. Release v1.0.0-beta.2: Version Bump & Comprehensive Changelog
+
+### Version Synchronization Matrix
+- **`package.json`**: Bumped to `1.0.0-beta.2`.
+- **`public/version.json`**: Bumped `version` and `tagName` to `v1.0.0-beta.2`, refreshed release date to `2026-09-16`, updated changelog highlights, and regenerated cross-platform download links.
+- **`android/app/build.gradle`**: Incremented `versionCode` to `2` and `versionName` to `"1.0.0-beta.2"`.
+- **`CHANGELOG.md`**: Authoritative Keep-a-Changelog specification documenting both `[1.0.0-beta.2]` and `[1.0.0-beta.1]` with categorization for Brand Identity, P2P Sync Engine, Native Notifications, Financial Calculators, Reconciliation Diff Modal, and Mobile Parity.
+- **`.github/workflows/release.yml`**: Enhanced GitHub Release markdown body template with What's New highlights, download matrix, and changelog link.
+
+
