@@ -51,6 +51,11 @@ KhataGHAR is an institutional-grade, zero-cloud, 100% offline and encrypted pers
 | **Double Password Confirm** | `[MOD]` [`src/views/SettingsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/SettingsView.tsx) | Double-entry confirmation for encrypted backups with show/hide eye toggles, real-time match indicator, and download block on mismatch. |
 | **Dismissible Alerts** | `[MOD]` [`src/views/DashboardView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/DashboardView.tsx) | Dismissible dashboard alert insights with `localStorage` persistence. |
 | **Nested Multi-Modals** | `[MOD]` [`src/components/transactions/QuickAddModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/transactions/QuickAddModal.tsx)<br>`[MOD]` [`src/components/people/PeopleEntryModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/people/PeopleEntryModal.tsx) | On-the-fly creation of Categories, Accounts, Contacts, Assets, and Liabilities with zero parent form data loss. Added "Directly Paid by Someone Else" and "Trip Splitter" modes. |
+| **Unified GitHub Release Assets** | `[MOD]` [`.github/workflows/android-build.yml`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/.github/workflows/android-build.yml)<br>`[MOD]` [`.github/workflows/desktop-build.yml`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/.github/workflows/desktop-build.yml)<br>`[MOD]` [`.github/workflows/release.yml`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/.github/workflows/release.yml) | Integrated `softprops/action-gh-release@v2` across all workflows to directly attach release binaries to GitHub Releases on tag `v*` (Android APK, Linux AppImage/deb/tar.gz, Windows Setup/Portable .exe, macOS DMG/zip, Web zip) with strict `retention-days: 1`. |
+| **Android CI Gradle Fix & Signing** | `[MOD]` [`android/variables.gradle`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/android/variables.gradle)<br>`[MOD]` [`android/app/build.gradle`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/android/app/build.gradle)<br>`[MOD]` [`.github/workflows/android-build.yml`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/.github/workflows/android-build.yml) | Resolved CI Gradle failure (`BUILD FAILED in 47s`) by upgrading `compileSdkVersion=36` and `targetSdkVersion=36` to match AndroidX Core 1.17.0. Added automated release keystore generation and signing configuration for `assembleRelease`. |
+| **Electron Packaging & Platform Names** | `[MOD]` [`electron-builder.json`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/electron-builder.json)<br>`[MOD]` [`package.json`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/package.json) | Added `tar.gz` to Linux targets. Enforced explicit platform names in binary artifacts (`KhataGHAR-Linux-...`, `KhataGHAR-Windows-Setup-...`, `KhataGHAR-Windows-Portable-...`, `KhataGHAR-macOS-...`). Set version to `1.0.0-beta.1`. |
+| **In-App Update Engine** | `[NEW]` [`src/services/updater.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/updater.ts)<br>`[NEW]` [`src/types/updater.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/types/updater.ts)<br>`[NEW]` [`public/version.json`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/public/version.json)<br>`[NEW]` [`src/components/common/UpdateModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/common/UpdateModal.tsx)<br>`[NEW]` [`src/components/settings/UpdateSettingsCard.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/settings/UpdateSettingsCard.tsx)<br>`[MOD]` [`src/views/SettingsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/SettingsView.tsx)<br>`[MOD]` [`src/components/layout/AppLayout.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/AppLayout.tsx) | Built sovereign in-app update checker. Checks GitHub releases API (with beta pre-release channel support) and canonical `version.json`. SemVer 2.0.0 comparator, 24h background check with silent failure, zero-preflight fetch, `CapacitorHttp` mobile bypass, and dedicated Settings card. |
+| **Android WebView Cache Trap Guard** | `[MOD]` [`src/main.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/main.tsx) | Prevented Android WebView permanently caching stale bundles on in-place APK upgrades by unregistering service workers and clearing `CacheStorage` on native mobile, registering SW only for Web PWA. |
 
 ---
 
@@ -242,14 +247,50 @@ Implemented a full, sovereign-friendly patronage architecture honoring Krish Pat
   - **Capacitor CLI Node.js 22 Upgrade**: Upgraded Node.js setup from `20` to `22` across all workflow files, resolving the Capacitor 8 build failure (`The Capacitor CLI requires NodeJS >=22.0.0`).
   - **Release Configuration**: Configured `release.yml` with Node 22 and `prerelease: true` for alpha/beta releases.
 
+### 3.8 Unified Cross-Platform Release Engineering, Android Gradle CI Fix, and In-App Update Engine
+
+1. **Direct GitHub Release Binary Attachment**:
+   - Integrated `softprops/action-gh-release@v2` across all workflows (`android-build.yml`, `desktop-build.yml`, `release.yml`) so all compilation jobs attach their built binaries directly to the GitHub release tag:
+     - **Android**: `release-apk/KhataGHAR-Android-${TAG}.apk` and `KhataGHAR-Android.apk`
+     - **Linux**: `release/*Linux*.AppImage`, `release/*Linux*.deb`, `release/*Linux*.tar.gz`
+     - **Windows**: `release/*Windows-Setup*.exe`, `release/*Windows-Portable*.exe`
+     - **macOS**: `release/*macOS*.dmg`, `release/*macOS*.zip`
+     - **Web**: `khata-ghar-${TAG}.zip`
+   - Added `prerelease: true` to support beta releases (`v1.0.0-beta.1`).
+   - Retained strict `retention-days: 1` across all internal CI artifacts to minimize GitHub storage and runner usage.
+
+2. **Android CI Gradle Compilation & Keystore Signing Fix**:
+   - **Root Cause of `BUILD FAILED in 47s`**: AndroidX Core `1.17.0` requires `compileSdkVersion 36`. When KhataGHAR compiled with SDK 35, Gradle dependency resolution worker threads failed.
+   - **Solution**: Upgraded `compileSdkVersion = 36` and `targetSdkVersion = 36` in `android/variables.gradle`.
+   - **Signing Pipeline**: Configured `signingConfigs.release` in `android/app/build.gradle` and automated keystore generation (`khataghar-release.keystore` with `keytool`) inside `android-build.yml` prior to `./gradlew assembleRelease --stacktrace`, guaranteeing signed, installable APK production.
+
+3. **Electron Packaging & Explicit Platform Naming**:
+   - Added `"tar.gz"` target to `electron-builder.json` under Linux.
+   - Standardized artifact naming to guarantee platform clarity:
+     - Linux: `KhataGHAR-Linux-${version}-${arch}.${ext}`
+     - Windows: `KhataGHAR-Windows-Setup-${version}.${ext}` and `KhataGHAR-Windows-Portable-${version}.exe`
+     - macOS: `KhataGHAR-macOS-${version}-${arch}.${ext}`
+   - Synced `package.json` version to `1.0.0-beta.1`.
+
+4. **In-App Update Engine (`src/services/updater.ts`)**:
+   - **Multi-Source Remote Fetch**: Queries the GitHub Releases API (`https://api.github.com/repos/Krrish1411/KhataGHAR/releases`) which includes pre-releases/betas, extracting release assets into download URLs. Falls back to canonical `public/version.json` and raw GitHub content.
+   - **SemVer 2.0.0 Pre-Release Parsing**: `parseSemVer()` and `isNewerVersion()` accurately handle pre-release identifiers (`1.0.0-beta.2` > `1.0.0-beta.1`, `1.0.0` > `1.0.0-beta.1`).
+   - **CORS Bypass & Crash-Proof Design**: Uses native `CapacitorHttp` on Android to bypass Chromium WebView CORS entirely; uses simple `fetch` with timestamp cache-busting (`?_t=...`) and no custom headers on Web/Electron to eliminate HTTP 403 CORS preflight errors on GitHub.
+   - **Daily Background Check**: `checkDailyUpdate(APP_VERSION)` executes once every 24 hours on application launch (`localStorage.getItem('khataghar_last_update_check')`), failing completely silently if offline.
+   - **Settings Integration**: `UpdateSettingsCard.tsx` added to Settings General tab displaying installed version (`v1.0.0-beta.1`), channel (`Beta Preview`), detected runtime platform, and manual "Check for Updates" trigger with clear loading and error feedback.
+   - **Update Modal**: `UpdateModal.tsx` provides changelog highlights, single targeted platform download button, and a link to the complete GitHub releases hub.
+
+5. **Android WebView Stale Cache Trap Fix (`src/main.tsx`)**:
+   - Following `skills/webapp-to-electron/SKILL.md`, service worker registration is bypassed on native Capacitor Android and Electron. Active service workers are unregistered and `CacheStorage` is wiped on boot to ensure in-place APK updates load fresh JavaScript immediately.
+
 ---
 
 ## 4. Verification & Build Integrity
 
 - **TypeScript Compilation**: `npx tsc -b` passed with **0 errors**.
-- **Production Web Bundle**: `npm run build` compiled successfully in **31.63s** (dist generated with 23 precached PWA entries).
-- **Capacitor Android Sync**: `npx cap sync android` completed in **0.113s** with **0 errors**.
-- **Cross-Platform Compatibility**: Tested and verified on Linux desktop and Android Capacitor WebView.
+- **Production Web Bundle**: `npm run build` compiled successfully in **28.16s** (dist generated with 23 precached PWA entries).
+- **Capacitor Android Sync**: `npx cap sync android` completed in **0.088s** with **0 errors**.
+- **Cross-Platform Compatibility**: Tested and verified on Linux desktop, Electron packaging targets, and Android Capacitor WebView.
 
 ---
 

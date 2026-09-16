@@ -20,8 +20,26 @@ android {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
     }
-    buildTypes {
+    signingConfigs {
         release {
+            if (file("khataghar-release.keystore").exists()) {
+                storeFile file("khataghar-release.keystore")
+                storePassword "khataghar123"
+                keyAlias "khataghar"
+                keyPassword "khataghar123"
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            if (file("khataghar-release.keystore").exists()) {
+                signingConfig signingConfigs.release
+            }
+        }
+        release {
+            if (file("khataghar-release.keystore").exists()) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

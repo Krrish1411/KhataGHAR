@@ -411,3 +411,5 @@ export interface HealthScoreBreakdown {
   keyStrengths: string[];
   keyImprovements: string[];
 }
+
+export * from './updater';

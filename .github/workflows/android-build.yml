@@ -6,60 +6,85 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
+concurrency:
+  group: "android-build"
+  cancel-in-progress: true
+
 jobs:
   build-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Setup Java 21
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Node Dependencies
+        run: npm install
+
+      - name: Build Web Production Assets
+        run: npm run build
+
+      - name: Sync Capacitor Android Project
+        run: npx cap sync android
+
+      - name: Setup Java 21 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
           cache: 'gradle'
 
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci --include=dev
-
-      - name: Build web application
-        run: npm run build
-
-      - name: Accept Android SDK Licenses
+      - name: Ensure Release Signing Keystore
         run: |
-          mkdir -p "$ANDROID_HOME/licenses" || true
-          printf "\n24333f8a63b6825ea9c5514f83c2829b004d1fee\nd56f5187479451eabf01fb78af6dfcb131a6481e\n84831b9409646a25e2e4ef338027a05ec016834d" > "$ANDROID_HOME/licenses/android-sdk-license" || true
-          printf "\n85642a38d174c42d56bb6666be47e4e67812953f" > "$ANDROID_HOME/licenses/android-sdk-arm-dbt-license" || true
-          printf "\n84831b9409646a25e2e4ef338027a05ec016834d" > "$ANDROID_HOME/licenses/android-sdk-preview-license" || true
-          if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
-            yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          if [ ! -f android/app/khataghar-release.keystore ]; then
+            echo "Generating release keystore..."
+            keytool -genkey -v -keystore android/app/khataghar-release.keystore \
+              -alias khataghar \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass khataghar123 \
+              -keypass khataghar123 \
+              -dname "CN=KhataGHAR, OU=Engineering, O=KhataGHAR, L=Delhi, ST=Delhi, C=IN"
           fi
 
-      - name: Sync Capacitor Android
-        run: |
-          mkdir -p android/app/src/main/assets/public
-          cp -r dist/* android/app/src/main/assets/public/
-          npx cap sync android
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x android/gradlew
 
-      - name: Build Android APK via Gradle
+      - name: Build Android Release APK
         run: |
           cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleRelease --stacktrace
+          cd ..
+          TAG_NAME="${{ github.ref_name }}"
+          if [ -z "$TAG_NAME" ] || [ "$TAG_NAME" = "main" ]; then
+            TAG_NAME="v1.0.0-beta.1"
+          fi
+          mkdir -p release-apk
+          cp android/app/build/outputs/apk/release/*-release.apk release-apk/KhataGHAR-Android-${TAG_NAME}.apk 2>/dev/null || cp android/app/build/outputs/apk/release/*.apk release-apk/KhataGHAR-Android-${TAG_NAME}.apk
+          cp release-apk/KhataGHAR-Android-${TAG_NAME}.apk release-apk/KhataGHAR-Android.apk
 
-      - name: Upload Debug APK Artifact
+      - name: Upload Android APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: KhataGHAR-Android-Debug-APK
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: KhataGHAR-Android-Release-APK
+          path: release-apk/*.apk
           retention-days: 1
 
+      - name: Attach Android APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-apk/*.apk
+          prerelease: true

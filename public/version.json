@@ -1,0 +1,24 @@
+{
+  "version": "1.0.0-beta.1",
+  "tagName": "v1.0.0-beta.1",
+  "releaseDate": "2026-09-16",
+  "minRequiredVersion": "1.0.0-beta.1",
+  "htmlUrl": "https://github.com/Krrish1411/KhataGHAR/releases/tag/v1.0.0-beta.1",
+  "changelog": [
+    "Unified Cross-Platform Releases: Direct binary asset delivery for Android APK, Windows Setup & Portable, Linux AppImage/DEB/tar.gz, macOS DMG/ZIP, and Web PWA.",
+    "Automated In-App Update Engine: Background 24-hour version verification with beta channel support and platform auto-detection.",
+    "Native Mobile Parity: CORS bypass via CapacitorHttp and service worker cache isolation on Android.",
+    "Institutional Financial Ledger: Full zero-knowledge client-side AES-256-GCM encrypted persistence."
+  ],
+  "downloads": {
+    "windows": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-Windows-Setup-1.0.0-beta.1.exe",
+    "windowsPortable": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-Windows-Portable-1.0.0-beta.1.exe",
+    "linux": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-Linux-1.0.0-beta.1-x64.AppImage",
+    "linuxDeb": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-Linux-1.0.0-beta.1-x64.deb",
+    "linuxTar": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-Linux-1.0.0-beta.1-x64.tar.gz",
+    "mac": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-macOS-1.0.0-beta.1-x64.dmg",
+    "macZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-macOS-1.0.0-beta.1-x64.zip",
+    "android": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/KhataGHAR-Android-v1.0.0-beta.1.apk",
+    "webZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.1/khata-ghar-v1.0.0-beta.1.zip"
+  }
+}

@@ -6,62 +6,85 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
+concurrency:
+  group: "desktop-build"
+  cancel-in-progress: true
+
+env:
+  CSC_IDENTITY_AUTO_DISCOVERY: false
+  APPIMAGE_EXTRACT_AND_RUN: 1
+
 jobs:
   build-desktop:
-    name: Build Desktop (${{ matrix.os }})
+    name: Build Desktop (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - name: Windows
+            os: windows-latest
             platform_flag: --win
             artifact_name: KhataGHAR-Desktop-Windows
-            artifact_path: release/*.exe
-          - os: ubuntu-22.04
+            artifact_pattern: |
+              release/*Windows-Setup*.exe
+              release/*Windows-Portable*.exe
+              release/*.exe
+          - name: Linux
+            os: ubuntu-latest
             platform_flag: --linux
             artifact_name: KhataGHAR-Desktop-Linux
-            artifact_path: |
-              release/*.AppImage
-              release/*.deb
-          - os: macos-latest
-            platform_flag: --mac
+            artifact_pattern: |
+              release/*Linux*.AppImage
+              release/*Linux*.deb
+              release/*Linux*.tar.gz
+          - name: macOS
+            os: macos-latest
+            platform_flag: --mac -c.mac.identity=null
             artifact_name: KhataGHAR-Desktop-macOS
-            artifact_path: |
-              release/*.dmg
-              release/*.zip
+            artifact_pattern: |
+              release/*macOS*.dmg
+              release/*macOS*.zip
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 22
           cache: 'npm'
 
       - name: Install Linux packaging dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libarchive-tools
+          sudo apt-get install -y libarchive-tools libfuse2 desktop-file-utils || sudo apt-get install -y libarchive-tools libfuse2t64 desktop-file-utils || true
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install Node Dependencies
+        run: npm install
 
-      - name: Build web application
+      - name: Build Web Production Assets
         run: npm run build
 
-      - name: Build Desktop Binaries
+      - name: Build Desktop Binaries via Electron Builder
         run: npx electron-builder ${{ matrix.platform_flag }} --publish never
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload Desktop Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_path }}
+          path: ${{ matrix.artifact_pattern }}
           retention-days: 1
+          if-no-files-found: warn
 
+      - name: Attach Desktop Binaries to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.artifact_pattern }}
+          prerelease: true

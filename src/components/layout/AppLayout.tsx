@@ -11,6 +11,9 @@ import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { P2PSyncModal } from '../sync/P2PSyncModal';
 import { SupportCoffeeModal } from '../common/SupportCoffeeModal';
+import { UpdateModal } from '../common/UpdateModal';
+import { checkDailyUpdate } from '../../services/updater';
+import { APP_VERSION, AppVersionInfo } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useVault } from '../../context/VaultContext';
 import { usePrivacy } from '../../context/PrivacyContext';
@@ -36,6 +39,20 @@ export const AppLayout: React.FC = () => {
   const [isWelcomeOpen, setIsWelcomeOpen] = useState(() => !localStorage.getItem('khataghar_welcome_seen'));
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [autoUpdateData, setAutoUpdateData] = useState<AppVersionInfo | null>(null);
+  const [isAutoUpdateOpen, setIsAutoUpdateOpen] = useState(false);
+
+  // Daily Background Update Check (silently runs once every 24h on startup)
+  useEffect(() => {
+    checkDailyUpdate(APP_VERSION)
+      .then((info) => {
+        if (info) {
+          setAutoUpdateData(info);
+          setIsAutoUpdateOpen(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const effectiveShortcuts = useMemo(
     () => getEffectiveShortcuts(activeVault?.customShortcuts),
@@ -372,6 +389,15 @@ export const AppLayout: React.FC = () => {
           onSnoozeWeek={handleSnoozeSupport}
           onPermanentOptOut={handleOptOutSupport}
           onBuyCoffee={handleBuyCoffeeSupport}
+        />
+      )}
+
+      {/* In-App Update Modal */}
+      {isAutoUpdateOpen && (
+        <UpdateModal
+          open={isAutoUpdateOpen}
+          onClose={() => setIsAutoUpdateOpen(false)}
+          data={autoUpdateData}
         />
       )}
     </div>

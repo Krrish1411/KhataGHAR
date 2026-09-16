@@ -50,6 +50,7 @@ import { UniversalBackupCard } from '../components/settings/UniversalBackupCard'
 import { P2PSyncCard } from '../components/settings/P2PSyncCard';
 import { StorageDiagnosticsCard } from '../components/settings/StorageDiagnosticsCard';
 import { SupportSettingsCard } from '../components/settings/SupportSettingsCard';
+import { UpdateSettingsCard } from '../components/settings/UpdateSettingsCard';
 import { SupportCoffeeModal } from '../components/common/SupportCoffeeModal';
 
 export const SettingsView: React.FC = () => {
@@ -631,6 +632,9 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* ── APP UPDATES & RELEASE CHANNEL ─────────────────────── */}
+      <UpdateSettingsCard />
 
       {/* ── INDEPENDENT DEVELOPMENT & SUPPORT ────────────────────── */}
       <SupportSettingsCard onOpenPreview={() => setIsSupportPreviewOpen(true)} />

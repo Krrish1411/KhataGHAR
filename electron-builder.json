@@ -24,7 +24,7 @@
         "arch": ["x64"]
       }
     ],
-    "artifactName": "KhataGHAR-Setup-${version}.${ext}"
+    "artifactName": "KhataGHAR-Windows-Setup-${version}.${ext}"
   },
   "nsis": {
     "oneClick": false,
@@ -34,7 +34,7 @@
     "shortcutName": "KhataGHAR"
   },
   "portable": {
-    "artifactName": "KhataGHAR-Portable-${version}.exe"
+    "artifactName": "KhataGHAR-Windows-Portable-${version}.exe"
   },
   "linux": {
     "icon": "build/icons",
@@ -47,10 +47,14 @@
       {
         "target": "deb",
         "arch": ["x64"]
+      },
+      {
+        "target": "tar.gz",
+        "arch": ["x64"]
       }
     ],
     "category": "Office",
-    "artifactName": "KhataGHAR-${version}.${ext}"
+    "artifactName": "KhataGHAR-Linux-${version}-${arch}.${ext}"
   },
   "mac": {
     "icon": "build/icon.icns",
@@ -66,6 +70,6 @@
       }
     ],
     "category": "public.app-category.finance",
-    "artifactName": "KhataGHAR-${version}-${arch}.${ext}"
+    "artifactName": "KhataGHAR-macOS-${version}-${arch}.${ext}"
   }
 }
