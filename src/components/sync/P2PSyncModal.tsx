@@ -77,6 +77,7 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
   const [isSyncing, setIsSyncing] = useState(false);
   const [isMasterEstablished, setIsMasterEstablished] = useState(() => syncEngine.isMasterEstablished());
   const [notificationsAllowed, setNotificationsAllowed] = useState(false);
+  const isPaired = status === 'connected' || status === 'syncing' || status === 'synced';
 
   const localPlatform = useMemo(() => detectPlatform(), []);
   const localDeviceName = useMemo(() => {
@@ -354,7 +355,7 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
                 <span>Enable Alerts</span>
               </button>
             )}
-            {status === 'connected' && (
+            {isPaired && (
               <button
                 onClick={handleDisconnect}
                 className="text-[11px] font-semibold text-flare-600 dark:text-flare-400 hover:underline flex items-center gap-1 cursor-pointer"
@@ -367,7 +368,7 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
         </div>
 
         {/* Mode Selector (When Not Connected) */}
-        {status !== 'connected' && (
+        {!isPaired && (
           <div className="space-y-4">
             <div className="flex p-1 rounded-xl bg-moss border border-line max-w-sm mx-auto">
               <button
@@ -474,8 +475,8 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
           </div>
         )}
 
-        {/* CONNECTED STATE: Master Device Selection vs Active Sync Hub */}
-        {status === 'connected' && (
+        {/* CONNECTED / PAIRED STATE: Master Device Selection vs Active Sync Hub */}
+        {isPaired && (
           <div className="space-y-5">
             {/* Step 1: Initial Master Device Selection Dialog */}
             {!isMasterEstablished ? (
@@ -598,9 +599,16 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
                     <div>
                       <h4 className="font-display font-bold text-sm text-ink flex items-center gap-2">
                         <span>Vaults Paired &amp; Synchronized</span>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
-                          Live Active
-                        </span>
+                        {status === 'syncing' ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-600 text-white flex items-center gap-1">
+                            <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                            <span>Syncing...</span>
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
+                            Live Active
+                          </span>
+                        )}
                       </h4>
                       <p className="text-xs text-ink/60 mt-0.5">
                         Linked with <b>{connectedPeer?.deviceName}</b> ({connectedPeer?.platform}). Any subsequent changes sync seamlessly both ways.

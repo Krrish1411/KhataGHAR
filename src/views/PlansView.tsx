@@ -20,9 +20,11 @@ import {
   CreditCard,
   CheckCircle2,
   Calendar,
+  Bell,
 } from 'lucide-react';
 import { AccountModal } from '../components/accounts/AccountModal';
 import { CategoryModal } from '../components/categories/CategoryModal';
+import { schedulePlanNotification, cancelPlanNotification } from '../utils/nativeNotification';
 
 export const PlansView: React.FC = () => {
   const {
@@ -134,6 +136,7 @@ export const PlansView: React.FC = () => {
     try {
       const accrualMonth = payAttribution === 'due' ? payingPlan.dueDate.slice(0, 7) : payDate.slice(0, 7);
       await markPlanPaid(payingPlan.id, payAccountId, payDate, accrualMonth);
+      cancelPlanNotification(payingPlan.id).catch(() => {});
       setPayingPlan(null);
     } finally {
       setIsPaying(false);
@@ -149,6 +152,7 @@ export const PlansView: React.FC = () => {
     });
     if (ok) {
       await deletePlannedExpense(id);
+      cancelPlanNotification(id).catch(() => {});
     }
   };
 
@@ -534,6 +538,8 @@ const PlanModal: React.FC<PlanModalProps> = ({ isOpen, onClose, plan }) => {
   const [categoryId, setCategoryId] = useState('');
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [notes, setNotes] = useState('');
+  const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [reminderDaysBefore, setReminderDaysBefore] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -546,6 +552,8 @@ const PlanModal: React.FC<PlanModalProps> = ({ isOpen, onClose, plan }) => {
       setRecurrence(plan.recurrence);
       setCategoryId(plan.categoryId || '');
       setNotes(plan.notes || '');
+      setReminderEnabled(plan.reminderEnabled !== false);
+      setReminderDaysBefore(plan.reminderDaysBefore ?? 0);
     } else {
       setName('');
       setAmount('');
@@ -555,6 +563,8 @@ const PlanModal: React.FC<PlanModalProps> = ({ isOpen, onClose, plan }) => {
       setRecurrence('monthly');
       setCategoryId('');
       setNotes('');
+      setReminderEnabled(true);
+      setReminderDaysBefore(0);
     }
     setError('');
   }, [isOpen, plan]);
@@ -581,26 +591,40 @@ const PlanModal: React.FC<PlanModalProps> = ({ isOpen, onClose, plan }) => {
     setError('');
 
     try {
+      let savedPlan: PlannedExpense;
       if (plan) {
-        await updatePlannedExpense(plan.id, {
+        const updates: Partial<PlannedExpense> = {
           name: name.trim(),
           amount: numAmount,
           dueDate,
           recurrence,
           categoryId: categoryId || null,
           notes: notes.trim() || undefined,
-        });
+          reminderEnabled,
+          reminderDaysBefore: reminderEnabled ? reminderDaysBefore : 0,
+        };
+        await updatePlannedExpense(plan.id, updates);
+        savedPlan = { ...plan, ...updates } as PlannedExpense;
       } else {
-        await addPlannedExpense({
+        savedPlan = await addPlannedExpense({
           name: name.trim(),
           amount: numAmount,
           dueDate,
           recurrence,
           categoryId: categoryId || null,
           notes: notes.trim() || undefined,
+          reminderEnabled,
+          reminderDaysBefore: reminderEnabled ? reminderDaysBefore : 0,
           status: 'pending',
         });
       }
+
+      if (reminderEnabled) {
+        schedulePlanNotification(savedPlan, reminderDaysBefore).catch(() => {});
+      } else {
+        cancelPlanNotification(savedPlan.id).catch(() => {});
+      }
+
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to save plan');
@@ -736,6 +760,47 @@ const PlanModal: React.FC<PlanModalProps> = ({ isOpen, onClose, plan }) => {
             onChange={(e) => setNotes(e.target.value)}
             className="w-full rounded-xl border border-line bg-card px-3.5 py-2 text-xs text-ink placeholder:text-ink/30 outline-none focus:border-pine-500"
           />
+        </div>
+
+        {/* Native Notification Reminder */}
+        <div className="p-3.5 rounded-xl border border-line bg-moss/50 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="w-7 h-7 rounded-lg bg-pine-100 dark:bg-pine-950/60 border border-pine-300/40 grid place-items-center text-pine-600 shrink-0">
+                <Bell className="w-3.5 h-3.5" />
+              </span>
+              <div>
+                <span className="text-xs font-bold text-ink block">OS Notification Reminder</span>
+                <span className="text-[11px] text-ink/50 block">Schedule native system notification for this bill</span>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={reminderEnabled}
+                onChange={(e) => setReminderEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-ink/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-pine-600"></div>
+            </label>
+          </div>
+
+          {reminderEnabled && (
+            <div className="pt-2 border-t border-line/60 flex items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold text-ink/70">Remind me:</span>
+              <select
+                value={reminderDaysBefore}
+                onChange={(e) => setReminderDaysBefore(Number(e.target.value))}
+                className="rounded-lg border border-line bg-card px-2.5 py-1 text-xs font-bold text-ink outline-none focus:border-pine-500 cursor-pointer shadow-xs"
+              >
+                <option value={0}>On due date (9:00 AM)</option>
+                <option value={1}>1 day before (9:00 AM)</option>
+                <option value={2}>2 days before (9:00 AM)</option>
+                <option value={3}>3 days before (9:00 AM)</option>
+                <option value={7}>1 week before (9:00 AM)</option>
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="pt-2 flex items-center gap-2">

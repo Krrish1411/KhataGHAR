@@ -938,7 +938,7 @@ export const ReportsView: React.FC = () => {
               </span>
               <ArrowDownLeft className="w-4 h-4 text-pine-600" />
             </div>
-            <div className="font-display font-extrabold text-[24px] num text-pine-700 dark:text-pine-400 mt-1">
+            <div className="font-display font-extrabold text-lg sm:text-[24px] num text-pine-700 dark:text-pine-400 mt-1 truncate">
               <AnimatedNumber
                 value={currentSummary.totalIncome}
                 currency={baseCurrency}
@@ -946,7 +946,7 @@ export const ReportsView: React.FC = () => {
                 isPrivacyMode={isPrivacyMode}
               />
             </div>
-            <span className="text-[11px] text-ink/45 block mt-0.5">Deposits & Earnings</span>
+            <span className="text-[11px] text-ink/45 block mt-0.5 line-clamp-1 truncate">Deposits & Earnings</span>
           </div>
 
           <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 shadow-sm lift">
@@ -956,7 +956,7 @@ export const ReportsView: React.FC = () => {
               </span>
               <ArrowUpRight className="w-4 h-4 text-flare-600" />
             </div>
-            <div className="font-display font-extrabold text-[24px] num text-flare-600 mt-1">
+            <div className="font-display font-extrabold text-lg sm:text-[24px] num text-flare-600 mt-1 truncate">
               <AnimatedNumber
                 value={currentSummary.totalExpense}
                 currency={baseCurrency}
@@ -964,7 +964,7 @@ export const ReportsView: React.FC = () => {
                 isPrivacyMode={isPrivacyMode}
               />
             </div>
-            <span className="text-[11px] text-ink/45 block mt-0.5">Bills, Needs & Discretionary</span>
+            <span className="text-[11px] text-ink/45 block mt-0.5 line-clamp-1 truncate">Bills, Needs & Discretionary</span>
           </div>
 
           <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 shadow-sm lift">
@@ -974,7 +974,7 @@ export const ReportsView: React.FC = () => {
               </span>
               <TrendingUp className="w-4 h-4 text-pine-600" />
             </div>
-            <div className="font-display font-extrabold text-[24px] num text-ink mt-1">
+            <div className="font-display font-extrabold text-lg sm:text-[24px] num text-ink mt-1 truncate">
               <AnimatedNumber
                 value={currentSummary.netSavings}
                 currency={baseCurrency}
@@ -982,7 +982,7 @@ export const ReportsView: React.FC = () => {
                 isPrivacyMode={isPrivacyMode}
               />
             </div>
-            <span className="text-[11px] text-ink/45 block mt-0.5">Retained Cashflow</span>
+            <span className="text-[11px] text-ink/45 block mt-0.5 line-clamp-1 truncate">Retained Cashflow</span>
           </div>
 
           <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 shadow-sm lift">
@@ -992,14 +992,14 @@ export const ReportsView: React.FC = () => {
               </span>
               <Activity className="w-4 h-4 text-mari-600" />
             </div>
-            <div className="font-display font-extrabold text-[24px] num text-pine-700 dark:text-pine-400 mt-1">
+            <div className="font-display font-extrabold text-lg sm:text-[24px] num text-pine-700 dark:text-pine-400 mt-1 truncate">
               <AnimatedNumber
                 value={currentSummary.savingsRate}
                 isPercent
                 isPrivacyMode={isPrivacyMode}
               />
             </div>
-            <span className="text-[11px] text-ink/45 block mt-0.5">Benchmark Target: 30%+</span>
+            <span className="text-[11px] text-ink/45 block mt-0.5 line-clamp-1 truncate">Benchmark Target: 30%+</span>
           </div>
         </div>
 

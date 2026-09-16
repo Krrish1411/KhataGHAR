@@ -204,6 +204,8 @@ export interface PlannedExpense {
   status: 'pending' | 'paid' | 'cancelled';
   paidDate?: string;
   notes?: string;
+  reminderEnabled?: boolean;
+  reminderDaysBefore?: number; // 0 = on due date, 1 = 1 day before, 2 = 2 days before, etc.
   updatedAt: string;
 }
 

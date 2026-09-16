@@ -20,6 +20,7 @@ import {
   CalendarClock,
   Download,
   StickyNote,
+  Calculator,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
@@ -47,6 +48,7 @@ const NAV_GROUPS = [
       { path: '/budgets', label: 'Budgets & Goals', icon: PieChart },
       { path: '/assets', label: 'Assets & Debt', icon: Landmark },
       { path: '/reports', label: 'Reports', icon: BarChart3 },
+      { path: '/calculators', label: 'Financial Tools', icon: Calculator },
       { path: '/health-score', label: 'Health Score', icon: Activity },
     ],
   },

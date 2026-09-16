@@ -16,7 +16,10 @@
     "cap:open": "cap open android"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.1",
     "@capacitor/core": "^8.5.2",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/status-bar": "^8.0.3",
     "clsx": "^2.1.1",
     "dexie": "^4.0.11",
     "html2canvas": "^1.4.1",

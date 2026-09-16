@@ -42,6 +42,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { IconRenderer } from '../components/common/IconRenderer';
+import { renderMarkdown } from '../utils/markdown';
 
 const EMOJI_OPTIONS = ['📝', '💡', '📌', '📑', '📊', '💰', '🛡️', '⚡', '🎯', '🏦', '📜', '⚖️'];
 
@@ -163,9 +164,27 @@ export const NotesView: React.FC = () => {
         }
       }
     } else if (notes.length > 0 && !selectedNoteId) {
-      setSelectedNoteId(notes[0].id);
+      const lastId = typeof localStorage !== 'undefined' ? localStorage.getItem('khataghar_last_note_id') : null;
+      const matched = lastId ? notes.find((n) => n.id === lastId) : null;
+      if (matched) {
+        setSelectedNoteId(matched.id);
+      } else {
+        const sorted = [...notes].sort((a, b) => {
+          if (a.isPinned && !b.isPinned) return -1;
+          if (!a.isPinned && b.isPinned) return 1;
+          return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
+        });
+        setSelectedNoteId(sorted[0].id);
+      }
     }
-  }, [activeNote?.id, notes.length, selectedNoteId]);
+  }, [activeNote?.id, notes, selectedNoteId]);
+
+  // Persist selected note id for seamless restoration on next visit
+  useEffect(() => {
+    if (selectedNoteId && typeof localStorage !== 'undefined') {
+      localStorage.setItem('khataghar_last_note_id', selectedNoteId);
+    }
+  }, [selectedNoteId]);
 
   // Track editor states in ref to avoid stale closures in debounced auto-save
   const editorStateRef = useRef({
@@ -659,39 +678,40 @@ export const NotesView: React.FC = () => {
         }`}
       >
         {/* Top Bar Header */}
-        <div className="flex items-center justify-between px-5 sm:px-7 py-3 border-b border-line/70 shrink-0 bg-card/60 backdrop-blur-xs">
+        <div className="flex items-center justify-between px-3 sm:px-7 py-2.5 sm:py-3 border-b border-line/70 shrink-0 bg-card/60 backdrop-blur-xs gap-2">
           {/* Left: Scope title + badge + Saved status */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1 truncate">
             {/* Mobile Back Button */}
             <button
               onClick={() => setMobileView('list')}
-              className="lg:hidden p-1.5 rounded-lg border border-line text-ink hover:bg-moss mr-1"
+              className="lg:hidden p-1.5 rounded-lg border border-line text-ink hover:bg-moss mr-0.5 shrink-0"
+              aria-label="Back to note list"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            <span className="font-extrabold text-sm text-ink font-display">
+            <span className="font-extrabold text-xs sm:text-sm text-ink font-display truncate">
               {selectedFolderId === 'all' ? 'All Notes' : currentFolder?.name || 'Notes'}
             </span>
 
-            <span className="text-[11px] font-semibold text-ink/60 bg-moss/80 dark:bg-navy-900 px-2 py-0.5 rounded-full font-mono border border-line/50">
-              {selectedFolderId === 'all' ? notes.length : notes.filter((n) => n.folderId === folderId).length} notes
+            <span className="text-[10px] sm:text-[11px] font-semibold text-ink/60 bg-moss/80 dark:bg-navy-900 px-1.5 sm:px-2 py-0.5 rounded-full font-mono border border-line/50 shrink-0">
+              {selectedFolderId === 'all' ? notes.length : notes.filter((n) => n.folderId === folderId).length}
             </span>
 
-            <span className="flex items-center gap-1 text-[11px] font-mono text-ink/45 ml-1">
+            <span className="hidden sm:flex items-center gap-1 text-[11px] font-mono text-ink/45 ml-1 shrink-0">
               <Lock className="w-3 h-3 text-pine-600 dark:text-pine-400" />
               <span>{isSaved ? 'Saved' : 'Saving…'}</span>
             </span>
           </div>
 
           {/* Right: Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {/* Segmented [Write | Preview] Pill */}
             <div className="flex items-center p-0.5 bg-moss/80 dark:bg-navy-900/80 rounded-lg border border-line/60">
               <button
                 type="button"
                 onClick={() => setMode('write')}
-                className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
                   mode === 'write'
                     ? 'bg-pine-700 dark:bg-pine-600 text-white shadow-2xs'
                     : 'text-ink/60 hover:text-ink'
@@ -702,7 +722,7 @@ export const NotesView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setMode('preview')}
-                className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
                   mode === 'preview'
                     ? 'bg-pine-700 dark:bg-pine-600 text-white shadow-2xs'
                     : 'text-ink/60 hover:text-ink'
@@ -729,10 +749,10 @@ export const NotesView: React.FC = () => {
               <Pin className={`w-3.5 h-3.5 ${isPinned ? 'fill-amber-500' : ''}`} />
             </button>
 
-            {/* Fullscreen Action */}
+            {/* Fullscreen Action (Desktop only) */}
             <button
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-1.5 rounded-lg border border-line text-ink/40 hover:text-ink hover:bg-moss cursor-pointer transition-colors"
+              className="hidden sm:inline-flex p-1.5 rounded-lg border border-line text-ink/40 hover:text-ink hover:bg-moss cursor-pointer transition-colors"
               title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
             >
               {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
@@ -750,10 +770,10 @@ export const NotesView: React.FC = () => {
             {/* + Note Button */}
             <button
               onClick={handleCreateNewNote}
-              className="px-3.5 py-1.5 rounded-xl bg-pine-700 hover:bg-pine-800 dark:bg-pine-600 dark:hover:bg-pine-500 text-white text-xs font-bold shadow-xs flex items-center gap-1 cursor-pointer transition-colors"
+              className="px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-pine-700 hover:bg-pine-800 dark:bg-pine-600 dark:hover:bg-pine-500 text-white text-xs font-bold shadow-xs flex items-center gap-1 cursor-pointer transition-colors"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Note</span>
+              <span className="hidden sm:inline">Note</span>
             </button>
           </div>
         </div>
@@ -891,8 +911,8 @@ export const NotesView: React.FC = () => {
             {/* Document Canvas */}
             <div className="flex-1 min-h-[350px] flex flex-col">
               {mode === 'preview' ? (
-                <div className="prose dark:prose-invert max-w-none text-sm text-ink leading-relaxed whitespace-pre-wrap font-sans p-1">
-                  {content || <span className="italic text-ink/40">No content to preview</span>}
+                <div className="w-full max-w-full overflow-x-hidden break-words text-sm text-ink leading-relaxed font-sans p-1">
+                  {content ? renderMarkdown(content) : <span className="italic text-ink/40">No content to preview</span>}
                 </div>
               ) : (
                 <textarea

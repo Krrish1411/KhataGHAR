@@ -857,7 +857,7 @@ export const TransactionsView: React.FC = () => {
                     Selected: {selectedEntry.title} (
                     {formatCurrency(selectedEntry.amount, baseCurrency, numberFormat, isPrivacyMode)})
                   </span>
-                  <span className="hidden md:inline text-[11px] text-ink/50 font-normal shrink-0">
+                  <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-ink/50 font-normal shrink-0">
                     • <kbd className="px-1 py-0.5 rounded bg-card border border-line font-mono font-bold text-ink">Del</kbd> to delete, <kbd className="px-1 py-0.5 rounded bg-card border border-line font-mono font-bold text-ink">↑</kbd>/<kbd className="px-1 py-0.5 rounded bg-card border border-line font-mono font-bold text-ink">↓</kbd> to navigate
                   </span>
                 </div>

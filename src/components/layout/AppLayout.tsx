@@ -20,6 +20,7 @@ import { usePrivacy } from '../../context/PrivacyContext';
 import { Sparkles, ArrowRight, LogOut, Keyboard, Heart, X as CloseIcon } from 'lucide-react';
 import { getEffectiveShortcuts, APP_SHORTCUTS, formatKeyDisplay } from '../../services/shortcuts';
 import type { TransactionEntryMode } from '../transactions/QuickAddModal';
+import { initHardwareBackButton, configureStatusBar } from '../../utils/native';
 
 export const AppLayout: React.FC = () => {
   const { activeVault, exitDemoVault } = useAuth();
@@ -143,6 +144,57 @@ export const AppLayout: React.FC = () => {
     const timer = setTimeout(() => setToastMessage(null), 5500);
     return () => clearTimeout(timer);
   }, [toastMessage]);
+
+  // Sync Android Status Bar with theme
+  useEffect(() => {
+    const isDark = document.documentElement.classList.contains('dark');
+    configureStatusBar(isDark);
+  }, [location.pathname]);
+
+  // Android Hardware Back Button listener
+  useEffect(() => {
+    const unsub = initHardwareBackButton(() => {
+      if (isQuickAddOpen) {
+        setIsQuickAddOpen(false);
+        return true;
+      }
+      if (isShortcutsOpen) {
+        setIsShortcutsOpen(false);
+        return true;
+      }
+      if (isSyncModalOpen) {
+        setIsSyncModalOpen(false);
+        return true;
+      }
+      if (isSupportModalOpen) {
+        setIsSupportModalOpen(false);
+        return true;
+      }
+      if (isNewVaultOpen) {
+        setIsNewVaultOpen(false);
+        return true;
+      }
+      if (isWelcomeOpen) {
+        setIsWelcomeOpen(false);
+        return true;
+      }
+      if (isMobileMenuOpen) {
+        setIsMobileMenuOpen(false);
+        return true;
+      }
+      return false;
+    });
+
+    return () => unsub();
+  }, [
+    isQuickAddOpen,
+    isShortcutsOpen,
+    isSyncModalOpen,
+    isSupportModalOpen,
+    isNewVaultOpen,
+    isWelcomeOpen,
+    isMobileMenuOpen,
+  ]);
 
   // Milestone & Appreciation Support Modal Trigger
   // Triggers once user reaches 10+ entries, then every 7 days (1 week)

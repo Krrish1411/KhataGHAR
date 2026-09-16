@@ -52,6 +52,7 @@ import { StorageDiagnosticsCard } from '../components/settings/StorageDiagnostic
 import { SupportSettingsCard } from '../components/settings/SupportSettingsCard';
 import { UpdateSettingsCard } from '../components/settings/UpdateSettingsCard';
 import { SupportCoffeeModal } from '../components/common/SupportCoffeeModal';
+import { ReconciliationDiffModal } from '../components/accounts/ReconciliationDiffModal';
 
 export const SettingsView: React.FC = () => {
   const { activeVault, sessionKey, lockVault, refreshVaultList, setActiveVaultMeta, setSessionCredentials } =
@@ -104,6 +105,7 @@ export const SettingsView: React.FC = () => {
   const [demoSuccess, setDemoSuccess] = useState('');
   const [isReconciling, setIsReconciling] = useState(false);
   const [reconcileSuccess, setReconcileSuccess] = useState('');
+  const [isReconcileModalOpen, setIsReconcileModalOpen] = useState(false);
 
   // Category Management state
   const [catNewName, setCatNewName] = useState('');
@@ -165,6 +167,15 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleLoadDemo = async () => {
+    const ok = await confirm({
+      title: 'Load Institutional Demo Data?',
+      description:
+        'This will populate sample accounts, 4 months of categorized transactions, custodial funds, budgets, and savings goals into your active vault. Your existing custom records will be preserved.',
+      confirmText: 'Load Demo Dataset',
+      variant: 'warning',
+    });
+    if (!ok) return;
+
     setIsLoadingDemo(true);
     setDemoSuccess('');
     try {
@@ -177,27 +188,8 @@ export const SettingsView: React.FC = () => {
     }
   };
 
-  const handleReconcile = async () => {
-    const ok = await confirm({
-      title: 'Reconcile Account Balances',
-      description: "Recalculate and reconcile all account balances based on your complete double-entry ledger? Fixed opening balances will be preserved, and only transactions after each account's opening date will apply.",
-      confirmText: 'Run Reconciliation',
-      variant: 'primary',
-    });
-    if (!ok) {
-      return;
-    }
-    setIsReconciling(true);
-    setReconcileSuccess('');
-    try {
-      await reconcileAccounts();
-      setReconcileSuccess('All account balances reconciled successfully against ledger records!');
-      setTimeout(() => setReconcileSuccess(''), 5000);
-    } catch (err) {
-      console.error('Failed to reconcile accounts:', err);
-    } finally {
-      setIsReconciling(false);
-    }
+  const handleReconcile = () => {
+    setIsReconcileModalOpen(true);
   };
 
   // Change Password State
@@ -1418,6 +1410,18 @@ export const SettingsView: React.FC = () => {
           totalAccountsCount={accounts.length}
           onSnoozeWeek={() => setIsSupportPreviewOpen(false)}
           onPermanentOptOut={() => setIsSupportPreviewOpen(false)}
+        />
+      )}
+
+      {/* Reconciliation Diff Modal */}
+      {isReconcileModalOpen && (
+        <ReconciliationDiffModal
+          isOpen={isReconcileModalOpen}
+          onClose={() => setIsReconcileModalOpen(false)}
+          onReconciled={() => {
+            setReconcileSuccess('Account balances reconciled successfully against ledger records!');
+            setTimeout(() => setReconcileSuccess(''), 5000);
+          }}
         />
       )}
     </div>

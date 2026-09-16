@@ -23,6 +23,7 @@ import { DocumentsView } from './views/DocumentsView';
 import { NotesView } from './views/NotesView';
 import { FamilyOverviewView } from './views/FamilyOverviewView';
 import { SettingsView } from './views/SettingsView';
+import { CalculatorsView } from './views/CalculatorsView';
 import { SecurityPrivacyView } from './views/SecurityPrivacyView';
 
 const AuthenticatedApp: React.FC = () => {
@@ -58,6 +59,7 @@ const AuthenticatedApp: React.FC = () => {
             <Route path="budgets" element={<BudgetsGoalsView />} />
             <Route path="assets" element={<AssetsLiabilitiesView />} />
             <Route path="reports" element={<ReportsView />} />
+            <Route path="calculators" element={<CalculatorsView />} />
             <Route path="health-score" element={<HealthScoreView />} />
             <Route path="notes" element={<NotesView />} />
             <Route path="import" element={<ImportView />} />

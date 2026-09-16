@@ -56,6 +56,14 @@ KhataGHAR is an institutional-grade, zero-cloud, 100% offline and encrypted pers
 | **Electron Packaging & Platform Names** | `[MOD]` [`electron-builder.json`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/electron-builder.json)<br>`[MOD]` [`package.json`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/package.json) | Added `tar.gz` to Linux targets. Enforced explicit platform names in binary artifacts (`KhataGHAR-Linux-...`, `KhataGHAR-Windows-Setup-...`, `KhataGHAR-Windows-Portable-...`, `KhataGHAR-macOS-...`). Set version to `1.0.0-beta.1`. |
 | **In-App Update Engine** | `[NEW]` [`src/services/updater.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/updater.ts)<br>`[NEW]` [`src/types/updater.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/types/updater.ts)<br>`[NEW]` [`public/version.json`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/public/version.json)<br>`[NEW]` [`src/components/common/UpdateModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/common/UpdateModal.tsx)<br>`[NEW]` [`src/components/settings/UpdateSettingsCard.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/settings/UpdateSettingsCard.tsx)<br>`[MOD]` [`src/views/SettingsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/SettingsView.tsx)<br>`[MOD]` [`src/components/layout/AppLayout.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/AppLayout.tsx) | Built sovereign in-app update checker. Checks GitHub releases API (with beta pre-release channel support) and canonical `version.json`. SemVer 2.0.0 comparator, 24h background check with silent failure, zero-preflight fetch, `CapacitorHttp` mobile bypass, and dedicated Settings card. |
 | **Android WebView Cache Trap Guard** | `[MOD]` [`src/main.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/main.tsx) | Prevented Android WebView permanently caching stale bundles on in-place APK upgrades by unregistering service workers and clearing `CacheStorage` on native mobile, registering SW only for Web PWA. |
+| **Baseline Date & Decimal Precision** | `[MOD]` [`src/utils/dates.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/utils/dates.ts)<br>`[MOD]` [`src/utils/formatters.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/utils/formatters.ts) | Fixed `isTxAfterBaseline` from strict `>` to inclusive `>=` so transactions on baseline date affect account balance. Fixed `formatCompactCurrency` to show 2 decimal places for fractional values $< 1000$ (e.g. ₹0.10, ₹0.50). |
+| **Global Dynamic P2P Sync Engine** | `[MOD]` [`src/services/sync/syncEngine.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/sync/syncEngine.ts)<br>`[MOD]` [`src/components/sync/P2PSyncModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/sync/P2PSyncModal.tsx)<br>`[MOD]` [`src/context/VaultContext.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/context/VaultContext.tsx) | Wired full-duplex global dynamic sync directly into `VaultContext`. Implemented `isApplyingRemoteSyncRef` echo loop prevention, debounced auto-broadcasting on any local mutation, `resetMasterStatus()` on new sessions, and fixed PIN re-display during active sync. |
+| **Notes Markdown AST & State Restore** | `[NEW]` [`src/utils/markdown.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/utils/markdown.tsx)<br>`[MOD]` [`src/views/NotesView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/NotesView.tsx) | Built AST-based markdown renderer (ported from Lifelog, zero `dangerouslySetInnerHTML`) with checklists, headings, code, and text formatting. Fixed Android preview horizontal overflow (`break-words`, `overflow-x-hidden`). Restores last active note via `khataghar_last_note_id` or top note by `updatedAt`. |
+| **Lifelog Mobile Parity (Insets & Back Button)** | `[NEW]` [`src/utils/native.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/utils/native.ts)<br>`[MOD]` [`src/components/layout/Header.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/Header.tsx)<br>`[MOD]` [`src/components/layout/BottomNav.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/BottomNav.tsx)<br>`[MOD]` [`src/components/layout/AppLayout.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/AppLayout.tsx) | Edge-to-edge safe area insets (`env(safe-area-inset-top)` & `bottom`) avoiding camera notch collision. Dynamic Android status bar theme synchronization (`@capacitor/status-bar`). Hardware back button navigation closing modals/drawers (`@capacitor/app`). Tactile haptic feedback. |
+| **Financial Calculators Suite & Amortization** | `[NEW]` [`src/views/CalculatorsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/CalculatorsView.tsx)<br>`[MOD]` [`src/App.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/App.tsx)<br>`[MOD]` [`src/components/layout/Sidebar.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/Sidebar.tsx) | Complete institutional financial suite (SIP, Step-Up SIP, Lumpsum, SWP, FIRE Runway, Loan Schedule). Return rates start from 0% (min 0 to 30). Loan calculator includes month-by-month and year-by-year Amortization Tables with prepayment tenure and interest savings simulation. |
+| **Scheduled Native Notifications** | `[MOD]` [`src/utils/nativeNotification.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/utils/nativeNotification.ts)<br>`[MOD]` [`src/types/index.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/types/index.ts)<br>`[MOD]` [`src/views/PlansView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/PlansView.tsx)<br>`[MOD]` [`src/context/VaultContext.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/context/VaultContext.tsx) | Created Android notification channel `reminders` with high importance, vibration & sound. Integrated `@capacitor/local-notifications` to schedule alarms at 9:00 AM on due date or 1/2/3/7 days before. Automatic launch scan alerting user of upcoming bills & approaching savings goals. |
+| **Reconciliation Diff Modal & Demo Guard** | `[NEW]` [`src/components/accounts/ReconciliationDiffModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/accounts/ReconciliationDiffModal.tsx)<br>`[MOD]` [`src/context/VaultContext.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/context/VaultContext.tsx)<br>`[MOD]` [`src/views/SettingsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/SettingsView.tsx) | Interactive reconciliation discrepancy table comparing Stored Balance vs Calculated Double-Entry Ledger Balance with green/crimson delta badges and per-account selection checkboxes. Added safety confirmation guard to "Load Institutional Demo Data". |
+| **Mobile Typography Polish & Branded Icons** | `[MOD]` [`src/views/ReportsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/ReportsView.tsx)<br>`[MOD]` [`src/views/DashboardView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/DashboardView.tsx)<br>`[MOD]` [`src/views/TransactionsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/TransactionsView.tsx)<br>`[MOD]` [`public/favicon.svg`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/public/favicon.svg)<br>`[MOD]` [`android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml) | Executive KPI responsive typography (`text-lg sm:text-[24px] truncate`), responsive Hero Available to Spend (`text-2xl sm:text-[38px] lg:text-[42px]`), hidden desktop shortcut hints on mobile (`hidden md:inline-flex`), and branded pine green rounded badge with white Indian Rupee `₹` vector emblem for PWA favicon and Android launcher. |
 
 ---
 
@@ -285,11 +293,137 @@ Implemented a full, sovereign-friendly patronage architecture honoring Krish Pat
 
 ---
 
+### 3.16 Baseline Date Comparison & Decimal Precision Fix (`0.1` Rs Hero Card Fix)
+- **The Problem**:
+  1. Entering a small transaction like `0.1` Rs or `0.5` Rs did not reflect in the green Available to Spend hero card or account balance if the transaction date was the same as the account creation / baseline date.
+  2. In `formatCompactCurrency`, amounts under 1,000 were passed through `abs.toFixed(0)`. Fractional amounts like `0.1` Rs were rounded down to `0` and displayed as `₹0`, making users believe the entry was ignored.
+- **Root Cause & Architectural Solution**:
+  1. In [`src/utils/dates.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/utils/dates.ts), `isTxAfterBaseline(txDate, baselineDate)` previously performed a strict greater-than comparison (`dTx > dBase`). When an account was created on `2026-09-16` and a transaction was entered on `2026-09-16`, the comparison evaluated to `false`, silently excluding the transaction from balance recalculation. Changed to inclusive comparison `dTx >= dBase`.
+  2. In [`src/utils/formatters.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/utils/formatters.ts), `formatCompactCurrency` was upgraded:
+     ```typescript
+     if (abs < 1000) {
+       const formatted = abs % 1 === 0 ? abs.toLocaleString('en-IN') : abs.toFixed(2);
+       return `${sign}${symbol}${formatted}`;
+     }
+     ```
+     Amounts like `0.1` now render cleanly as `₹0.10`, `0.5` as `₹0.50`, and `12.75` as `₹12.75`.
+
+---
+
+### 3.17 Global Dynamic P2P Sync Engine & Echo Loop Prevention
+- **The Problem**:
+  1. P2P sync only applied incoming state updates when the user had the `P2PSyncModal` open. As soon as the modal was closed, the listener was torn down and incoming updates were dropped.
+  2. When pairing two devices, entering the PIN caused the UI to freeze or briefly flash the PIN creation card again because `status === 'syncing'` did not match the strict `status === 'connected'` check.
+  3. Master device selection dialog was suppressed on subsequent pairings because `khataghar_sync_masterEstablished` remained `true` in `localStorage` forever.
+  4. Adding an entry on Device A did not automatically stream to Device B in real time without manual syncing.
+- **Architectural Solution**:
+  1. **Global Sync Listener in `VaultContext.tsx`**:
+     - Bound `syncEngine.onStateApply` inside `VaultContext` lifecycle. Whenever a peer broadcasts an encrypted state update, `VaultContext` decrypts and persists it into Dexie IndexedDB and updates React state.
+     - Registered `syncEngine.registerLocalStateGetter(() => vaultData)` so the engine can package and transmit complete vaults on demand.
+  2. **Echo Loop Guard (`isApplyingRemoteSyncRef`)**:
+     - Auto-broadcasting local changes to peers can trigger an infinite echo loop if Device B re-broadcasts the state it just received from Device A.
+     - Introduced an `isApplyingRemoteSyncRef` latch that flags when state is mutating due to an incoming remote packet. Auto-broadcasting is suppressed during remote application.
+  3. **Debounced Auto-Broadcasting**:
+     - Added `debouncedBroadcastRef` (350ms window) in `VaultContext`. Any local mutation (creating an entry, adding an account, editing a note, updating a plan) automatically broadcasts delta payloads over encrypted SSE channels to all connected peers.
+  4. **Master Status Reset & Status Normalization**:
+     - In [`src/services/sync/syncEngine.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/sync/syncEngine.ts), added `resetMasterStatus()` which clears `khataghar_sync_masterEstablished` whenever `hostSession()` or `joinWithPin()` is called, ensuring the Master/Replica prompt cleanly triggers on every new pairing session.
+     - In [`src/components/sync/P2PSyncModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/sync/P2PSyncModal.tsx), normalized `isPaired = ['connected', 'syncing', 'synced'].includes(status)`. The user remains in the connected hub with live animated sync spinners instead of being dumped back into PIN generation.
+
+---
+
+### 3.18 Notes Markdown AST Parser Engine, Android Preview Fit & Note Selection Persistence
+- **The Problem**:
+  1. Notes preview on Android clipped text, lacked proper styling, and broke layout on long words or code blocks.
+  2. Navigating to the Notes view always opened a fixed arbitrary note instead of the last active note or the most recently edited note.
+  3. Markdown rendering relied on simplistic replacements without AST nesting or interactive checklist capabilities.
+- **Architectural Solution**:
+  1. **Zero-Dependency AST Markdown Parser (`src/utils/markdown.tsx`)**:
+     - Ported from Lifelog's architecture without external dependencies or `dangerouslySetInnerHTML`.
+     - Supports headers (`#` to `####`), blockquotes, horizontal dividers, unordered lists, ordered lists, task checklists (`- [ ]`, `- [x]`), inline code, code blocks, bold, italic, underline, strikethrough, and highlight tokens (`==highlight==`).
+  2. **Android Preview Layout Hardening (`src/views/NotesView.tsx`)**:
+     - Applied `break-words`, `overflow-x-hidden`, and responsive container padding (`p-4 sm:p-8`).
+     - Standardized mobile top bar with truncated titles and compact icons to eliminate viewport horizontal overflow.
+  3. **Session Note Selection Persistence**:
+     - On note selection or creation, persisted `khataghar_last_note_id` to `localStorage`.
+     - On mount, restored `khataghar_last_note_id`. If absent, sorted all notes by `updatedAt` descending and selected the newest note (`sorted[0]`), eliminating the stale fixed-note behavior.
+
+---
+
+### 3.19 Lifelog Mobile Parity (Safe Area Insets, Android Status Bar, Hardware Back Button & Haptics)
+- **Parity with Lifelog Architecture**:
+  1. **Edge-to-Edge Safe Area Insets**:
+     - Added `pt-[env(safe-area-inset-top,0px)]` and dynamic header height `h-[calc(60px+env(safe-area-inset-top,0px))]` in [`Header.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/Header.tsx) to prevent headers colliding with Android camera notches and punch-holes.
+     - Added `pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))]` in [`BottomNav.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/BottomNav.tsx) to clear home indicator bars.
+  2. **Native Status Bar Theme Synchronization (`src/utils/native.ts`)**:
+     - Integrated `@capacitor/status-bar`. In [`AppLayout.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/AppLayout.tsx), dynamically calls `configureStatusBar(theme)` to synchronize Android status bar text style (`Style.Dark` vs `Style.Light`) and background with the active KhataGHAR theme.
+  3. **Android Hardware Back Button Handler**:
+     - Integrated `@capacitor/app`. In [`AppLayout.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/AppLayout.tsx), registered `initHardwareBackButton()` which intercepts physical and gesture back button presses:
+       - If a modal or sheet is open, it closes the topmost modal.
+       - If the mobile navigation drawer is open, it dismisses the drawer.
+       - If on a nested subpage, it navigates backward before exiting the app.
+  4. **Tactile Haptic Feedback**:
+     - Integrated `triggerHaptic()` in [`BottomNav.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/BottomNav.tsx) and primary action triggers, providing responsive haptic taps on Android.
+
+---
+
+### 3.20 Sovereign Financial Calculators Suite (`src/views/CalculatorsView.tsx`)
+- **Institutional Financial Calculators**:
+  - Implemented 6 institutional-grade wealth planning calculators:
+    1. **SIP Calculator**: Monthly investment compounding with invested amount, estimated returns, and total future wealth.
+    2. **Loan Repayment & Amortization Schedule**: Calculates exact monthly EMI, total interest, and total payable. Features:
+       - **0% Baseline Rate**: Minimum interest rate starts from **0%** (supports interest-free loans and zero-cost financing).
+       - **Interactive Amortization Schedule**: Dynamic month-by-month and year-by-year tabular breakdown showing Beginning Balance, Principal Paid, Interest Paid, and Ending Balance.
+       - **Prepayment Savings Simulator**: Interactive slider for extra monthly prepayment calculating exact interest rupees saved and tenure reduction in months.
+    3. **Step-Up SIP Calculator**: Compounding with annual step-up percentage (e.g. 10% annual salary hike).
+    4. **Lumpsum Calculator**: One-time capital growth over 1–40 years.
+    5. **SWP (Systematic Withdrawal Plan)**: Post-retirement monthly cash generation and capital longevity.
+    6. **FIRE Freedom Runway**: Financial Independence Retire Early milestone target and years-to-freedom calculator.
+- **Navigation & Routing**:
+  - Registered route `/calculators` in [`src/App.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/App.tsx).
+  - Added "Financial Tools" link with `Calculator` icon under Finance in [`src/components/layout/Sidebar.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/Sidebar.tsx).
+
+---
+
+### 3.21 Native Scheduled Notifications for Bills, Reminders & Goals (`src/utils/nativeNotification.ts` & `src/views/PlansView.tsx`)
+- **Android Notification Channel (`reminders`)**:
+  - Configured high-importance Android channel with sound, vibration, and pine green `#12855a` accent lights via `@capacitor/local-notifications`.
+- **Scheduled Alarms at 9:00 AM (`schedulePlanNotification`)**:
+  - Computes exact target trigger date at 9:00 AM on the due date or 1, 2, 3, or 7 days prior according to user preference.
+  - Deterministically hashes plan IDs to positive 32-bit integers (`hashStringToInt`) ensuring reliable cancellation (`cancelPlanNotification`) upon bill settlement or deletion.
+- **Background Reminders Scanner on Boot (`checkAndNotifyUpcomingReminders`)**:
+  - Runs once per calendar date on vault unlock. Scans active pending plans due today, tomorrow, or in 2 days, and goals within 7 days of their milestone date, triggering native OS desktop alerts and web notifications.
+- **In-App Plan Modal Controls**:
+  - Added OS Notification Reminder switch and "Remind me" selector (`On due date`, `1 day before`, `2 days before`, `3 days before`, `1 week before`) in `PlanModal`.
+
+---
+
+### 3.22 Account Reconciliation Discrepancy Diff Modal & Demo Guard (`src/components/accounts/ReconciliationDiffModal.tsx`)
+- **Interactive Discrepancy Diff Preview**:
+  - Implemented `ReconciliationDiffModal.tsx` comparing Stored Account Balances against true double-entry ledger calculations in real-time without mutating the database.
+  - Displays per-account opening baseline balances, dates, live ledger totals, and colored discrepancy badges (green `+` for surplus, crimson `-` for shortfall, gray `Matched`).
+  - Selective reconciliation: user can check/uncheck specific accounts or 1-click select all to commit corrections.
+  - Exposes `getReconciliationPreview()` and selective `reconcileAccounts(accountIds)` in `VaultContext`.
+- **Demo Data Confirmation Guard**:
+  - Wrapped "Load Realistic Indian Demo Data" in `SettingsView.tsx` with an in-app confirmation modal (`useConfirm`) preventing accidental overwriting or injection of test data into active user vaults.
+
+---
+
+### 3.23 Mobile Typography Polish & Branded Pine Green Rupee Icons
+- **Responsive Typography Across Small Displays**:
+  - In `ReportsView.tsx`, made Executive KPI hero numbers responsive (`text-lg sm:text-[24px] truncate`) with `line-clamp-1` on subtitle descriptions, preventing clipping on narrow 360px Android devices.
+  - In `DashboardView.tsx`, converted Available to Spend hero number to `text-2xl sm:text-[38px] lg:text-[42px] truncate`.
+  - Hid desktop keyboard shortcut hints on mobile viewports (`hidden md:inline-flex` in `TransactionsView.tsx` and `hidden sm:flex` for Dashboard keys button).
+- **Institutional Brand Emblems**:
+  - Updated `public/favicon.svg` to the pine green (`#12855a`) rounded badge with an authentic white Indian Rupee `₹` vector emblem.
+  - Updated Android adaptive launcher icon `android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml` to center the white Rupee symbol cleanly within the 108dp safe viewport over `#12855a` background.
+
+---
+
 ## 4. Verification & Build Integrity
 
 - **TypeScript Compilation**: `npx tsc -b` passed with **0 errors**.
-- **Production Web Bundle**: `npm run build` compiled successfully in **28.16s** (dist generated with 23 precached PWA entries).
-- **Capacitor Android Sync**: `npx cap sync android` completed in **0.088s** with **0 errors**.
+- **Production Web Bundle**: `npm run build` compiled successfully in **32.27s** (dist generated with 25 precached PWA entries).
+- **Capacitor Android Sync**: `npx cap sync android` completed in **0.103s** with **0 errors** (all 3 plugins synced: `@capacitor/app`, `@capacitor/local-notifications`, `@capacitor/status-bar`).
 - **Cross-Platform Compatibility**: Tested and verified on Linux desktop, Electron packaging targets, and Android Capacitor WebView.
 
 ---
@@ -318,3 +452,18 @@ When adding new features or modifying existing pages in KhataGHAR:
 7. **Release Invariants**:
    - Do NOT create git release tags or trigger CI release builds without the user's explicit consent.
    - All workflow artifacts must adhere to `retention-days: 1`.
+
+---
+
+## 6. Current Implementation State: Completed vs. Pending Roadmap
+
+| Phase | Module / Feature | Status | Key Deliverables & Files |
+| :--- | :--- | :--- | :--- |
+| **Phase 1** | **Baseline Date & Decimal Precision** | `COMPLETED` | `src/utils/dates.ts`: `isTxAfterBaseline` updated to inclusive `>=`.<br>`src/utils/formatters.ts`: `formatCompactCurrency` displays 2 decimal places for fractional amounts $< 1000$ (e.g. ₹0.10, ₹0.50). |
+| **Phase 2** | **Global Dynamic P2P Sync Engine** | `COMPLETED` | `src/services/sync/syncEngine.ts`: `resetMasterStatus()` on new sessions.<br>`src/components/sync/P2PSyncModal.tsx`: Fixed PIN input flash during sync.<br>`src/context/VaultContext.tsx`: Full-duplex dynamic background sync listener, debounced auto-broadcasting, and `isApplyingRemoteSyncRef` echo loop prevention. |
+| **Phase 3** | **Notes Markdown AST & State Restore** | `COMPLETED` | `src/utils/markdown.tsx`: Zero-dependency AST markdown parser ported from Lifelog.<br>`src/views/NotesView.tsx`: Android preview overflow fix (`break-words`, `overflow-x-hidden`), session restoration via `khataghar_last_note_id` or top note by `updatedAt` desc. |
+| **Phase 4** | **Lifelog Mobile Parity (Insets & Back Button)** | `COMPLETED` | Installed `@capacitor/status-bar` and `@capacitor/app`.<br>`src/utils/native.ts`: Native status bar theme sync, hardware back button handler, tactile haptics.<br>`src/components/layout/Header.tsx` & `BottomNav.tsx`: Safe area insets `env(safe-area-inset-top)` and `bottom`. |
+| **Phase 5** | **Financial Calculators Suite & Amortization** | `COMPLETED` | `src/views/CalculatorsView.tsx`: 6 calculators (SIP, Step-Up SIP, Lumpsum, SWP, FIRE Runway, Loan Schedule). Sliders start from **0%** return rate. Full interactive month-by-month and year-by-year Amortization Schedules with Prepayment savings simulator.<br>`src/App.tsx` & `Sidebar.tsx`: Route `/calculators` and navigation link. |
+| **Phase 6** | **Native Scheduled Notifications** | `COMPLETED` | `src/utils/nativeNotification.ts`: Channel creation (`reminders`) & local notification scheduling via `@capacitor/local-notifications`.<br>`src/views/PlansView.tsx`: Reminder timing picker (on due date, 1, 2, 3, 7 days before) on bills & goals. |
+| **Phase 7** | **Reconciliation Diff Modal & Demo Confirm** | `COMPLETED` | `src/components/accounts/ReconciliationDiffModal.tsx`: Interactive discrepancy table (Current Stored vs Calculated Ledger Balance, Delta, checkbox per account to apply adjustments).<br>`src/views/SettingsView.tsx`: Wire "Reconcile Accounts" to diff modal, add confirmation popup to "Load Demo Data". |
+| **Phase 8** | **Mobile Typography Polish & App Icon** | `COMPLETED` | `src/views/ReportsView.tsx`: Made Executive KPI cards responsive (`text-lg sm:text-[24px] truncate`, description line clamping).<br>`src/views/DashboardView.tsx`: Made Hero Available-to-Spend responsive (`text-2xl sm:text-[38px] lg:text-[42px] truncate`).<br>`src/views/TransactionsView.tsx`: Hid desktop keyboard shortcut hints on mobile (`hidden md:inline-flex`).<br>`public/favicon.svg` & `android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml`: Branded pine green rounded badge with white Rupee `₹` emblem. |

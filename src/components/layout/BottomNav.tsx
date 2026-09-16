@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Wallet, ArrowLeftRight, Menu, Plus } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { triggerHaptic } from '../../utils/native';
 
 interface BottomNavProps {
   onOpenMore: () => void;
@@ -10,7 +11,7 @@ interface BottomNavProps {
 
 export const BottomNav: React.FC<BottomNavProps> = ({ onOpenMore, onOpenQuickAdd }) => {
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-card/95 backdrop-blur-md border-t border-line px-2 pt-1 pb-[calc(0.25rem+env(safe-area-inset-bottom,0px))] flex items-center justify-around shadow-lg select-none">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-card/95 backdrop-blur-md border-t border-line px-2 pt-1 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] flex items-center justify-around shadow-lg select-none">
       {/* 1. Dashboard */}
       <NavLink
         to="/"

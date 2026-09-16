@@ -306,7 +306,7 @@ export const DashboardView: React.FC = () => {
             </div>
           </div>
 
-          <div className="font-display font-extrabold text-[38px] sm:text-[42px] num tracking-tight leading-tight mt-1 text-white">
+          <div className="font-display font-extrabold text-2xl sm:text-[38px] lg:text-[42px] num tracking-tight leading-tight mt-1 text-white truncate">
             <AnimatedNumber
               value={d.availableToSpend}
               currency={baseCurrency}
@@ -492,8 +492,9 @@ export const DashboardView: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }))}
-              className="px-2.5 py-1 rounded-xl border border-line bg-moss/60 hover:bg-moss text-ink/70 hover:text-ink text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all"
+              className="hidden sm:flex px-2.5 py-1 rounded-xl border border-line bg-moss/60 hover:bg-moss text-ink/70 hover:text-ink text-xs font-semibold items-center gap-1.5 cursor-pointer transition-all"
               title="View Keyboard Shortcuts (?)"
             >
               <Keyboard className="w-3.5 h-3.5" />

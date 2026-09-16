@@ -175,6 +175,6 @@ export function isTxAfterBaseline(txDate?: string, baselineDate?: string): boole
   if (!txDate) return false;
   const dTx = txDate.split('T')[0].trim();
   const dBase = baselineDate.split('T')[0].trim();
-  return dTx > dBase;
+  return dTx >= dBase;
 }
 

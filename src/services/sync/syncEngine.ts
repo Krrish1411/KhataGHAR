@@ -82,6 +82,14 @@ export class KhataSyncEngine {
     return localStorage.getItem(MASTER_ESTABLISHED_KEY) === 'true';
   }
 
+  public resetMasterStatus(): void {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(MASTER_ESTABLISHED_KEY);
+      localStorage.removeItem(MASTER_ROLE_KEY);
+      localStorage.removeItem(MASTER_DEVICE_KEY);
+    }
+  }
+
   public registerLocalStateGetter(getter: () => { data: VaultData; meta?: VaultMeta } | null) {
     this.localStateGetter = getter;
   }
@@ -179,6 +187,7 @@ export class KhataSyncEngine {
     deviceName: string,
     onProgress?: (msg: string) => void
   ): Promise<string> {
+    this.resetMasterStatus();
     this.stopHeartbeat();
     if (this.eventSource) {
       try { this.eventSource.close(); } catch {}
@@ -235,6 +244,7 @@ export class KhataSyncEngine {
     deviceName: string,
     onProgress?: (msg: string) => void
   ): Promise<void> {
+    this.resetMasterStatus();
     this.stopHeartbeat();
     if (this.eventSource) {
       try { this.eventSource.close(); } catch {}

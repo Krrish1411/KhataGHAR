@@ -16,6 +16,7 @@ import type {
   ValuationLog,
   VaultNote,
   NoteFolder,
+  VaultData,
 } from '../types';
 import { useAuth } from './AuthContext';
 import { db } from '../db';
@@ -26,10 +27,12 @@ import {
   generateUUID,
   DEFAULT_NOTE_FOLDERS,
 } from '../services/storage';
-import { decryptData, verifyKey } from '../services/crypto';
+import { decryptData, encryptData, verifyKey } from '../services/crypto';
+import { syncEngine } from '../services/sync/syncEngine';
 import { generateDemoDataset } from '../services/demoData';
 import { isTxAfterBaseline } from '../utils/dates';
 import { generateStarterCategories } from '../utils/categories';
+import { checkAndNotifyUpcomingReminders } from '../utils/nativeNotification';
 
 interface VaultContextType {
   // Active Vault Meta
@@ -58,7 +61,15 @@ interface VaultContextType {
   addAccount: (account: Omit<Account, 'id' | 'vaultId' | 'updatedAt'>) => Promise<Account>;
   updateAccount: (account: Account) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;
-  reconcileAccounts: (targetBalances?: Record<string, number>) => Promise<void>;
+  reconcileAccounts: (targetAccountIds?: string[]) => Promise<void>;
+  getReconciliationPreview: () => Array<{
+    account: Account;
+    currentBalance: number;
+    calculatedBalance: number;
+    initialBalance: number;
+    delta: number;
+    hasDiscrepancy: boolean;
+  }>;
 
   // Transaction Operations
   addTransaction: (tx: Omit<Transaction, 'id' | 'vaultId' | 'updatedAt'>) => Promise<Transaction>;
@@ -170,12 +181,22 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   accountsRef.current = accounts;
   const transactionsRef = useRef<Transaction[]>(transactions);
   transactionsRef.current = transactions;
+  const categoriesRef = useRef<Category[]>(categories);
+  categoriesRef.current = categories;
   const peopleLedgerRef = useRef<PeopleLedgerEntry[]>(peopleLedger);
   peopleLedgerRef.current = peopleLedger;
+  const budgetsRef = useRef<Budget[]>(budgets);
+  budgetsRef.current = budgets;
+  const goalsRef = useRef<SavingsGoal[]>(goals);
+  goalsRef.current = goals;
   const assetsRef = useRef<Asset[]>(assets);
   assetsRef.current = assets;
   const liabilitiesRef = useRef<Liability[]>(liabilities);
   liabilitiesRef.current = liabilities;
+  const documentsRef = useRef<DocumentRecord[]>(documents);
+  documentsRef.current = documents;
+  const plannedExpensesRef = useRef<PlannedExpense[]>(plannedExpenses);
+  plannedExpensesRef.current = plannedExpenses;
   const notesRef = useRef<VaultNote[]>(notes);
   notesRef.current = notes;
   const foldersRef = useRef<NoteFolder[]>(folders);
@@ -520,6 +541,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setLiabilities(liabs);
       setDocuments(docs);
       setPlannedExpenses(plans);
+      checkAndNotifyUpcomingReminders(plans, gls).catch(() => {});
 
       const loadedNotes = nts;
       let loadedFolders = fldrs;
@@ -550,6 +572,188 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       loadVaultData();
     }
   }, [isUnlocked, activeVault?.id, sessionKey, loadVaultData]);
+
+  // Auto broadcast to connected sync peers
+  const broadcastTimerRef = useRef<any>(null);
+  const scheduleBroadcast = useCallback(() => {
+    if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current);
+    broadcastTimerRef.current = setTimeout(() => {
+      if (syncEngine.getStatus() !== 'connected' || !activeVault) return;
+      const payload: VaultData = {
+        accounts: accountsRef.current,
+        transactions: transactionsRef.current,
+        categories: categoriesRef.current,
+        peopleLedger: peopleLedgerRef.current,
+        budgets: budgetsRef.current,
+        goals: goalsRef.current,
+        assets: assetsRef.current,
+        liabilities: liabilitiesRef.current,
+        documents: documentsRef.current,
+        plannedExpenses: plannedExpensesRef.current,
+        notes: notesRef.current,
+        folders: foldersRef.current,
+      };
+      syncEngine.broadcastFullState(payload, activeVault).catch((err) => {
+        console.warn('[VaultContext] Sync auto-broadcast failed:', err);
+      });
+    }, 600);
+  }, [activeVault]);
+
+  // Register local state getter for syncEngine
+  useEffect(() => {
+    syncEngine.registerLocalStateGetter(() => {
+      if (!activeVault) return null;
+      return {
+        data: {
+          accounts: accountsRef.current,
+          transactions: transactionsRef.current,
+          categories: categoriesRef.current,
+          peopleLedger: peopleLedgerRef.current,
+          budgets: budgetsRef.current,
+          goals: goalsRef.current,
+          assets: assetsRef.current,
+          liabilities: liabilitiesRef.current,
+          documents: documentsRef.current,
+          plannedExpenses: plannedExpensesRef.current,
+          notes: notesRef.current,
+          folders: foldersRef.current,
+        },
+        meta: activeVault,
+      };
+    });
+  }, [activeVault]);
+
+  // Permanent sync state apply listener
+  const isApplyingRemoteSyncRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    const unsub = syncEngine.onStateApply(async (receivedState) => {
+      if (!activeVault || !sessionKey) {
+        console.warn('[VaultContext] Peer state received but vault is locked, skipping live apply.');
+        return;
+      }
+      try {
+        isApplyingRemoteSyncRef.current = true;
+        const currentVaultId = activeVault.id;
+
+        // Clear existing records for active vault in db.records and rewrite with receivedState
+        await db.records.where('vaultId').equals(currentVaultId).delete();
+
+        const encryptedRecords: Array<{ id: string; vaultId: string; type: any; iv: string; ciphertext: string; updatedAt: string }> = [];
+        const groups: Array<{ type: any; items: any[] }> = [
+          { type: 'account', items: receivedState.accounts || [] },
+          { type: 'transaction', items: receivedState.transactions || [] },
+          { type: 'category', items: receivedState.categories || [] },
+          { type: 'people', items: receivedState.peopleLedger || [] },
+          { type: 'budget', items: receivedState.budgets || [] },
+          { type: 'goal', items: receivedState.goals || [] },
+          { type: 'asset', items: receivedState.assets || [] },
+          { type: 'liability', items: receivedState.liabilities || [] },
+          { type: 'document', items: receivedState.documents || [] },
+          { type: 'plan', items: receivedState.plannedExpenses || [] },
+          { type: 'note', items: receivedState.notes || [] },
+          { type: 'folder', items: receivedState.folders || [] },
+        ];
+
+        for (const grp of groups) {
+          for (const item of grp.items) {
+            item.vaultId = currentVaultId;
+            const enc = await encryptData(item, sessionKey);
+            encryptedRecords.push({
+              id: item.id,
+              vaultId: currentVaultId,
+              type: grp.type,
+              iv: enc.iv,
+              ciphertext: enc.ciphertext,
+              updatedAt: item.updatedAt || new Date().toISOString(),
+            });
+          }
+        }
+
+        await db.records.bulkPut(encryptedRecords);
+
+        // Update in-memory state & refs
+        const newAccs = receivedState.accounts || [];
+        setAccounts(newAccs);
+        accountsRef.current = newAccs;
+
+        const newTxs = receivedState.transactions || [];
+        setTransactions(newTxs);
+        transactionsRef.current = newTxs;
+
+        const newCats = receivedState.categories || [];
+        setCategories(newCats);
+        categoriesRef.current = newCats;
+
+        const newPeople = receivedState.peopleLedger || [];
+        setPeopleLedger(newPeople);
+        peopleLedgerRef.current = newPeople;
+
+        const newBdgs = receivedState.budgets || [];
+        setBudgets(newBdgs);
+        budgetsRef.current = newBdgs;
+
+        const newGoals = receivedState.goals || [];
+        setGoals(newGoals);
+        goalsRef.current = newGoals;
+
+        const newAssets = receivedState.assets || [];
+        setAssets(newAssets);
+        assetsRef.current = newAssets;
+
+        const newLiabs = receivedState.liabilities || [];
+        setLiabilities(newLiabs);
+        liabilitiesRef.current = newLiabs;
+
+        const newDocs = receivedState.documents || [];
+        setDocuments(newDocs);
+        documentsRef.current = newDocs;
+
+        const newPlans = receivedState.plannedExpenses || [];
+        setPlannedExpenses(newPlans);
+        plannedExpensesRef.current = newPlans;
+
+        const newNotes = receivedState.notes || [];
+        setNotes(newNotes);
+        notesRef.current = newNotes;
+
+        const newFolders = receivedState.folders || [];
+        setFolders(newFolders);
+        foldersRef.current = newFolders;
+      } catch (err) {
+        console.error('[VaultContext] Error applying live state from peer:', err);
+      }
+    });
+
+    return () => unsub();
+  }, [activeVault, sessionKey]);
+
+  // Automatically broadcast local mutations to connected peer with debounce & echo protection
+  useEffect(() => {
+    if (!isUnlocked || isDecrypting || !activeVault) return;
+    if (isApplyingRemoteSyncRef.current) {
+      isApplyingRemoteSyncRef.current = false;
+      return;
+    }
+    scheduleBroadcast();
+  }, [
+    accounts,
+    transactions,
+    categories,
+    peopleLedger,
+    budgets,
+    goals,
+    assets,
+    liabilities,
+    documents,
+    plannedExpenses,
+    notes,
+    folders,
+    isUnlocked,
+    isDecrypting,
+    activeVault,
+    scheduleBroadcast,
+  ]);
 
   // Account Operations
   const addAccount = async (data: Omit<Account, 'id' | 'vaultId' | 'updatedAt'>): Promise<Account> => {
@@ -602,11 +806,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Financial arithmetic precision helper (avoids floating-point errors like 0.1 + 0.2 = 0.30000000000000004)
   const round2 = (num: number): number => Math.round((num + Number.EPSILON) * 100) / 100;
 
-  // Reconcile and recalculate current account balances from the complete transaction ledger and people records
-  const reconcileAccounts = async (): Promise<void> => {
-    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
-
-    // 1. Calculate ledger deltas for each account (strictly for activity after account's opening baseline date)
+  // Compute double-entry ledger deltas across transactions and people ledger
+  const computeLedgerDeltas = useCallback((): Record<string, number> => {
     const calculatedDeltas: Record<string, number> = {};
 
     transactionsRef.current.forEach((tx) => {
@@ -650,22 +851,59 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
     });
 
-    // 2. Recompute each account's balance strictly from its fixed baseline initialBalance
+    return calculatedDeltas;
+  }, []);
+
+  // Compute live discrepancy diff preview for all accounts without mutating database
+  const getReconciliationPreview = useCallback(() => {
+    const calculatedDeltas = computeLedgerDeltas();
+
+    return accountsRef.current.map((acc) => {
+      const delta = calculatedDeltas[acc.id] || 0;
+      const initial = acc.initialBalance !== undefined ? acc.initialBalance : (acc.balance - delta);
+      const calculatedBalance = round2(initial + delta);
+      const discrepancyDelta = round2(calculatedBalance - acc.balance);
+      const hasDiscrepancy = Math.abs(discrepancyDelta) > 0.001;
+
+      return {
+        account: acc,
+        currentBalance: acc.balance,
+        calculatedBalance,
+        initialBalance: initial,
+        delta: discrepancyDelta,
+        hasDiscrepancy,
+      };
+    });
+  }, [computeLedgerDeltas]);
+
+  // Reconcile and recalculate current account balances from the complete transaction ledger and people records
+  const reconcileAccounts = async (targetAccountIds?: string[]): Promise<void> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+
+    const calculatedDeltas = computeLedgerDeltas();
+    const targetSet = targetAccountIds && targetAccountIds.length > 0 ? new Set(targetAccountIds) : null;
+
+    const toSave: Account[] = [];
     const updatedAccs = accountsRef.current.map((acc) => {
+      if (targetSet && !targetSet.has(acc.id)) {
+        return acc;
+      }
       const delta = calculatedDeltas[acc.id] || 0;
       const initial = acc.initialBalance !== undefined ? acc.initialBalance : (acc.balance - delta);
       const newBal = round2(initial + delta);
-      return {
+      const updatedAcc = {
         ...acc,
         initialBalance: initial,
         balance: newBal,
         updatedAt: new Date().toISOString(),
       };
+      toSave.push(updatedAcc);
+      return updatedAcc;
     });
 
     accountsRef.current = updatedAccs;
     setAccounts(updatedAccs);
-    for (const a of updatedAccs) {
+    for (const a of toSave) {
       await saveEncryptedRecord('account', a, sessionKey);
     }
   };
@@ -2702,6 +2940,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateAccount,
         deleteAccount,
         reconcileAccounts,
+        getReconciliationPreview,
         addTransaction,
         updateTransaction,
         deleteTransaction,

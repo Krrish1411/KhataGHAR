@@ -105,6 +105,10 @@ export function formatCompactCurrency(
     }
   }
 
+  if (abs > 0 && abs < 1000 && abs % 1 !== 0) {
+    return `${sign}${symbol}${abs.toFixed(2)}`;
+  }
+
   return `${sign}${symbol}${abs.toFixed(0)}`;
 }
 

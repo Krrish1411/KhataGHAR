@@ -81,7 +81,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-moss/80 backdrop-blur-md border-b border-line px-4 sm:px-6 h-[60px] flex items-center transition-colors">
+    <header className="sticky top-0 z-30 bg-moss/80 backdrop-blur-md border-b border-line px-4 sm:px-6 pt-[env(safe-area-inset-top,0px)] h-[calc(60px+env(safe-area-inset-top,0px))] flex items-center transition-colors">
       <div className="flex items-center justify-between gap-3 w-full max-w-[1600px] mx-auto w-full">
         {/* Left: Mobile Menu Trigger + Vault Selector */}
         <div className="flex items-center gap-2 sm:gap-3">
