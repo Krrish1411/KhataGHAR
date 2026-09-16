@@ -30,6 +30,7 @@ export type SyncMessage =
   | { type: 'MASTER_SETUP_EVENT'; mode: 'clone_to_peer' | 'two_way'; masterDeviceName: string; timestamp: number }
   | { type: 'ROLE_SELECTION'; mode: 'clone_to_peer' | 'two_way'; masterDeviceName: string; timestamp: number }
   | { type: 'DELTA_STATE'; delta: Partial<VaultData>; timestamp: number }
+  | { type: 'REQUEST_FULL_STATE'; timestamp: number }
   | { type: 'PING'; timestamp: number }
   | { type: 'PONG'; timestamp: number }
   | { type: 'DISCONNECT'; timestamp: number };

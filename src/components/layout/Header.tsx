@@ -105,7 +105,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
               <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-pine-700 text-white shrink-0 shadow-sm shadow-pine-900/30">
                 <IndianRupee className="w-3.5 h-3.5 stroke-[2.5]" />
               </div>
-              <span className="truncate max-w-[130px] sm:max-w-[190px] font-display font-extrabold text-[13px] tracking-tight text-ink">
+              <span className="truncate max-w-[105px] xs:max-w-[135px] sm:max-w-[200px] font-display font-extrabold text-[13px] tracking-tight text-ink">
                 {activeVault?.name || 'KhataGHAR'}
               </span>
               <span className="w-1.5 h-1.5 rounded-full bg-pine-500 shrink-0" />
@@ -130,39 +130,35 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
                         <button
                           key={vault.id}
                           onClick={() => {
-                            if (isActive) {
-                              setVaultDropdownOpen(false);
-                              return;
-                            }
-                            setVaultToUnlock(vault);
-                            setSwitchPassword('');
-                            setSwitchError('');
                             setVaultDropdownOpen(false);
+                            if (!isActive) {
+                              setVaultToUnlock(vault);
+                              setSwitchPassword('');
+                              setSwitchError('');
+                            }
                           }}
-                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs text-left transition-colors cursor-pointer ${
+                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs transition-colors cursor-pointer ${
                             isActive
-                              ? 'bg-pine-50 dark:bg-pine-950/40 text-pine-700 dark:text-pine-300 font-bold border border-pine-200/60 dark:border-pine-800/40'
+                              ? 'bg-pine-50 dark:bg-pine-950/50 font-bold text-pine-700 dark:text-pine-300'
                               : 'text-ink/80 hover:bg-moss'
                           }`}
                         >
                           <div className="flex items-center gap-2 truncate">
-                            <Shield className="w-3.5 h-3.5 text-ink/40 flex-shrink-0" />
+                            <Shield className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-pine-600 dark:text-pine-400' : 'text-ink/40'}`} />
                             <span className="truncate">{vault.name}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
                             {vault.isPrimary && (
-                              <span className="text-[10px] bg-moss text-ink/60 px-1.5 py-0.5 rounded font-medium border border-line">
-                                Main
+                              <span className="text-[10px] bg-card text-ink/60 px-1.5 py-0.2 rounded font-normal border border-line">
+                                Primary
                               </span>
                             )}
-                            {isActive && <Check className="w-3.5 h-3.5 text-pine-600" />}
                           </div>
+                          {isActive && <Check className="w-3.5 h-3.5 text-pine-600 dark:text-pine-400 shrink-0" />}
                         </button>
                       );
                     })}
                   </div>
 
-                  <div className="p-1 mt-1 border-t border-line">
+                  <div className="mt-1.5 pt-1.5 border-t border-line px-1">
                     <button
                       onClick={() => {
                         setVaultDropdownOpen(false);
@@ -181,7 +177,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           {/* Quick Add Button */}
           <Button
             onClick={onOpenQuickAdd}
@@ -207,12 +203,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
             {isPrivacyMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
           </button>
 
-          {/* P2P Sync Hub Button */}
+          {/* P2P Sync Hub Button (Desktop/Tablet) */}
           {onOpenSync && (
             <button
               onClick={onOpenSync}
               title="P2P Device Sync (6-Digit PIN)"
-              className="p-2 rounded-xl bg-card border border-line text-ink/70 hover:border-pine-300 transition-colors cursor-pointer"
+              className="hidden sm:inline-flex p-2 rounded-xl bg-card border border-line text-ink/70 hover:border-pine-300 transition-colors cursor-pointer"
               aria-label="Open P2P Device Sync"
             >
               <ArrowLeftRight className="w-3.5 h-3.5 text-pine-600" />
@@ -274,12 +270,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuickAdd, onToggleMobileMe
             )}
           </div>
 
-          {/* Welcome Guide / Info Tour */}
+          {/* Welcome Guide / Info Tour (Desktop/Tablet) */}
           {onOpenWelcome && (
             <button
               onClick={onOpenWelcome}
               title="Welcome Guide & Feature Tour"
-              className="p-2 rounded-xl bg-card border border-line text-ink/70 hover:text-pine-600 hover:border-pine-300 transition-colors cursor-pointer"
+              className="hidden sm:inline-flex p-2 rounded-xl bg-card border border-line text-ink/70 hover:text-pine-600 hover:border-pine-300 transition-colors cursor-pointer"
               aria-label="Welcome Guide & Feature Tour"
             >
               <HelpCircle className="w-3.5 h-3.5 text-pine-600" />

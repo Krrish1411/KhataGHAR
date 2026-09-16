@@ -28,6 +28,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const lockTimerRef = useRef<number | null>(null);
+  const lastUnlockTimeRef = useRef<number>(0);
 
   const activeVaultRef = useRef<VaultMeta | null>(activeVault);
   activeVaultRef.current = activeVault;
@@ -113,6 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (targetVault.decoyConfig?.enabled && targetVault.decoyConfig.pinHash) {
       const enteredHash = await hashStringSHA256(password);
       if (enteredHash === targetVault.decoyConfig.pinHash) {
+        lastUnlockTimeRef.current = Date.now();
         setIsDecoyMode(true);
         // Derive session key directly from the entered Decoy PIN so encrypted snapshot can be decrypted
         const decoyKey = await deriveKey(password, targetVault.salt);
@@ -129,6 +131,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const isValid = await verifyKey(key, targetVault.verifier);
       if (!isValid) return false;
 
+      lastUnlockTimeRef.current = Date.now();
       setIsDecoyMode(false);
       activeVaultRef.current = targetVault;
       setSessionKey(key);
@@ -142,6 +145,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const setSessionCredentials = (vault: VaultMeta, key: CryptoKey) => {
+    lastUnlockTimeRef.current = Date.now();
     activeVaultRef.current = vault;
     setActiveVault(vault);
     setSessionKey(key);
@@ -156,16 +160,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!isUnlocked || !activeVault) return;
 
-    const timeoutMinutes = activeVault.autoLockMinutes ?? 5;
-    if (timeoutMinutes <= 0) return; // Never lock
-
-    const timeoutMs = timeoutMinutes * 60 * 1000;
+    const rawMinutes = Number(activeVault.autoLockMinutes);
+    if (rawMinutes === 0) return; // Explicitly configured as "never lock"
+    const timeoutMinutes = !isNaN(rawMinutes) && rawMinutes > 0 ? rawMinutes : 5;
+    const timeoutMs = Math.max(60000, timeoutMinutes * 60 * 1000); // Minimum 60 seconds
 
     const resetTimer = () => {
       if (lockTimerRef.current) {
         clearTimeout(lockTimerRef.current);
       }
       lockTimerRef.current = window.setTimeout(() => {
+        // Protect against spurious triggers within 10 seconds of unlocking
+        if (Date.now() - lastUnlockTimeRef.current < 10000) return;
         console.warn('Auto-lock triggered due to inactivity');
         lockVault();
       }, timeoutMs);
@@ -189,6 +195,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!isUnlocked) return;
 
     const handleVisibilityChange = () => {
+      // 10-second grace period prevents browser password autofill modals,
+      // soft keyboard dismiss on mobile, or initial focus switches from immediately locking
+      if (Date.now() - lastUnlockTimeRef.current < 10000) {
+        return;
+      }
+
       const autoLockTab = localStorage.getItem('khata_auto_lock_tab_switch') === 'true';
       if (autoLockTab && document.visibilityState === 'hidden') {
         console.warn('Auto-lock triggered on tab switch / window blur');

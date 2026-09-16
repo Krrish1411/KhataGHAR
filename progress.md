@@ -4,7 +4,6 @@
 > **Repository**: [KhataGHAR (PaisaBook Architecture)](https://github.com/Krrish1411/KhataGHAR)  
 > **Last Updated**: September 2026  
 > **Branch**: `main`  
-> **Latest Commit**: `78a4af7`
 
 ---
 
@@ -30,9 +29,13 @@ KhataGHAR is an institutional-grade, zero-cloud, 100% offline and encrypted pers
 | **Dialog Upgrades Across Views** | `[MOD]` [`src/views/AccountsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/AccountsView.tsx)<br>`[MOD]` [`src/views/BudgetsGoalsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/BudgetsGoalsView.tsx)<br>`[MOD]` [`src/views/AssetsLiabilitiesView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/AssetsLiabilitiesView.tsx)<br>`[MOD]` [`src/views/DocumentsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/DocumentsView.tsx)<br>`[MOD]` [`src/views/PlansView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/PlansView.tsx)<br>`[MOD]` [`src/views/PeopleLedgerView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/PeopleLedgerView.tsx)<br>`[MOD]` [`src/views/SettingsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/SettingsView.tsx) | Converted all legacy `window.confirm` dialogs to institutional in-app confirmation cards using `useConfirm()`. |
 | **Health Score Engine** | `[MOD]` [`src/services/ratios.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/ratios.ts)<br>`[MOD]` [`src/services/insights.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/insights.ts) | Fixed budget evaluation logic from summing lifetime 4-month expenses to scoping strictly to the current active calendar month. |
 | **Button Consolidation** | `[MOD]` [`src/views/AccountsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/AccountsView.tsx)<br>`[MOD]` [`src/views/DashboardView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/DashboardView.tsx)<br>`[MOD]` [`src/views/SettingsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/SettingsView.tsx) | Removed scattered "Load Demo Accounts" and "Reconcile" buttons from Accounts and Dashboard; consolidated into a dedicated Ledger Maintenance hub in Settings. |
-| **Login Screen Alignment** | `[MOD]` [`src/components/security/LockScreen.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/security/LockScreen.tsx) | True viewport vertical and horizontal centering; removed `zoom: 1.25` and `my-auto` that pushed the card off-center on standard laptops. |
+| **Login Screen Alignment & Zoom** | `[MOD]` [`src/components/security/LockScreen.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/security/LockScreen.tsx) | True viewport vertical and horizontal centering; upgraded card sizing (`max-w-lg`), refined typography, and enlarged scale (`zoom: 1.15`) for prominent visibility. |
 | **Type Definitions** | `[MOD]` [`src/types/index.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/types/index.ts) | Extended `VaultNote` with optional `icon?: string` field for emoji/icon identifiers; added custodial asset tracking fields. |
-| **Fixed Sidebar & Layout** | `[MOD]` [`src/components/layout/AppLayout.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/AppLayout.tsx)<br>`[MOD]` [`src/components/layout/Sidebar.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/Sidebar.tsx)<br>`[MOD]` [`src/components/layout/Header.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/Header.tsx) | Fixed sidebar pinned at 100vh (`h-screen shrink-0 w-64`) with internal independent scrollbar (`overflow-y-auto custom-scrollbar`). Main screen viewport isolated in its own smooth scroll container (`h-screen overflow-y-auto custom-scrollbar`). Added P2P Sync triggers in Header and Sidebar. |
+| **Fixed Sidebar & Layout Pinning** | `[MOD]` [`src/components/layout/AppLayout.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/AppLayout.tsx)<br>`[MOD]` [`src/components/layout/Sidebar.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/Sidebar.tsx)<br>`[MOD]` [`src/components/layout/Header.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/Header.tsx) | Fixed desktop sidebar pinned permanently at 100vh (`h-screen h-[100dvh] flex flex-col shrink-0`) with internal independent nav scrolling (`min-h-0 overflow-y-auto`). Main screen viewport isolated in its own smooth scroll container. Footer brand/security badges permanently anchored. Removed jarring zoom shift on Notes navigation. |
+| **1-Second Auto-Lock Fix** | `[MOD]` [`src/context/AuthContext.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/context/AuthContext.tsx) | Fixed vault auto-locking ~1s after entering master password by introducing `lastUnlockTimeRef` with a 10s grace period ignoring keyboard dismiss / blur events and enforcing `timeoutMs >= 60000`. |
+| **Mobile & PWA Polish** | `[MOD]` [`src/components/layout/Header.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/Header.tsx)<br>`[MOD]` [`src/components/layout/BottomNav.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/BottomNav.tsx)<br>`[MOD]` [`src/components/common/Modal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/common/Modal.tsx)<br>`[MOD]` [`src/components/common/PWAInstallModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/common/PWAInstallModal.tsx) | Prevented mobile header overflow (hidden non-critical action icons on `<sm`, vault name truncation), added safe area insets in bottom nav, upgraded to reference-counted `useBodyScrollLock`, and polished PWA installation modal for Android & iOS. |
+| **Buy Me a Coffee Integration** | `[NEW]` [`src/components/common/SupportCoffeeModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/common/SupportCoffeeModal.tsx)<br>`[NEW]` [`src/components/settings/SupportSettingsCard.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/settings/SupportSettingsCard.tsx)<br>`[MOD]` [`src/views/SettingsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/SettingsView.tsx)<br>`[MOD]` [`src/components/layout/AppLayout.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/AppLayout.tsx)<br>`[MOD]` [`src/components/welcome/WelcomeLandingView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/welcome/WelcomeLandingView.tsx) | Official Buy Me a Coffee integration (`slug: Krrish1411`, `#FFDD00`). Featured in Welcome header, P2P sync donation notice, creator manifesto ("Why I Built KhataGHAR"), and Settings preferences ("support not on face"). Milestone popup triggers after 10+ entries on a 7-day interval with friendly reassurance toast on snooze (*"No worries! KhataGHAR stays 100% free forever"*). |
+| **Direct P2P Sync on Welcome Screen** | `[NEW]` [`src/components/sync/WelcomeP2PSyncModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/sync/WelcomeP2PSyncModal.tsx)<br>`[MOD]` [`src/components/welcome/WelcomeLandingView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/welcome/WelcomeLandingView.tsx)<br>`[MOD]` [`src/components/security/LockScreen.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/security/LockScreen.tsx)<br>`[MOD]` [`src/services/sync/syncEngine.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/sync/syncEngine.ts)<br>`[MOD]` [`src/services/sync/syncTypes.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/sync/syncTypes.ts) | Added "Sync from Existing Device" option to Welcome screen (Header, Hero buttons, and Bottom CTA) and Lock Screen. Users on new phones or second laptops sync directly via 6-digit PIN with zero friction, eliminating the need to create a dummy vault first. Added `REQUEST_FULL_STATE` protocol with auto-response via `forceCloneToPeer`. |
 | **P2P Sync Engine & Wire** | `[NEW]` [`src/services/sync/syncTypes.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/sync/syncTypes.ts)<br>`[NEW]` [`src/services/sync/syncCrypto.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/sync/syncCrypto.ts)<br>`[NEW]` [`src/services/sync/syncEngine.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/sync/syncEngine.ts) | 6-digit PIN pairing engine using PBKDF2 (50k iterations) + AES-GCM-256 wire encryption. Real-time Server-Sent Events (SSE) relay over `ntfy.sh` (< 500ms discovery, zero open ports). Auto-reconnect and keepalive heartbeat. |
 | **P2P Sync Dialog Modal** | `[NEW]` [`src/components/sync/P2PSyncModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/sync/P2PSyncModal.tsx)<br>`[MOD]` [`src/components/settings/P2PSyncCard.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/settings/P2PSyncCard.tsx) | Full dialog box featuring 6-digit PIN generator/entry, connection indicators, side-by-side device cards with live record counters, and 1-click **Primary Master Selection** ("Make This Device Master" / "Pull Master from Remote") to eliminate duplicate accounts and clutter on initial sync. |
 | **Native Notifications** | `[NEW]` [`src/utils/nativeNotification.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/utils/nativeNotification.ts)<br>`[MOD]` [`electron/main.cjs`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/electron/main.cjs)<br>`[MOD]` [`electron/preload.cjs`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/electron/preload.cjs) | Universal native notification bridge supporting Electron OS notifications via IPC (`show-notification`) and mobile/PWA HTML5 Web Notifications with permission negotiation. |
@@ -55,84 +58,32 @@ KhataGHAR is an institutional-grade, zero-cloud, 100% offline and encrypted pers
 
 ### 3.1 Notes View Overhaul (`src/views/NotesView.tsx` & `src/components/layout/AppLayout.tsx`)
 1. **2-Panel Architecture**:
-   - **Left Panel (Folders & Notes Tree Navigator)**:
-     - Search input with dedicated `pl-9` clearance so text never overlaps or collides with the `Search` icon.
-     - Root "All notes" node displaying lifetime note count.
-     - Folder rows with expandable chevron toggles (`rotate-90`), folder name, item count, and in-app delete trigger.
-     - Nested notes list under each folder showing title and compact relative date (`Sat 12 Sep`).
-   - **Right Panel (Document Canvas & Editor)**:
-     - Top bar with folder/scope title, total note count pill, live "Saved / Saving…" indicator, segmented `[Write | Preview]` control, Pin button, Fullscreen toggle, and "+ Note" primary action.
-     - Note emoji button with interactive popover picker.
-     - Borderless large title input.
-     - Metadata pill strip: custom popover folder assigner, formatted timestamp (`Sat 12 Sep at 15:21`), live word & reading time counter, and encrypted `AES-256` badge.
-     - Bottom formatting toolbar: Markdown heading pills (H1, H2), text styles (Bold, Italic, Underline, Strikethrough, Code), lists (Bullet, Numbered, Checklist), Link, HR, and file attachments (Photo, Video, Record).
-2. **System Theme Colors**:
-   - Replaced all hardcoded blue/sky tones (`blue-50`, `blue-600`, `border-blue-200`) with KhataGHAR theme tokens (`pine`, `moss`, `card`, `line`, `ink`), ensuring seamless styling in Pine, Ember, Obsidian Night, Ocean, and Dusk palettes.
-3. **Single PC Page Viewport (Zero Outer Scroll)**:
-   - In `AppLayout.tsx`, when `location.pathname === '/notes'`, the layout applies `h-screen overflow-hidden pb-0` with `zoom: 1`.
-   - In `NotesView.tsx`, the root container is `h-full w-full overflow-hidden`.
-   - The outer browser window has **zero scrollbars** on desktop; scrolling is isolated to internal panels via `custom-scrollbar`.
-4. **Dynamic Auto-Resize & Jump-to-Top Scroll Fix**:
-   - Note `<textarea>` uses dynamic height auto-resize (`ta.style.height = `${Math.max(350, ta.scrollHeight)}px``) with `overflow-hidden`.
-   - The parent canvas is the single unified scroll container, eliminating dual/nested scrollbar fighting.
-   - `lastLoadedNoteIdRef` and `editorStateRef` prevent debounced auto-save re-renders from jumping the cursor or resetting scroll to top.
-   - All formatting actions use `{ preventScroll: true }` on focus restoration.
-5. **Dynamic Attachment Compression (`src/utils/compression.ts`)**:
-   - Files $\le 500\text{ KB}$ are kept uncompressed with confirmation message.
-   - Files $> 500\text{ KB}$ are dynamically downscaled and compressed via canvas under $500\text{ KB}$ with transparent notification.
+   - **Left Panel (Folders & Notes Tree Navigator)**: Search input with dedicated `pl-9` clearance so text never overlaps or collides with the `Search` icon. Root "All notes" node displaying lifetime note count. Folder rows with expandable chevron toggles (`rotate-90`), folder name, item count, and in-app delete trigger. Nested notes list under each folder showing title and compact relative date.
+   - **Right Panel (Document Canvas & Editor)**: Top bar with folder/scope title, total note count pill, live "Saved / Saving…" indicator, segmented `[Write | Preview]` control, Pin button, Fullscreen toggle, and "+ Note" primary action. Note emoji button with interactive popover picker. Borderless large title input. Metadata pill strip: custom popover folder assigner, formatted timestamp, live word & reading time counter, and encrypted `AES-256` badge. Bottom formatting toolbar: Markdown heading pills (H1, H2), text styles, lists, Link, HR, and file attachments.
+2. **System Theme Colors**: Replaced all hardcoded blue/sky tones (`blue-50`, `blue-600`, `border-blue-200`) with KhataGHAR theme tokens (`pine`, `moss`, `card`, `line`, `ink`), ensuring seamless styling in Pine, Ember, Obsidian Night, Ocean, and Dusk palettes.
+3. **Single PC Page Viewport (Zero Outer Scroll)**: `AppLayout.tsx` applies `h-screen overflow-hidden pb-0` when on `/notes`. `NotesView.tsx` root container is `h-full w-full overflow-hidden`. The outer browser window has zero scrollbars on desktop; scrolling is isolated to internal panels via `custom-scrollbar`.
+4. **Dynamic Auto-Resize & Jump-to-Top Scroll Fix**: Note `<textarea>` uses dynamic height auto-resize with `overflow-hidden`. The parent canvas is the single unified scroll container, eliminating dual/nested scrollbar fighting. `lastLoadedNoteIdRef` and `editorStateRef` prevent debounced auto-save re-renders from jumping the cursor or resetting scroll to top. All formatting actions use `{ preventScroll: true }` on focus restoration.
+5. **Dynamic Attachment Compression (`src/utils/compression.ts`)**: Files $\le 500\text{ KB}$ are kept uncompressed. Files $> 500\text{ KB}$ are dynamically downscaled and compressed via canvas under $500\text{ KB}$ with transparent notification.
 
 ---
 
 ### 3.2 In-App Confirmation Cards & Dialog Architecture
 To prepare KhataGHAR for future **Desktop (Electron/Tauri)** and **Android/iOS (Capacitor/Cordova)** distribution, all browser-native dialogs (`window.confirm`) were eliminated.
-
-1. **`ConfirmModal.tsx`** ([`src/components/common/ConfirmModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/common/ConfirmModal.tsx)):
-   - Reusable modal built on KhataGHAR's tactile design system (`rounded-2xl` on desktop, full-width `rounded-t-3xl` bottom-sheet dock on mobile).
-   - Supports semantic variants:
-     - `danger`: Crimson flare badge with `Trash2` and crimson confirm button.
-     - `warning`: Amber marigold badge with `AlertTriangle` and amber confirm button.
-     - `primary`: Pine emerald badge with `Info` and pine confirm button.
-   - Accepts rich `itemPreview` JSX for visual verification before destruction.
-2. **`DialogContext.tsx`** ([`src/context/DialogContext.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/context/DialogContext.tsx)):
-   - Root provider wrapped in `App.tsx`.
-   - Exposes `useConfirm()` returning `confirm(options): Promise<boolean>`.
-   - Allows 1-line async confirmations across any component:
-     ```tsx
-     const confirm = useConfirm();
-     const ok = await confirm({
-       title: 'Delete Item',
-       description: 'This action cannot be undone.',
-       variant: 'danger',
-     });
-     if (ok) {
-       // execute action
-     }
-     ```
-3. **Application Across Views**:
-   - **Notes View**: In-app cards with previews for Note Deletion, Folder Deletion, and Attachment Removal.
-   - **Accounts View**: In-app card for Account Deletion.
-   - **Budgets & Goals View**: In-app cards for Budget Deletion and Savings Goal Deletion.
-   - **Assets & Liabilities View**: In-app cards for Asset Deletion and Liability Deletion.
-   - **Documents View**: In-app card for Encrypted Document Deletion.
-   - **Plans View**: In-app card for Planned Expense Deletion.
-   - **People Ledger View**: In-app card for People Ledger Entry Deletion.
-   - **Settings View**: In-app cards for Keyboard Shortcuts Reset, Category Deletion, Category Standard Reset, and Ledger Reconciliation.
+1. **`ConfirmModal.tsx`**: Reusable modal built on KhataGHAR's tactile design system (`rounded-2xl` on desktop, full-width `rounded-t-3xl` bottom-sheet dock on mobile). Supports semantic variants (`danger`, `warning`, `primary`) and rich `itemPreview` JSX.
+2. **`DialogContext.tsx`**: Root provider exposed via `useConfirm()` and `useDialog()` hooks returning promises.
+3. **Application Across Views**: Used across Notes, Accounts, Budgets & Goals, Assets & Liabilities, Documents, Plans, People Ledger, and Settings.
 
 ---
 
 ### 3.3 Health Score & Budget Period Scoping Bug Fix
-- **Problem**: When evaluating active budgets in `src/services/ratios.ts` and `src/services/insights.ts`, the budget evaluator summed all lifetime historical expenses across 4 months of transactions. This caused even modest spend to exceed monthly limits, falsely penalizing user health scores and generating false "2 budgets exceed" warnings.
-- **Fix**:
-  - Filtered transactions by the current active budget period (`txDate >= startOfMonth && txDate <= endOfMonth`).
-  - Health scores now accurately reflect actual current-month spend against monthly budget targets.
+- **Problem**: When evaluating active budgets in `src/services/ratios.ts` and `src/services/insights.ts`, the budget evaluator summed all lifetime historical expenses across 4 months of transactions. This caused even modest spend to exceed monthly limits, falsely penalizing user health scores.
+- **Fix**: Filtered transactions by the current active budget period (`txDate >= startOfMonth && txDate <= endOfMonth`), restoring accurate health score calculations.
 
 ---
 
 ### 3.4 Button Consolidation & Settings Hub
 - Removed cluttered "Load Demo Accounts" and "Reconcile" buttons from `AccountsView.tsx` and `DashboardView.tsx`.
-- Consolidated both tools into `SettingsView.tsx` under a unified **Ledger Maintenance & Demo Data** section:
-  - **Load Realistic Indian Demo Data**: Injects 4 accounts, 4 months of categorized transactions, custodial funds, budgets, and savings goals.
-  - **Reconcile Account Balances**: Live-recalculates account balances against double-entry transaction ledgers while preserving historical opening balances.
+- Consolidated both tools into `SettingsView.tsx` under a unified **Ledger Maintenance & Demo Data** section.
 
 ---
 
@@ -143,94 +94,128 @@ To prepare KhataGHAR for future **Desktop (Electron/Tauri)** and **Android/iOS (
 ---
 
 ### 3.6 Fixed Sidebar & Independent Main Screen Scrolling
-- **Problem**: Long tables and reports scrolled the entire document window, causing the sidebar to drift out of view and creating jittery viewport jumps.
-- **Architectural Solution**:
-  1. In [`Sidebar.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/Sidebar.tsx), pinned the sidebar to full screen height:
-     ```tsx
-     <aside className="fixed md:sticky top-0 left-0 z-40 h-screen w-64 flex flex-col shrink-0 bg-card border-r border-line">
-     ```
-     The internal `<nav>` uses `flex-1 overflow-y-auto custom-scrollbar`. If navigation links exceed screen height, only the nav list scrolls, keeping the logo, offline app CTA, and footer badges anchored.
-  2. In [`AppLayout.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/AppLayout.tsx), configured the main viewport:
-     ```tsx
-     <div className="h-screen overflow-hidden flex bg-ground text-ink transition-colors">
-       <Sidebar ... />
-       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto overflow-x-hidden custom-scrollbar">
-         <Header ... />
-         <main className="flex-1 w-full min-h-0 px-3 sm:px-6 lg:px-8 py-5">
-           <Outlet />
-         </main>
-       </div>
-     </div>
-     ```
-  3. **Result**: The main screen content scrolls smoothly and independently while the sidebar remains permanently fixed on the left.
+- **Problem**: Long tables and reports scrolled the entire document window, causing the sidebar to drift out of view.
+- **Architectural Solution**: Pinned sidebar to 100vh (`h-screen shrink-0 w-64`) with internal independent nav scrolling (`min-h-0 overflow-y-auto custom-scrollbar`). Main screen viewport is isolated in its own smooth scroll container (`h-screen overflow-y-auto custom-scrollbar`).
 
 ---
 
 ### 3.7 P2P Device Sync Hub & Master Device Selection
-Inspired by the reference architecture in `sync refrence/`:
-- **Encrypted Zero-Knowledge Transport (`src/services/sync/`)**:
-  - [`syncCrypto.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/sync/syncCrypto.ts): PBKDF2 (50,000 iterations) key derivation from the 6-digit numeric PIN, encrypting all packets via AES-GCM 256-bit with random 96-bit IVs and 128-bit salts.
-  - [`syncEngine.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/sync/syncEngine.ts): Real-time Server-Sent Events (SSE) relay over `ntfy.sh` (`khataghar-sync-${pin}-...`), providing sub-500ms discovery across mobile cellular and local Wi-Fi with zero port forwarding.
-- **Primary Master Device Selection (`P2PSyncModal.tsx`)**:
-  - **The Problem Solved**: Automatic naive two-way merging during initial setup creates duplicate accounts and clutter.
-  - **The Solution**: On first-time pairing, both devices present the **Master Device Selection Dialog**:
-    - Compares live record counts side-by-side: Accounts, Transactions, Assets & Debt, Notes & Folders.
-    - **"Make This Device Master (Push Clean Clone)"**: Clones this device's verified records to the connected peer and overwrites it, guaranteeing zero duplicated accounts.
-    - **"Make Remote Device Master (Pull Master from Remote)"**: Receives and mirrors the clean master vault from the remote device.
-    - Once established, persists `khataghar_sync_masterEstablished = true`. Subsequent syncs exchange updates normally both ways.
-- **Universal Native Notifications**:
-  - [`src/utils/nativeNotification.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/utils/nativeNotification.ts): Dispatches native desktop alerts in Electron via IPC (`show-notification`) and mobile/PWA web notifications on synchronization events and peer connections.
-- **Access Points**: Added P2P Sync triggers in top [`Header.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/Header.tsx), [`Sidebar.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/Sidebar.tsx), and [`P2PSyncCard.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/settings/P2PSyncCard.tsx).
+- **Encrypted Zero-Knowledge Transport (`src/services/sync/`)**: PBKDF2 (50,000 iterations) key derivation from the 6-digit numeric PIN, encrypting all packets via AES-GCM 256-bit with random 96-bit IVs and 128-bit salts. Real-time Server-Sent Events (SSE) relay over `ntfy.sh`.
+- **Primary Master Device Selection (`P2PSyncModal.tsx`)**: Compares live record counts side-by-side: Accounts, Transactions, Assets & Debt, Notes & Folders. Allows 1-click clean cloning ("Make This Device Master" / "Pull Master from Remote") to eliminate duplicate accounts and clutter on initial sync.
 
 ---
 
 ### 3.8 CI Build Pipeline Fixes & Multi-Platform Packaging
-
-#### A. Android APK Build Pipeline (`.github/workflows/android-build.yml`)
-1. **Java 21 Upgrade**: AGP (`8.13.0`) and Gradle (`8.14.3`) strictly require **Java 21**. Running on Java 17 caused Gradle to abort during initialization. Configured `actions/setup-java@v4` with `java-version: '21'` and `compileOptions` with `JavaVersion.VERSION_21` in `android/app/build.gradle`.
-2. **SDK 35 Configuration**: Configured `compileSdkVersion=35`, `targetSdkVersion=35`, and `minSdkVersion=24` in `android/gradle.properties`, and updated the subproject fallback in `android/capacitor-cordova-android-plugins/build.gradle` to 35 (preventing Gradle from searching for unreleased SDK 36).
-3. **License Pre-Acceptance**: Automated official SHA-256 license acceptance hashes *before* running Capacitor sync, preventing headless timeouts.
-4. **Guaranteed Asset Sync**: Pre-copies `dist/*` into `android/app/src/main/assets/public/` and runs `npm ci --include=dev` so `@capacitor/cli` is never pruned.
-
-#### B. Linux Desktop Packaging Pipeline (`.github/workflows/desktop-build.yml`)
-1. **Runner Compatibility**: Modern Ubuntu 24.04 runners lack legacy `libcrypt.so.1` (used by electron-builder's internal Ruby `fpm` for `.deb` creation), leading to exit code 127. Switched the Linux matrix runner to `ubuntu-22.04` (Jammy LTS), providing native `libcrypt.so.1` and ensuring AppImages have broad backward glibc compatibility.
-2. **Packaging Tools**: Added `sudo apt-get install -y libarchive-tools` to the Linux runner workflow.
-3. **Debian Author Metadata**: Configured maintainer email in `package.json` and `electron-builder.json` (`KhataGHAR <support@khataghar.org>`).
+- **Android APK CI Pipeline (`.github/workflows/android-build.yml`)**: Upgraded to Java 21, configured `compileSdkVersion=35` in `android/gradle.properties`, automated SDK license acceptance hashes prior to sync, and ensured `npm ci --include=dev`.
+- **Linux Desktop Packaging Pipeline (`.github/workflows/desktop-build.yml`)**: Switched runner to `ubuntu-22.04` (Jammy LTS) to resolve `libcrypt.so.1` missing error on Ubuntu 24.04.
 
 ---
 
 ### 3.9 Branded Multi-Platform Application Icons
-Generated and configured high-resolution branded KhataGHAR icons across all operating systems:
-- **Windows**: [`build/icon.ico`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/build/icon.ico) containing multi-resolution layers (16x16 up to 256x256).
-- **macOS**: [`build/icon.icns`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/build/icon.icns) and 512x512 PNG for high-DPI Apple retina displays.
-- **Linux**: [`build/icons/`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/build/icons/) folder containing discrete standard icon sizes (`16x16` through `512x512`) for freedesktop taskbar and application menus.
-- **Android**: Replaced stock Capacitor robot icons across all screen densities (`mdpi`, `hdpi`, `xhdpi`, `xxhdpi`, `xxxhdpi`) for adaptive, square, and round icons with KhataGHAR’s brand background color (`#12855a`).
-- **Electron Window**: Configured `icon: path.join(__dirname, '../build/icon.png')` in [`electron/main.cjs`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/electron/main.cjs).
+Generated and configured high-resolution branded KhataGHAR icons across Windows (`.ico`), macOS (`.icns`), Linux (`icons/*`), and Android (`mipmap-*` densities).
 
 ---
 
 ### 3.10 Native SQLite Engine & Security Hardening
-- **Desktop Electron SQLite (`electron/db.cjs`)**:
-  - Embedded native SQLite via Node 22 `node:sqlite` (`DatabaseSync`).
-  - Tuned with `PRAGMA journal_mode = WAL;`, `PRAGMA synchronous = NORMAL;`, B-Tree indexes, and atomic `VACUUM INTO`.
-  - Sub-millisecond lookups exposed through IPC in `preload.cjs` and `sqliteElectronAdapter.ts`.
-- **Web & Mobile WASM Router (`src/db/index.ts`)**:
-  - Universal database router dynamically selecting native SQLite in Electron or WASM/Dexie in Web & Android.
-- **Hardware Device-Bound Key (`src/utils/deviceKey.ts`)**:
-  - Row-level AES-256-GCM encryption at rest bound to a local device key, guaranteeing copied files cannot be read without the device key.
-- **JavaScript Obfuscation (`vite.config.ts`)**:
-  - Integrated `javascript-obfuscator` in production build with control flow flattening, base64 string array encoding, string splitting, hexadecimal identifier scrambling, and console disabling.
-- **Electron Security**:
-  - Packaged via ASAR archive (`asar: true`). DevTools disabled in production, inspector hotkeys blocked (`F12`, `Ctrl+Shift+I`), and remote navigation blocked.
+- **Desktop Electron SQLite (`electron/db.cjs`)**: Embedded native SQLite via Node 22 `node:sqlite` (`DatabaseSync`) with WAL journal and hardware device-bound AES-256-GCM encryption at rest.
+- **JavaScript Obfuscation (`vite.config.ts`)**: Integrated `javascript-obfuscator` in production build.
+
+---
+
+### 3.11 First-Login Auto-Lock Bug Fix (`src/context/AuthContext.tsx`)
+- **Problem**: Upon unlocking a vault for the first time, the application would abruptly re-lock after ~1 second. This was caused by two intertwined issues:
+  1. The browser's software keyboard dismissal or password autofill popover triggered a `window.blur` / `visibilitychange` event immediately after entering the password, which fired `lockVault()`.
+  2. The auto-lock timeout duration in `resetInactivityTimer` was susceptible to race conditions and could be initialized with an invalid or near-zero value.
+- **Architectural Solution**:
+  1. Added `lastUnlockTimeRef` tracking the exact millisecond when the vault was unlocked. During the first **10 seconds** following unlock, any visibility or blur events are safely ignored, allowing mobile keyboards and autofill prompts to dismiss without triggering a lock.
+  2. Enforced strict validation on inactivity timeout: `const validMinutes = Math.max(1, activeVault.autoLockMinutes || 15)` and `const timeoutMs = Math.max(60000, validMinutes * 60 * 1000)`. Sub-minute timeouts can never occur.
+
+---
+
+### 3.12 Fixed Desktop Sidebar & Zoom Harmonization (`AppLayout.tsx`, `Sidebar.tsx`, `LockScreen.tsx`)
+- **Problem**:
+  1. Navigating to the Notes view previously applied `style={{ zoom: isNotesView ? 1 : 1.05 }}` in `AppLayout.tsx`, causing a jarring zoom and layout shift across the entire application interface.
+  2. On shorter screens or when expanding many navigation links, the sidebar footer ("Zero-Knowledge Encrypted", "Crafted by Krish Patel") was pushed off the bottom of the screen.
+- **Architectural Solution**:
+  1. Completely removed the conditional zoom from `AppLayout.tsx`, standardizing on uniform 1:1 scaling across all views.
+  2. Restructured [`Sidebar.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/layout/Sidebar.tsx) layout:
+     ```tsx
+     <aside className="fixed md:sticky top-0 left-0 z-40 h-screen h-[100dvh] w-64 flex flex-col shrink-0 bg-card border-r border-line">
+       {/* Brand Header: permanently pinned */}
+       <div className="shrink-0 ...">...</div>
+       {/* Nav Menu: strictly scrollable with min-h-0 */}
+       <nav className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-3 py-2 space-y-1">
+         {NAV_ITEMS.map(...)}
+       </nav>
+       {/* Footer: permanently pinned */}
+       <div className="shrink-0 p-3 border-t border-line">...</div>
+     </aside>
+     ```
+  3. Upgraded [`LockScreen.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/security/LockScreen.tsx) with `max-w-lg` container, `zoom: 1.15`, and larger touch targets.
+
+---
+
+### 3.13 Mobile Viewport & PWA Installation Polish
+- **Header Overflow Elimination (`src/components/layout/Header.tsx`)**: Secondary icons (Shortcuts cheat sheet, Documentation tour) are hidden on `<sm` viewports (`hidden sm:flex`), and the active vault badge is dynamically truncated, eliminating horizontal scrollbar leaks on small mobile phones.
+- **Reference-Counted Scroll Locking (`src/components/common/Modal.tsx`)**: Replaced raw `document.body.style.overflow = 'hidden'` with reference-counted `useBodyScrollLock` from `src/utils/scrollLock.ts`, preventing screen freezes when opening or closing nested modals.
+- **Safe Area Bottom Insets (`src/components/layout/BottomNav.tsx`)**: Added `pb-[calc(0.25rem+env(safe-area-inset-bottom,0px))]` to ensure the navigation bar clears gesture pill bars on iOS Safari and modern Android devices.
+- **PWA Installation Modal Polish (`src/components/common/PWAInstallModal.tsx`)**: Removed duplicate return statements, added mobile scroll wrappers (`max-h-[85vh] overflow-y-auto`), top-aligned step badges, and provided dedicated Android Chrome and iOS Safari home-screen instructions.
+
+---
+
+### 3.14 Buy Me a Coffee Patronage System & Milestone Reminders
+Implemented a full, sovereign-friendly patronage architecture honoring Krish Patel’s open-source manifesto:
+1. **Official Buy Me a Coffee Integration**:
+   - Styled to official BMC specifications: `#FFDD00` gold background, `#000000` typography, Lato font, and official white coffee cup icon linking to `https://buymeacoffee.com/Krrish1411`.
+   - Built natively in React/Tailwind with SVG assets so it works 100% offline without external tracking scripts.
+2. **Welcome Screen Integration (`src/components/welcome/WelcomeLandingView.tsx`)**:
+   - Prominently featured in the top header nav bar.
+   - P2P sync community donation callout under the feature comparison table, explaining how community support maintains free WebRTC signaling relays.
+   - Krish Patel's Creator Manifesto at the bottom of the page: *"Why I Built KhataGHAR"*, sharing the story of sovereign, local-first computing with a direct patronage button.
+3. **Settings Card ("Support Not on Face") (`src/components/settings/SupportSettingsCard.tsx`)**:
+   - Added a dedicated patronage card in `SettingsView.tsx` under General preferences.
+   - Provides full transparency on zero-cloud architecture and community relays.
+   - Includes a toggle for **"Milestone & Support Reminders"** controlling `localStorage ('khata_coffee_opt_out')`.
+4. **Gentle Milestone Modal (`src/components/common/SupportCoffeeModal.tsx` & `AppLayout.tsx`)**:
+   - Automatically triggers only after the user has demonstrated active discipline by recording **10 or more entries** (`transactions.length >= 10`).
+   - Repeats at most once every **7 days** (`khata_coffee_last_prompt_ts`).
+   - Displays live user milestone stats (e.g. *14 Entries Tracked*, *3 Portfolios*).
+   - **"Not now (remind in a week)"**: Snoozes for 7 days and triggers a friendly reassurance toast:  
+     *“No worries! KhataGHAR is and will always remain 100% free, private, and offline forever.”*
+   - **"Don't show again"**: Permanently opts out (`khata_coffee_opt_out = 'true'`).
+
+---
+
+### 3.15 Direct P2P Device Sync from Welcome Screen (`src/components/sync/WelcomeP2PSyncModal.tsx`)
+- **The Problem Solved**:
+  - Previously, a user opening KhataGHAR on a second device (like an Android phone or secondary laptop) was forced to either:
+    1. Create a dummy vault (fill out master password, confirm password, enter app) before accessing P2P Sync.
+    2. Or export a backup file and manually transfer it.
+- **The Architectural Solution**:
+  - Created [`WelcomeP2PSyncModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/sync/WelcomeP2PSyncModal.tsx), offering direct, zero-friction pairing directly from the **Welcome Screen** and **Lock Screen**.
+  - **Direct Access Points**:
+    1. Welcome Screen Top Header: **"Sync Device"** button.
+    2. Welcome Screen Hero Section: **"Sync from Existing Device"** primary action button.
+    3. Welcome Screen Bottom CTA: **"Sync from Existing Device"** button.
+    4. Lock Screen: **"P2P Sync"** secondary link.
+  - **Protocol Enhancement (`syncTypes.ts` & `syncEngine.ts`)**:
+    - Added `{ type: 'REQUEST_FULL_STATE'; timestamp: number }` to `SyncMessage`.
+    - When the joiner device connects via PIN, it calls `syncEngine.requestFullSync()`. The host device automatically invokes `forceCloneToPeer` with its active vault data and metadata.
+  - **Zero-Knowledge Key Derivation on New Device**:
+    - The new device prompts for the user's Master Vault Password.
+    - Upon receiving the encrypted wire payload, it generates a fresh cryptographic salt (`generateSalt()`), derives a local AES-256 key (`deriveKey()`), generates the cryptographic verifier (`generateVerifier()`), encrypts all records, and saves them to IndexedDB/SQLite.
+    - Persists master pairing metadata (`khataghar_sync_masterEstablished = true`, `masterRole = 'secondary'`).
+    - Activates the session immediately with `refreshVaultList()` and `setSessionCredentials(vault, key)`.
+  - **Result**: A user opens KhataGHAR on their phone, clicks "Sync from Existing Device", types the 6-digit PIN and password, and is instantly on their dashboard with their complete financial vault.
 
 ---
 
 ## 4. Verification & Build Integrity
 
-- **TypeScript Compilation**: `npx tsc --noEmit` passed with **0 errors**.
-- **Production Web Bundle**: `npm run build` compiled successfully in **31.82s**.
-- **Capacitor Android Sync**: `npx cap sync android` completed in **0.063s** with **0 errors**.
-- **Git Status**: Clean working tree on `origin/main` (`78a4af7`).
+- **TypeScript Compilation**: `npx tsc -b` passed with **0 errors**.
+- **Production Web Bundle**: `npm run build` compiled successfully in **41.02s** (dist generated with 23 precached PWA entries).
+- **Capacitor Android Sync**: `npx cap sync android` completed in **0.153s** with **0 errors**.
+- **Cross-Platform Compatibility**: Tested and verified on Linux desktop and Android Capacitor WebView.
 
 ---
 
@@ -242,15 +227,16 @@ When adding new features or modifying existing pages in KhataGHAR:
    - Use `bg-card` for surfaces, `bg-moss` for page backdrops and muted strips, `border-line` for borders, and `text-ink` for typography.
    - Use `pine-*` for positive/primary actions, `mari-*` for warnings/alerts, and `flare-*` for debts/danger.
 3. **Desktop Viewport & Scrolling Integrity**:
-   - The outer application wrapper is `h-screen overflow-hidden flex bg-ground text-ink`.
-   - The desktop sidebar is `fixed md:sticky top-0 left-0 z-40 h-screen w-64 shrink-0 flex flex-col bg-card border-r border-line` with internal `<nav className="flex-1 overflow-y-auto custom-scrollbar">`.
-   - The main content column is `flex-1 flex flex-col min-w-0 h-screen overflow-y-auto overflow-x-hidden custom-scrollbar`.
+   - The outer application wrapper is `h-screen h-[100dvh] overflow-hidden flex bg-ground text-ink`.
+   - The desktop sidebar is `fixed md:sticky top-0 left-0 z-40 h-screen h-[100dvh] w-64 shrink-0 flex flex-col bg-card border-r border-line` with internal `<nav className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">`.
+   - The main content column is `flex-1 flex flex-col min-w-0 h-screen h-[100dvh] overflow-y-auto overflow-x-hidden custom-scrollbar`.
    - Never remove `shrink-0` from the sidebar or make the root container window scrollable.
-4. **Textarea Handling**: Always ensure textareas inside scrollable containers use dynamic auto-height (`field-sizing: content` or `ta.scrollHeight`) with `overflow-hidden` to avoid competing nested scrollbars and scroll jumps.
-5. **P2P Sync Modifications**:
+4. **Input Safety & Spacebar Handling**:
+   - Never call `.trim()` inside live input `onChange` handlers (it destroys the spacebar). Only trim upon form submission or blur.
+5. **Multi-Device Sync Invariants**:
    - Maintain PBKDF2 key derivation and AES-GCM-256 wire encryption in `syncCrypto.ts`.
    - Any new state fields added to `VaultData` must be mirrored in `syncTypes.ts` and `syncEngine.ts`.
-6. **Android Build Maintenance**:
-   - Keep `java-version: '21'` in `.github/workflows/android-build.yml`.
-   - Ensure `compileSdkVersion=35` in `android/gradle.properties`.
-   - Pre-accept Android SDK licenses before running Capacitor sync.
+6. **Support & Patronage Guidelines**:
+   - Patronage prompts must remain respectful ("support not on face").
+   - Users must always have a 1-click option to snooze or permanently disable in-app prompts.
+   - Reassure users upon dismissal that KhataGHAR is 100% free, private, and offline forever.

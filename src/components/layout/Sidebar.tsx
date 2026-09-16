@@ -96,7 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile, o
       {/* Sidebar Container */}
       <aside
         className={cn(
-          'fixed md:sticky top-0 left-0 z-40 h-screen w-64 flex flex-col shrink-0',
+          'fixed md:sticky top-0 left-0 z-40 h-screen h-[100dvh] max-h-screen w-64 flex flex-col shrink-0',
           'bg-card',
           'border-r border-line',
           'transition-transform duration-200 ease-out md:translate-x-0',
@@ -104,8 +104,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile, o
         )}
       >
         {/* Brand Header */}
-        <div className="flex items-center gap-3 px-4 h-[60px] border-b border-line flex-shrink-0">
-          <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-pine-700 text-white shadow-md shadow-pine-900/20 flex-shrink-0">
+        <div className="flex items-center gap-3 px-4 h-[60px] border-b border-line flex-shrink-0 shrink-0">
+          <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-pine-700 text-white shadow-md shadow-pine-900/20 flex-shrink-0 shrink-0">
             <IndianRupee className="w-4 h-4 stroke-[2.5]" />
           </div>
           <div className="min-w-0">
@@ -123,7 +123,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile, o
 
         {/* Navigation Sections */}
         <nav
-          className="flex-1 overflow-y-auto px-3 py-3.5 space-y-4 custom-scrollbar"
+          className="flex-1 min-h-0 overflow-y-auto px-3 py-3.5 space-y-4 custom-scrollbar"
           aria-label="Main navigation"
         >
           {NAV_GROUPS.map((group) => (

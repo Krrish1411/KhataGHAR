@@ -446,6 +446,14 @@ export class KhataSyncEngine {
       }
       this.setStatus('synced');
       setTimeout(() => this.setStatus('connected'), 3000);
+    } else if (msg.type === 'REQUEST_FULL_STATE') {
+      if (this.localStateGetter) {
+        const local = this.localStateGetter();
+        if (local && local.data) {
+          const devName = typeof localStorage !== 'undefined' ? localStorage.getItem(MASTER_DEVICE_KEY) || 'Primary Device' : 'Primary Device';
+          await this.forceCloneToPeer(local.data, local.meta, devName);
+        }
+      }
     } else if (msg.type === 'DISCONNECT') {
       this.disconnect(false);
     }
@@ -508,6 +516,20 @@ export class KhataSyncEngine {
       });
       this.setStatus('synced');
       setTimeout(() => this.setStatus('connected'), 2500);
+    } catch (e) {
+      this.setStatus('connected');
+      throw e;
+    }
+  }
+
+  public async requestFullSync(): Promise<void> {
+    if (this.status !== 'connected') return;
+    this.setStatus('syncing');
+    try {
+      await this.sendRelayMessage({
+        type: 'REQUEST_FULL_STATE',
+        timestamp: Date.now(),
+      });
     } catch (e) {
       this.setStatus('connected');
       throw e;

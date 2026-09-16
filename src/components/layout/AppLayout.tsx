@@ -10,18 +10,22 @@ import { OnboardingModal } from '../security/OnboardingModal';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { P2PSyncModal } from '../sync/P2PSyncModal';
+import { SupportCoffeeModal } from '../common/SupportCoffeeModal';
 import { useAuth } from '../../context/AuthContext';
+import { useVault } from '../../context/VaultContext';
 import { usePrivacy } from '../../context/PrivacyContext';
-import { Sparkles, ArrowRight, LogOut, Keyboard } from 'lucide-react';
+import { Sparkles, ArrowRight, LogOut, Keyboard, Heart, X as CloseIcon } from 'lucide-react';
 import { getEffectiveShortcuts, APP_SHORTCUTS, formatKeyDisplay } from '../../services/shortcuts';
 import type { TransactionEntryMode } from '../transactions/QuickAddModal';
 
 export const AppLayout: React.FC = () => {
   const { activeVault, exitDemoVault } = useAuth();
+  const { transactions, accounts } = useVault();
   const { togglePrivacy } = usePrivacy();
   const navigate = useNavigate();
   const location = useLocation();
   const isNotesView = location.pathname === '/notes';
+  const isDemoMode = Boolean(activeVault?.isDemo || activeVault?.name.toLowerCase().includes('demo'));
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -30,6 +34,8 @@ export const AppLayout: React.FC = () => {
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [isWelcomeOpen, setIsWelcomeOpen] = useState(() => !localStorage.getItem('khataghar_welcome_seen'));
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const effectiveShortcuts = useMemo(
     () => getEffectiveShortcuts(activeVault?.customShortcuts),
@@ -114,13 +120,89 @@ export const AppLayout: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [effectiveShortcuts, togglePrivacy, navigate]);
 
-  const isDemoMode = Boolean(activeVault?.isDemo || activeVault?.name.toLowerCase().includes('demo'));
+  // Auto-dismiss toast message after 5.5s
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => setToastMessage(null), 5500);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
+  // Milestone & Appreciation Support Modal Trigger
+  // Triggers once user reaches 10+ entries, then every 7 days (1 week)
+  useEffect(() => {
+    if (!activeVault || isDemoMode) return;
+
+    try {
+      // If user permanently opted out in Settings or Modal, do nothing
+      const isOptedOut = localStorage.getItem('khata_coffee_opt_out') === 'true';
+      if (isOptedOut) return;
+
+      // Must have recorded at least 10 entries
+      const totalEntries = transactions.length;
+      if (totalEntries < 10) return;
+
+      // Don't interrupt onboarding / initial tour
+      const welcomeSeen = localStorage.getItem('khataghar_welcome_seen') === 'true';
+      if (!welcomeSeen || isWelcomeOpen) return;
+
+      const lastPromptTsStr = localStorage.getItem('khata_coffee_last_prompt_ts');
+      const now = Date.now();
+      const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+      if (!lastPromptTsStr) {
+        // Milestone reached: First prompt after 10+ entries!
+        const timer = setTimeout(() => {
+          setIsSupportModalOpen(true);
+        }, 2500);
+        return () => clearTimeout(timer);
+      } else {
+        const lastPromptTs = Number(lastPromptTsStr);
+        if (now - lastPromptTs >= ONE_WEEK_MS) {
+          const timer = setTimeout(() => {
+            setIsSupportModalOpen(true);
+          }, 2500);
+          return () => clearTimeout(timer);
+        }
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  }, [transactions.length, activeVault, isDemoMode, isWelcomeOpen]);
+
+  const handleSnoozeSupport = () => {
+    try {
+      localStorage.setItem('khata_coffee_last_prompt_ts', String(Date.now()));
+    } catch {}
+    setIsSupportModalOpen(false);
+    setToastMessage(
+      'No worries! KhataGHAR is and will always remain 100% free, private, and offline forever.'
+    );
+  };
+
+  const handleOptOutSupport = () => {
+    try {
+      localStorage.setItem('khata_coffee_opt_out', 'true');
+      localStorage.setItem('khata_coffee_last_prompt_ts', String(Date.now()));
+    } catch {}
+    setIsSupportModalOpen(false);
+    setToastMessage(
+      'Support reminders disabled. KhataGHAR stays 100% free, private, and offline forever.'
+    );
+  };
+
+  const handleBuyCoffeeSupport = () => {
+    try {
+      localStorage.setItem('khata_coffee_last_prompt_ts', String(Date.now()));
+    } catch {}
+    setIsSupportModalOpen(false);
+    window.open('https://buymeacoffee.com/Krrish1411', '_blank', 'noopener,noreferrer');
+    setToastMessage(
+      'Thank you deeply for supporting sovereign, independent software! ❤️'
+    );
+  };
 
   return (
-    <div
-      style={{ zoom: isNotesView ? 1 : 1.05 }}
-      className="h-screen overflow-hidden flex bg-ground text-ink transition-colors"
-    >
+    <div className="h-screen h-[100dvh] overflow-hidden flex bg-ground text-ink transition-colors">
       {/* Desktop Fixed Sidebar + Mobile Drawer */}
       <Sidebar
         isMobileOpen={isMobileMenuOpen}
@@ -128,8 +210,8 @@ export const AppLayout: React.FC = () => {
         onOpenSync={() => setIsSyncModalOpen(true)}
       />
 
-      {/* Main Content Column (Scrolls independently while Sidebar remains fixed) */}
-      <div className={`flex-1 flex flex-col min-w-0 h-screen overflow-y-auto overflow-x-hidden custom-scrollbar ${isNotesView ? 'overflow-hidden pb-0' : 'pb-20 md:pb-8'}`}>
+      {/* Main Content Column (Scrolls independently while Sidebar remains permanently fixed) */}
+      <div className={`flex-1 flex flex-col min-w-0 h-screen h-[100dvh] overflow-y-auto overflow-x-hidden custom-scrollbar ${isNotesView ? 'overflow-hidden pb-0' : 'pb-24 md:pb-8'}`}>
         {/* Demo Mode Top Banner */}
         {isDemoMode && (
           <div className="shrink-0 bg-gradient-to-r from-pine-900 via-pine-800 to-pine-950 text-white px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 border-b border-pine-700/60 shadow-xs">
@@ -258,6 +340,38 @@ export const AppLayout: React.FC = () => {
           isOpen={isNewVaultOpen}
           onClose={() => setIsNewVaultOpen(false)}
           isInitialSetup={false}
+        />
+      )}
+
+      {/* Reassurance Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[150] max-w-md w-[92%] sm:w-auto px-4 py-3 rounded-2xl bg-card border border-pine-500/40 text-ink shadow-2xl backdrop-blur-md flex items-center gap-3 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <div className="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+            <Heart className="w-4 h-4 fill-amber-500 text-amber-500" />
+          </div>
+          <p className="text-xs font-semibold text-ink leading-snug flex-1">
+            {toastMessage}
+          </p>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-moss shrink-0 transition cursor-pointer"
+            aria-label="Dismiss notification"
+          >
+            <CloseIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Milestone & Supporter Coffee Modal */}
+      {isSupportModalOpen && (
+        <SupportCoffeeModal
+          open={isSupportModalOpen}
+          onClose={handleSnoozeSupport}
+          completedEntriesCount={transactions.length}
+          totalAccountsCount={accounts.length}
+          onSnoozeWeek={handleSnoozeSupport}
+          onPermanentOptOut={handleOptOutSupport}
+          onBuyCoffee={handleBuyCoffeeSupport}
         />
       )}
     </div>

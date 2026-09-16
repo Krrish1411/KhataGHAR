@@ -49,6 +49,8 @@ import { APP_SHORTCUTS, formatKeyDisplay } from '../services/shortcuts';
 import { UniversalBackupCard } from '../components/settings/UniversalBackupCard';
 import { P2PSyncCard } from '../components/settings/P2PSyncCard';
 import { StorageDiagnosticsCard } from '../components/settings/StorageDiagnosticsCard';
+import { SupportSettingsCard } from '../components/settings/SupportSettingsCard';
+import { SupportCoffeeModal } from '../components/common/SupportCoffeeModal';
 
 export const SettingsView: React.FC = () => {
   const { activeVault, sessionKey, lockVault, refreshVaultList, setActiveVaultMeta, setSessionCredentials } =
@@ -96,6 +98,7 @@ export const SettingsView: React.FC = () => {
 
   const [isNewVaultOpen, setIsNewVaultOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [isSupportPreviewOpen, setIsSupportPreviewOpen] = useState(false);
   const [isLoadingDemo, setIsLoadingDemo] = useState(false);
   const [demoSuccess, setDemoSuccess] = useState('');
   const [isReconciling, setIsReconciling] = useState(false);
@@ -628,9 +631,11 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       </div>
-          
 
-          {/* ── CATEGORY MANAGEMENT ─────────────────────────────────── */}
+      {/* ── INDEPENDENT DEVELOPMENT & SUPPORT ────────────────────── */}
+      <SupportSettingsCard onOpenPreview={() => setIsSupportPreviewOpen(true)} />
+
+      {/* ── CATEGORY MANAGEMENT ─────────────────────────────────── */}
       <div className="rounded-2xl border border-line bg-card p-5 sm:p-6 space-y-4 shadow-sm lift">
         <div className="flex items-center justify-between pb-2 border-b border-line gap-2 flex-wrap">
           <div className="flex items-center gap-2">
@@ -1397,6 +1402,18 @@ export const SettingsView: React.FC = () => {
           isOpen={isSyncModalOpen}
           onClose={() => setIsSyncModalOpen(false)}
           mergedVault={activeVault}
+        />
+      )}
+
+      {/* Support Milestone Modal Preview */}
+      {isSupportPreviewOpen && (
+        <SupportCoffeeModal
+          open={isSupportPreviewOpen}
+          onClose={() => setIsSupportPreviewOpen(false)}
+          completedEntriesCount={transactions.length}
+          totalAccountsCount={accounts.length}
+          onSnoozeWeek={() => setIsSupportPreviewOpen(false)}
+          onPermanentOptOut={() => setIsSupportPreviewOpen(false)}
         />
       )}
     </div>

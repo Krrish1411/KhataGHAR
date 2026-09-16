@@ -36,7 +36,9 @@ import {
   Upload,
   Layers,
   ArrowLeft,
+  ArrowLeftRight,
 } from 'lucide-react';
+import { WelcomeP2PSyncModal } from '../sync/WelcomeP2PSyncModal';
 
 interface WelcomeLandingViewProps {
   onBackToLock?: () => void;
@@ -52,6 +54,7 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
+  const [isSyncOpen, setIsSyncOpen] = useState(false);
   const [isLoadingDemo, setIsLoadingDemo] = useState(false);
   const [demoError, setDemoError] = useState('');
 
@@ -203,6 +206,25 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
               </button>
             )}
 
+            {/* Official Buy Me a Coffee Button */}
+            <a
+              href="https://buymeacoffee.com/Krrish1411"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 text-xs font-bold shadow-xs transition-all hover:scale-[1.03] active:scale-[0.97] border border-black/80 shrink-0 cursor-pointer"
+              style={{
+                background: '#FFDD00',
+                color: '#000000',
+              }}
+              title="Support independent development on Buy Me a Coffee"
+            >
+              <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M20 8h-1V6c0-1.1-.9-2-2-2H3c-1.1 0-2 .9-2 2v10c0 2.2 1.8 4 4 4h10c2.2 0 4-1.8 4-4v-2h1c1.7 0 3-1.3 3-3s-1.3-3-3-3zm-3 8c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V6h14v10zm3-4h-1v-2h1c.6 0 1 .4 1 1s-.4 1-1 1z" fill="#000000"/>
+                <path d="M6 9h2v4H6zm4 0h2v4h-2zm4 0h2v4h-2z" fill="#ffffff"/>
+              </svg>
+              <span className="hidden sm:inline font-bold tracking-tight">Buy me a coffee</span>
+            </a>
+
             <button
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               className="p-2 rounded-xl border border-line bg-card hover:bg-moss text-ink/70 transition-colors cursor-pointer"
@@ -210,6 +232,15 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
               aria-label="Toggle Theme"
             >
               {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-pine-600" />}
+            </button>
+
+            <button
+              onClick={() => setIsSyncOpen(true)}
+              className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-xl border border-line bg-card hover:bg-moss text-xs font-semibold text-ink transition-all cursor-pointer"
+              title="Direct P2P Sync with existing PC or Phone"
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5 text-pine-600" />
+              <span>Sync Device</span>
             </button>
 
             <button
@@ -259,31 +290,40 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
           )}
 
           {/* Primary Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-2">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2 flex-wrap">
             <button
               onClick={() => setIsCreateOpen(true)}
               className="w-full sm:w-auto px-7 py-3.5 rounded-2xl bg-pine-700 hover:bg-pine-600 active:scale-95 text-white font-display font-bold text-sm shadow-lg shadow-pine-900/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
               <KeyRound className="w-4 h-4 stroke-[2.2]" />
-              <span>Create Your Master Vault</span>
-              <ArrowRight className="w-4 h-4 ml-1" />
+              <span>Create Master Vault</span>
+              <ArrowRight className="w-4 h-4 ml-0.5" />
+            </button>
+
+            <button
+              onClick={() => setIsSyncOpen(true)}
+              className="w-full sm:w-auto px-6 py-3.5 rounded-2xl border-2 border-pine-500/40 bg-card hover:bg-moss hover:border-pine-500 text-ink font-display font-bold text-sm shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+              title="Direct P2P Sync from existing PC or Phone"
+            >
+              <ArrowLeftRight className="w-4 h-4 text-pine-600 dark:text-pine-400" />
+              <span>Sync from Existing Device</span>
             </button>
 
             <button
               onClick={handleExploreDemo}
               disabled={isLoadingDemo}
-              className="w-full sm:w-auto px-6 py-3.5 rounded-2xl border border-line bg-card hover:bg-pine-50 dark:hover:bg-pine-950/40 hover:border-pine-300 font-display font-bold text-sm text-pine-700 dark:text-pine-300 shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+              className="w-full sm:w-auto px-5 py-3.5 rounded-2xl border border-line bg-card hover:bg-pine-50 dark:hover:bg-pine-950/40 hover:border-pine-300 font-display font-bold text-sm text-pine-700 dark:text-pine-300 shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
               <Sparkles className="w-4 h-4 text-pine-600" />
-              <span>{isLoadingDemo ? 'Setting Up Realistic Demo…' : '🚀 Explore with 4-Month Demo Data'}</span>
+              <span>{isLoadingDemo ? 'Setting Up Demo…' : 'Explore Demo'}</span>
             </button>
 
             <button
               onClick={() => setIsRestoreOpen(true)}
-              className="w-full sm:w-auto px-5 py-3.5 rounded-2xl border border-line bg-card hover:bg-moss text-xs font-bold text-ink/75 flex items-center justify-center gap-2 transition-all cursor-pointer md:hidden"
+              className="w-full sm:w-auto px-5 py-3.5 rounded-2xl border border-line bg-card hover:bg-moss text-xs font-bold text-ink/75 flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
               <Upload className="w-4 h-4 text-pine-600" />
-              <span>Restore .khataghar</span>
+              <span>Restore Backup</span>
             </button>
           </div>
 
@@ -521,6 +561,83 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
               </tbody>
             </table>
           </div>
+
+          {/* P2P Sync Relay & Community Donation Covenant Notice */}
+          <div className="rounded-3xl border border-amber-500/35 bg-amber-500/10 p-5 sm:p-6 text-xs text-ink/80 leading-relaxed space-y-2.5 shadow-sm">
+            <div className="flex items-center gap-2 font-bold text-amber-700 dark:text-amber-400 text-sm">
+              <span className="text-base font-black leading-none">⚡</span>
+              <span>Zero-Cloud P2P Sync & Community Donation Notice</span>
+            </div>
+            <p>
+              KhataGHAR enables direct, encrypted device-to-device pairing using zero-knowledge signaling relays. Operating these high-availability signaling relays incurs ongoing hosting and bandwidth expenses. We gratefully accept voluntary community donations via{' '}
+              <a
+                href="https://buymeacoffee.com/Krrish1411"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-amber-700 dark:text-amber-300 font-bold underline underline-offset-2 hover:opacity-80 transition-opacity"
+              >
+                Buy Me a Coffee
+              </a>{' '}
+              to keep automated zero-cloud P2P relays free for all users worldwide. If ongoing relay infrastructure costs outpace community donations, automated cloud signaling may become an optional Pro add-on—while manual encrypted vault backups, JSON/CSV exports, and 100% offline functionality will always remain completely free and open.
+            </p>
+          </div>
+        </section>
+
+        {/* CREATOR PHILOSOPHY & MANIFESTO */}
+        <section className="space-y-6">
+          <div className="rounded-3xl border border-line bg-card p-6 sm:p-10 shadow-sm space-y-6">
+            <div className="flex items-center gap-3.5 sm:gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-pine-700 text-white font-black text-lg flex items-center justify-center shadow-md shadow-pine-900/20 shrink-0 font-display">
+                KP
+              </div>
+              <div>
+                <h3 className="text-xl sm:text-2xl font-black tracking-tight text-ink font-display">
+                  Why I Built KhataGHAR
+                </h3>
+                <p className="text-xs sm:text-sm font-semibold text-ink/50">
+                  By Krish Patel · Founder & Solo Architect
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 sm:space-y-4 text-xs sm:text-sm leading-relaxed text-ink/80 font-normal">
+              <p>
+                Traditional personal finance software has betrayed its users. What should be simple, private bookkeeping has been transformed into aggressive corporate tracking engines engineered to read your confidential bank SMS, harvest your transaction histories, and sell you high-interest personal loans.
+              </p>
+              <p>
+                KhataGHAR was built on an uncompromising conviction: <strong className="text-ink font-bold">your money, your debts, your gold, and your family wealth belong to you alone.</strong>
+              </p>
+              <p>
+                There are zero cloud databases. There is zero telemetry. Full source code is open and verifiable. Your ledger is encrypted locally with AES-256-GCM. If you believe in sovereign computing and local-first personal software, your support helps maintain and expand this ecosystem.
+              </p>
+              <p className="pt-2 text-xs sm:text-sm italic text-ink font-semibold border-l-4 border-pine-600 pl-3 sm:pl-4">
+                "KhataGHAR is built to run for decades without depending on a single corporate server to stay alive. Thank you for choosing sovereign personal computing."
+              </p>
+            </div>
+
+            <div className="pt-4 border-t border-line flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <a
+                href="https://buymeacoffee.com/Krrish1411"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] border border-black/80 cursor-pointer"
+                style={{
+                  background: '#FFDD00',
+                  color: '#000000',
+                }}
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M20 8h-1V6c0-1.1-.9-2-2-2H3c-1.1 0-2 .9-2 2v10c0 2.2 1.8 4 4 4h10c2.2 0 4-1.8 4-4v-2h1c1.7 0 3-1.3 3-3s-1.3-3-3-3zm-3 8c0 1.1-.9 2-2 2H5c-1.1 0-2-.9-2-2V6h14v10zm3-4h-1v-2h1c.6 0 1 .4 1 1s-.4 1-1 1z" fill="#000000"/>
+                  <path d="M6 9h2v4H6zm4 0h2v4h-2zm4 0h2v4h-2z" fill="#ffffff"/>
+                </svg>
+                <span>Buy Me a Coffee ($5)</span>
+              </a>
+
+              <span className="text-xs text-ink/50 font-medium text-center sm:text-right">
+                100% Free & Open Source · Permissive MIT License
+              </span>
+            </div>
+          </div>
         </section>
 
         {/* BOTTOM CTA CALLOUT */}
@@ -534,7 +651,7 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 relative z-10 pt-2">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 relative z-10 pt-2 flex-wrap">
             <button
               onClick={() => setIsCreateOpen(true)}
               className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-white hover:bg-pine-50 active:scale-95 text-pine-900 font-display font-bold text-sm shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer"
@@ -542,6 +659,14 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
               <KeyRound className="w-4 h-4 stroke-[2.2]" />
               <span>Create Master Vault</span>
               <ArrowRight className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={() => setIsSyncOpen(true)}
+              className="w-full sm:w-auto px-6 py-3.5 rounded-2xl border border-white/25 hover:bg-white/10 text-white font-display font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <ArrowLeftRight className="w-4 h-4 text-pine-300" />
+              <span>Sync from Existing Device</span>
             </button>
 
             <button
@@ -660,6 +785,14 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Direct P2P Device Sync Modal */}
+      {isSyncOpen && (
+        <WelcomeP2PSyncModal
+          isOpen={isSyncOpen}
+          onClose={() => setIsSyncOpen(false)}
+        />
       )}
     </div>
   );

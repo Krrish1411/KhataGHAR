@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
+import { useBodyScrollLock } from '../../utils/scrollLock';
+
 export interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -28,6 +30,8 @@ export const Modal: React.FC<ModalProps> = ({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
+  useBodyScrollLock(isOpen);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -39,7 +43,6 @@ export const Modal: React.FC<ModalProps> = ({
       }
     };
 
-    document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', handleKeyDown, true);
 
     // Focus initial element ONLY once when opening
@@ -64,7 +67,6 @@ export const Modal: React.FC<ModalProps> = ({
 
     return () => {
       clearTimeout(timer);
-      document.body.style.overflow = 'unset';
       window.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [isOpen]); // Only depends on isOpen, NOT onClose, preventing focus stealing on re-renders
