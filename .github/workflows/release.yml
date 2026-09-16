@@ -3,7 +3,7 @@ name: Release — Tag & Publish
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*'
 
 jobs:
   release:
