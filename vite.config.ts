@@ -73,7 +73,7 @@ export default defineConfig({
         name: 'KhataGHAR — Sovereign Wealth Operating System',
         short_name: 'KhataGHAR',
         description: 'Zero-cloud, client-side encrypted institutional personal wealth operating system',
-        theme_color: '#12855a',
+        theme_color: '#1c263e',
         background_color: '#08090D',
         display: 'standalone',
         orientation: 'any',
