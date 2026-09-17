@@ -128,12 +128,20 @@ export function computeFinancialRatios(params: RatioCalculatorParams): Financial
   const essentialSpendRatio = totalOperatingExpense > 0 ? (essentialExpense / totalOperatingExpense) * 100 : 50;
   const discretionarySpendRatio = totalOperatingExpense > 0 ? (discretionaryExpense / totalOperatingExpense) * 100 : 50;
 
-  // Days in period
+  // Days in period (defaults to actual active transaction span, min 30 days)
   let daysInPeriod = 30;
   if (startDate && endDate) {
     const s = new Date(startDate + 'T00:00:00');
     const e = new Date(endDate + 'T00:00:00');
     daysInPeriod = Math.max(1, Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+  } else if (periodTxs.length > 0) {
+    const dates = periodTxs.map((t) => t.date.split('T')[0]).filter(Boolean).sort();
+    if (dates.length > 0) {
+      const s = new Date(dates[0] + 'T00:00:00');
+      const e = new Date(dates[dates.length - 1] + 'T00:00:00');
+      const spanDays = Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      daysInPeriod = Math.max(30, spanDays);
+    }
   }
 
   const averageDailySpend = totalOperatingExpense / daysInPeriod;
@@ -399,6 +407,33 @@ export function computeHealthScore(params: RatioCalculatorParams): HealthScoreBr
   else if (totalScore >= 35) rating = 'Fair';
   else rating = 'Critical';
 
+  // Compute 50/30/20 Rule proportions from actual economic metrics
+  let needsPercent = 50;
+  let wantsPercent = 30;
+  let savingsPercent = 20;
+
+  const totalSpend = (params.transactions || [])
+    .filter((t) => t.type === 'expense')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const totalIncome = (params.transactions || [])
+    .filter((t) => t.type === 'income')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  if (totalIncome > 0) {
+    const rawSavings = Math.max(0, totalIncome - totalSpend);
+    savingsPercent = Math.min(100, Math.round((rawSavings / totalIncome) * 100));
+    const spentPercent = 100 - savingsPercent;
+    needsPercent = Math.round(spentPercent * (ratios.essentialSpendRatio / 100));
+    wantsPercent = Math.max(0, spentPercent - needsPercent);
+  } else if (totalSpend > 0) {
+    needsPercent = Math.round(ratios.essentialSpendRatio);
+    wantsPercent = Math.max(0, 100 - needsPercent);
+    savingsPercent = 0;
+  }
+
+  const isOptimal503020 = needsPercent <= 50 && wantsPercent <= 30 && savingsPercent >= 20;
+
   return {
     score: Math.min(100, Math.max(0, totalScore)),
     rating,
@@ -415,5 +450,11 @@ export function computeHealthScore(params: RatioCalculatorParams): HealthScoreBr
     netWorthTrendScore: { value: netWorth, score: nwScore, weight: 10, status: nwStatus, advice: nwAdvice },
     keyStrengths: strengths.length > 0 ? strengths : ['Stable financial tracking'],
     keyImprovements: improvements.length > 0 ? improvements : ['Maintain current savings cadence'],
+    rule503020: {
+      needsPercent,
+      wantsPercent,
+      savingsPercent,
+      isOptimal: isOptimal503020,
+    },
   };
 }

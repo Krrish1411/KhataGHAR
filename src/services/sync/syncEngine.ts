@@ -77,12 +77,33 @@ export class KhataSyncEngine {
     return this.activePin;
   }
 
+  private sessionMasterEstablished: boolean = false;
+
   public isMasterEstablished(): boolean {
-    if (typeof localStorage === 'undefined') return false;
-    return localStorage.getItem(MASTER_ESTABLISHED_KEY) === 'true';
+    return this.sessionMasterEstablished;
+  }
+
+  public setMasterEstablished(established: boolean, masterDeviceName?: string): void {
+    this.sessionMasterEstablished = established;
+    if (typeof localStorage !== 'undefined') {
+      if (established) {
+        localStorage.setItem(MASTER_ESTABLISHED_KEY, 'true');
+        if (masterDeviceName) localStorage.setItem(MASTER_DEVICE_KEY, masterDeviceName);
+      } else {
+        localStorage.removeItem(MASTER_ESTABLISHED_KEY);
+        localStorage.removeItem(MASTER_ROLE_KEY);
+        localStorage.removeItem(MASTER_DEVICE_KEY);
+      }
+    }
+    for (const l of this.masterSetupListeners) {
+      if (established) {
+        l({ mode: 'clone_to_peer', masterDeviceName: masterDeviceName || 'Primary Master' });
+      }
+    }
   }
 
   public resetMasterStatus(): void {
+    this.sessionMasterEstablished = false;
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(MASTER_ESTABLISHED_KEY);
       localStorage.removeItem(MASTER_ROLE_KEY);
@@ -515,8 +536,7 @@ export class KhataSyncEngine {
   }
 
   public async broadcastFullState(state: VaultData, meta?: VaultMeta): Promise<void> {
-    if (this.status !== 'connected') return;
-    this.setStatus('syncing');
+    if (this.status !== 'connected' && this.status !== 'synced') return;
     try {
       await this.sendRelayMessage({
         type: 'FULL_STATE',
@@ -524,16 +544,14 @@ export class KhataSyncEngine {
         vaultMeta: meta,
         timestamp: Date.now(),
       });
-      this.setStatus('synced');
-      setTimeout(() => this.setStatus('connected'), 2500);
     } catch (e) {
-      this.setStatus('connected');
+      console.warn('[Sync] Broadcast full state error:', e);
       throw e;
     }
   }
 
   public async requestFullSync(): Promise<void> {
-    if (this.status !== 'connected') return;
+    if (this.status !== 'connected' && this.status !== 'synced') return;
     this.setStatus('syncing');
     try {
       await this.sendRelayMessage({
@@ -581,11 +599,17 @@ export class KhataSyncEngine {
       this.outgoingTopic = this.isHost ? `khataghar-sync-${session.pin}-h2j` : `khataghar-sync-${session.pin}-j2h`;
       this.incomingTopic = this.isHost ? `khataghar-sync-${session.pin}-j2h` : `khataghar-sync-${session.pin}-h2j`;
 
+      // If master was established in the saved session, preserve it across restarts
+      if (typeof localStorage !== 'undefined' && localStorage.getItem(MASTER_ESTABLISHED_KEY) === 'true') {
+        this.sessionMasterEstablished = true;
+      }
+
       const selfPeer: SyncPeerInfo = {
         deviceId: (this.isHost ? 'host-' : 'joiner-') + Date.now().toString(36),
         deviceName: session.deviceName || 'Device',
         platform: detectPlatform(),
         connectedAt: Date.now(),
+        stats: this.getLocalStats(),
       };
 
       this.startRelayListener(this.incomingTopic, selfPeer);
@@ -603,7 +627,11 @@ export class KhataSyncEngine {
     }
   }
 
-  public async disconnect(notify = true): Promise<void> {
+  /**
+   * Disconnects current connection. By default, preserves paired credentials in localStorage
+   * so devices re-pair seamlessly overnight or when closed/restarted.
+   */
+  public async disconnect(notify = true, wipeStorage = false): Promise<void> {
     if (notify) {
       await this.sendRelayMessage({ type: 'DISCONNECT', timestamp: Date.now() }).catch(() => {});
     }
@@ -615,17 +643,32 @@ export class KhataSyncEngine {
     }
 
     this.connectedPeer = null;
-    this.activePin = null;
-    this.sharedSecret = '';
-    this.setStatus('idle');
-
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(SYNC_STORAGE_KEY);
+    if (wipeStorage) {
+      this.activePin = null;
+      this.sharedSecret = '';
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(SYNC_STORAGE_KEY);
+      }
     }
+    this.setStatus('idle');
 
     for (const l of this.peerDisconnectListeners) {
       l();
     }
+  }
+
+  /**
+   * Explicitly unlinks pairing and resets all sync credentials & master status.
+   */
+  public async unlink(): Promise<void> {
+    this.resetMasterStatus();
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(SYNC_STORAGE_KEY);
+      localStorage.removeItem(MASTER_ESTABLISHED_KEY);
+      localStorage.removeItem(MASTER_ROLE_KEY);
+      localStorage.removeItem(MASTER_DEVICE_KEY);
+    }
+    await this.disconnect(true, true);
   }
 }
 

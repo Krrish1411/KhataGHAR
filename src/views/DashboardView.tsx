@@ -36,6 +36,7 @@ import {
   Keyboard,
   ArrowRight,
   Target,
+  Wallet,
   X,
 } from 'lucide-react';
 import { computeFinancialInsights, type FinancialInsight } from '../services/insights';
@@ -61,6 +62,19 @@ export const DashboardView: React.FC = () => {
   const [quickAddType, setQuickAddType] = useState<'expense' | 'income' | 'transfer'>('expense');
   const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
   const [netWorthMode, setNetWorthMode] = useState<'total' | 'liquid'>('total');
+  const [showLiquidCash, setShowLiquidCash] = useState<boolean>(() => {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem('khataghar_hero_show_liquid') === 'true' : false;
+  });
+
+  const toggleShowLiquidCash = () => {
+    setShowLiquidCash((prev) => {
+      const next = !prev;
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('khataghar_hero_show_liquid', String(next));
+      }
+      return next;
+    });
+  };
 
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
@@ -302,17 +316,34 @@ export const DashboardView: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] font-semibold text-pine-200">
               <CalendarClock className="w-3.5 h-3.5" />
-              <span>{currentMonthLabel} · Available to spend</span>
+              <span>{currentMonthLabel} · {showLiquidCash ? 'Total Liquid Cash' : 'Available to spend'}</span>
             </div>
+            <button
+              type="button"
+              onClick={toggleShowLiquidCash}
+              className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/15 hover:bg-white/25 text-pine-100 transition-colors cursor-pointer border border-white/20 flex items-center gap-1"
+              title="Toggle between Available to spend and Total Liquid Cash"
+            >
+              <Wallet className="w-3 h-3 text-pine-200" />
+              <span>{showLiquidCash ? 'Show Spendable' : 'Show Liquid Cash'}</span>
+            </button>
           </div>
 
           <div className="font-display font-extrabold text-2xl sm:text-[38px] lg:text-[42px] num tracking-tight leading-tight mt-1 text-white truncate">
             <AnimatedNumber
-              value={d.availableToSpend}
+              value={showLiquidCash ? d.liquidBalance : d.availableToSpend}
               currency={baseCurrency}
               numberFormat={numberFormat}
               isPrivacyMode={isPrivacyMode}
             />
+          </div>
+
+          <div className="text-xs text-pine-200/90 font-medium mt-0.5">
+            {showLiquidCash ? (
+              <span>Spendable after bills &amp; commitments: <b className="text-white num">{formatCurrency(d.availableToSpend, baseCurrency, numberFormat, isPrivacyMode)}</b></span>
+            ) : (
+              <span>Total Liquid Bank &amp; Cash: <b className="text-white num">{formatCurrency(d.liquidBalance, baseCurrency, numberFormat, isPrivacyMode)}</b></span>
+            )}
           </div>
 
           <div className="flex gap-5 mt-2 text-[12.5px]">
@@ -334,6 +365,14 @@ export const DashboardView: React.FC = () => {
 
           {/* PaisaBook Pill Badges */}
           <div className="flex flex-wrap gap-1.5 mt-3.5">
+            <Badge
+              tone="gray"
+              className="!bg-white/10 !text-pine-100 !border-white/20 cursor-help"
+              icon={<Wallet className="w-3 h-3" />}
+              title="Verified liquid money across active bank and cash accounts"
+            >
+              {formatCompactCurrency(d.liquidBalance, baseCurrency, numberFormat, isPrivacyMode)} liquid cash
+            </Badge>
             <Badge tone="mari" icon={<Lock className="w-3 h-3" />}>
               {formatCompactCurrency(d.reservedTotal, baseCurrency, numberFormat, isPrivacyMode)} not yours
             </Badge>

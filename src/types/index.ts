@@ -333,12 +333,12 @@ export interface NoteFolder {
 export interface NoteAttachment {
   id: string;
   name: string;
-  type: 'image' | 'pdf' | 'document';
+  type: 'image' | 'pdf' | 'document' | 'video' | 'audio';
   size: number;
-  mimeType: string;
+  mimeType?: string;
   dataUrl: string; // Base64 data url, encrypted in blob
   wasCompressed?: boolean;
-  createdAt: string;
+  createdAt?: string;
 }
 
 export interface VaultNote {
@@ -412,6 +412,12 @@ export interface HealthScoreBreakdown {
   netWorthTrendScore: { value: number; score: number; weight: number; status: string; advice: string };
   keyStrengths: string[];
   keyImprovements: string[];
+  rule503020?: {
+    needsPercent: number;
+    wantsPercent: number;
+    savingsPercent: number;
+    isOptimal: boolean;
+  };
 }
 
 export * from './updater';

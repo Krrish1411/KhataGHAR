@@ -16,6 +16,7 @@ export interface DerivedFinancials {
   committedPaidThisMonth: number;
   goalReservations: number;
   availableToSpend: number;
+  totalLiquidCash: number;
   netWorth: number;
   thisMonthIncome: number;
   thisMonthExpense: number;
@@ -262,6 +263,7 @@ export function computeDerivedFinancials(
     committedPaidThisMonth: r2(committedPaidThisMonth),
     goalReservations: r2(goalReservations),
     availableToSpend: r2(availableToSpend),
+    totalLiquidCash: r2(liquidBalance),
     netWorth: r2(netWorth),
     thisMonthIncome: r2(thisM.income),
     thisMonthExpense: r2(thisM.expense),

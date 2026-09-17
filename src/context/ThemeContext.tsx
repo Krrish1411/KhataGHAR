@@ -8,7 +8,8 @@ export type ThemePalette =
   | 'dusk'
   | 'sand'
   | 'berry'
-  | 'graphite';
+  | 'graphite'
+  | 'tokyo-oled';
 
 export type Theme = ThemePalette | 'dark' | 'light' | 'system';
 
@@ -21,7 +22,7 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const DARK_PALETTES: ThemePalette[] = ['night', 'dusk', 'berry', 'graphite'];
+const DARK_PALETTES: ThemePalette[] = ['night', 'dusk', 'berry', 'graphite', 'tokyo-oled'];
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<Theme>(() => {
@@ -57,7 +58,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (isDark) {
         root.classList.add('dark');
-        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0a0f0c');
+        const metaColor = resolvedPalette === 'tokyo-oled' ? '#000000' : '#0a0f0c';
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', metaColor);
       } else {
         root.classList.remove('dark');
         document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0e5138');

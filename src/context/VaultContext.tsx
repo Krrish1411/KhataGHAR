@@ -578,7 +578,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const scheduleBroadcast = useCallback(() => {
     if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current);
     broadcastTimerRef.current = setTimeout(() => {
-      if (syncEngine.getStatus() !== 'connected' || !activeVault) return;
+      const s = syncEngine.getStatus();
+      if ((s !== 'connected' && s !== 'synced') || !activeVault) return;
       const payload: VaultData = {
         accounts: accountsRef.current,
         transactions: transactionsRef.current,
@@ -596,7 +597,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       syncEngine.broadcastFullState(payload, activeVault).catch((err) => {
         console.warn('[VaultContext] Sync auto-broadcast failed:', err);
       });
-    }, 600);
+    }, 300);
   }, [activeVault]);
 
   // Register local state getter for syncEngine
@@ -1152,6 +1153,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     await saveEncryptedRecord('transaction', newTx, sessionKey);
+    scheduleBroadcast();
     return newTx;
   };
 
@@ -1597,6 +1599,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setTransactions((prev) => prev.filter((t) => t.id !== id));
     await deleteRecord(id);
+    scheduleBroadcast();
   };
 
   const bulkAddTransactions = async (
@@ -2842,6 +2845,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     notesRef.current = [newNote, ...notesRef.current];
     setNotes(notesRef.current);
     await saveEncryptedRecord('note', newNote, sessionKey);
+    scheduleBroadcast();
     return newNote;
   };
 
@@ -2854,12 +2858,14 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     notesRef.current = notesRef.current.map((n) => (n.id === updated.id ? updated : n));
     setNotes(notesRef.current);
     await saveEncryptedRecord('note', updated, sessionKey);
+    scheduleBroadcast();
   };
 
   const deleteNote = async (id: string): Promise<void> => {
     notesRef.current = notesRef.current.filter((n) => n.id !== id);
     setNotes(notesRef.current);
     await deleteRecord(id);
+    scheduleBroadcast();
   };
 
   const addFolder = async (

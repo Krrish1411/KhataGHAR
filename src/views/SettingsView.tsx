@@ -12,6 +12,7 @@ import { OnboardingModal } from '../components/security/OnboardingModal';
 import { SyncMergedVaultModal } from '../components/vault/SyncMergedVaultModal';
 import { changeVaultPassword, deleteVaultCompletely } from '../services/storage';
 import { isAcceptablePassword, hashStringSHA256, deriveKey, encryptData } from '../services/crypto';
+import { NotificationSettingsCard } from '../components/settings/NotificationSettingsCard';
 import type { CurrencyCode, NumberFormatType, Account, Transaction } from '../types';
 import {
   Settings,
@@ -523,30 +524,81 @@ export const SettingsView: React.FC = () => {
             </div>
           )}
 
-          {/* Theme */}
-          <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-2.5 shadow-sm lift">
-            <label className="block text-xs font-semibold text-ink">
-              Theme Mode
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: 'dark', label: 'Dark', icon: Moon },
-                { id: 'light', label: 'Light', icon: Sun },
-                { id: 'system', label: 'System', icon: RefreshCw },
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTheme(t.id as any)}
-                  className={`flex flex-col items-center justify-center p-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                    theme === t.id
-                      ? 'border-pine-500 bg-pine-50/80 dark:bg-pine-950/60 text-pine-700 dark:text-pine-300 font-bold ring-2 ring-pine-500 ring-offset-1 ring-offset-card shadow-xs scale-[1.02]'
-                      : 'border-line bg-moss/50 text-ink/70 hover:text-ink'
-                  }`}
-                >
-                  <t.icon className="w-3.5 h-3.5 mb-1" />
-                  <span>{t.label}</span>
-                </button>
-              ))}
+          {/* Notifications & Sound Reminders */}
+          <NotificationSettingsCard />
+
+          {/* Theme Mode & Palettes */}
+          <div className="rounded-2xl border border-line bg-card p-4 sm:p-5 space-y-4 shadow-sm lift">
+            <div>
+              <label className="block text-xs font-semibold text-ink">
+                Theme Mode
+              </label>
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                {[
+                  { id: 'dark', label: 'Dark', icon: Moon },
+                  { id: 'light', label: 'Light', icon: Sun },
+                  { id: 'system', label: 'System', icon: RefreshCw },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTheme(t.id as any)}
+                    className={`flex flex-col items-center justify-center p-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                      theme === t.id
+                        ? 'border-pine-500 bg-pine-50/80 dark:bg-pine-950/60 text-pine-700 dark:text-pine-300 font-bold ring-2 ring-pine-500 ring-offset-1 ring-offset-card shadow-xs scale-[1.02]'
+                        : 'border-line bg-moss/50 text-ink/70 hover:text-ink'
+                    }`}
+                  >
+                    <t.icon className="w-3.5 h-3.5 mb-1" />
+                    <span>{t.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Curated Color Palettes */}
+            <div className="pt-3 border-t border-line/60 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-ink">
+                  Aesthetic Theme Palettes
+                </span>
+                <span className="text-[10px] text-ink/50">
+                  Select colorway
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[
+                  { id: 'tokyo-oled', label: 'Tokyo OLED', preview: '#000000', badge: '100% OLED Black' },
+                  { id: 'pine', label: 'PaisaBook Pine', preview: '#0e5138', badge: 'Signature Emerald' },
+                  { id: 'night', label: 'Night Enclave', preview: '#16201a', badge: 'Deep Forest' },
+                  { id: 'ocean', label: 'Pacific Ocean', preview: '#175573', badge: 'Deep Blue' },
+                  { id: 'dusk', label: 'Midnight Dusk', preview: '#22335c', badge: 'Slate Indigo' },
+                  { id: 'ember', label: 'Warm Ember', preview: '#6b4a20', badge: 'Terracotta' },
+                  { id: 'sand', label: 'Sahara Sand', preview: '#55702a', badge: 'Warm Gold' },
+                  { id: 'berry', label: 'Velvet Berry', preview: '#4a1730', badge: 'Plum Wine' },
+                  { id: 'graphite', label: 'Graphite Carbon', preview: '#262c28', badge: 'Neutral Charcoal' },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setTheme(p.id as any)}
+                    className={`p-2 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
+                      theme === p.id
+                        ? 'border-pine-500 bg-pine-50/80 dark:bg-pine-950/60 ring-2 ring-pine-500 ring-offset-1 ring-offset-card font-bold shadow-xs'
+                        : 'border-line bg-moss/40 hover:bg-moss text-ink/80 hover:text-ink'
+                    }`}
+                  >
+                    <span
+                      className="w-4 h-4 rounded-full shrink-0 border border-white/20 shadow-2xs"
+                      style={{ backgroundColor: p.preview }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-semibold truncate leading-tight">{p.label}</div>
+                      <div className="text-[9.5px] text-ink/50 truncate leading-tight">{p.badge}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

@@ -80,6 +80,8 @@ export const HealthScoreView: React.FC = () => {
       weight: '30%',
       target: '30%+ of monthly income',
       score: health.savingsRateScore.score,
+      maxScore: 30,
+      currentValue: `${health.savingsRateScore.value.toFixed(1)}%`,
       advice: health.savingsRateScore.advice,
     },
     {
@@ -87,6 +89,8 @@ export const HealthScoreView: React.FC = () => {
       weight: '25%',
       target: 'Under 30% of gross inflow',
       score: health.debtToIncomeScore.score,
+      maxScore: 25,
+      currentValue: `${health.debtToIncomeScore.value.toFixed(1)}%`,
       advice: health.debtToIncomeScore.advice,
     },
     {
@@ -94,6 +98,8 @@ export const HealthScoreView: React.FC = () => {
       weight: '20%',
       target: '6+ months liquid runway',
       score: health.emergencyFundScore.score,
+      maxScore: 20,
+      currentValue: health.emergencyFundScore.value >= 999 ? '6+ mos (Solvent)' : `${health.emergencyFundScore.value.toFixed(1)} mos`,
       advice: health.emergencyFundScore.advice,
     },
     {
@@ -101,7 +107,18 @@ export const HealthScoreView: React.FC = () => {
       weight: '15%',
       target: 'Spend within allocated budget caps',
       score: health.budgetAdherenceScore.score,
+      maxScore: 15,
+      currentValue: health.budgetAdherenceScore.status,
       advice: health.budgetAdherenceScore.advice,
+    },
+    {
+      name: 'Net Worth & Solvency',
+      weight: '10%',
+      target: 'Positive asset-to-debt position',
+      score: health.netWorthTrendScore.score,
+      maxScore: 10,
+      currentValue: health.netWorthTrendScore.status,
+      advice: health.netWorthTrendScore.advice,
     },
   ];
 
@@ -226,15 +243,16 @@ export const HealthScoreView: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
           {dimensions.map((dim, idx) => {
+            const normalizedScore = Math.min(100, Math.round((dim.score / dim.maxScore) * 100));
             const scoreColor =
-              dim.score >= 80
+              normalizedScore >= 80
                 ? 'text-pine-700 dark:text-pine-400'
-                : dim.score >= 60
+                : normalizedScore >= 60
                 ? 'text-mari-600'
                 : 'text-flare-600';
 
             const barColor =
-              dim.score >= 80 ? 'bg-pine-600' : dim.score >= 60 ? 'bg-mari-500' : 'bg-flare-500';
+              normalizedScore >= 80 ? 'bg-pine-600' : normalizedScore >= 60 ? 'bg-mari-500' : 'bg-flare-500';
 
             return (
               <div
@@ -251,16 +269,21 @@ export const HealthScoreView: React.FC = () => {
                         Weight: {dim.weight} • {dim.target}
                       </span>
                     </div>
-                    <span className={`font-display font-extrabold text-base num ${scoreColor}`}>
-                      {dim.score} / 100
-                    </span>
+                    <div className="text-right">
+                      <span className={`font-display font-extrabold text-base num ${scoreColor}`}>
+                        {dim.score} / {dim.maxScore} <span className="text-xs font-semibold text-ink/40">({normalizedScore}%)</span>
+                      </span>
+                      <span className="text-[11px] font-semibold text-ink/50 block">
+                        {dim.currentValue}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Dimension score bar */}
                   <div className="w-full bg-moss h-2 rounded-full overflow-hidden mt-3">
                     <div
                       className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-                      style={{ width: `${dim.score}%` }}
+                      style={{ width: `${normalizedScore}%` }}
                     />
                   </div>
                 </div>
@@ -410,21 +433,40 @@ export const HealthScoreView: React.FC = () => {
                 <span className="text-xs font-bold text-ink block">50 / 30 / 20 Budget Rule</span>
                 <span className="text-[11px] text-ink/50 mt-0.5 block">Needs ≤50% • Wants ≤30% • Savings ≥20%</span>
               </div>
-              <Badge tone={health.savingsRateScore.score >= 70 ? 'pine' : 'mari'}>
-                {health.savingsRateScore.score >= 70 ? 'Optimal' : 'Needs Tuning'}
+              <Badge tone={health.rule503020?.isOptimal ? 'pine' : 'mari'}>
+                {health.rule503020?.isOptimal ? 'Optimal' : 'Needs Tuning'}
               </Badge>
             </div>
-            <div className="space-y-1.5 pt-1 text-xs">
-              <div className="flex justify-between text-ink/70">
-                <span>Your Savings Ratio:</span>
-                <span className="font-bold text-ink num">
-                  {Math.round(health.savingsRateScore.score * 0.4)}% of income
-                </span>
+            <div className="space-y-2 pt-1 text-xs">
+              <div className="grid grid-cols-3 gap-1 text-center font-bold">
+                <div className="p-1.5 rounded-lg bg-blue-50/60 dark:bg-blue-950/40 border border-blue-200/50 dark:border-blue-800/40">
+                  <span className="text-[10px] text-blue-700 dark:text-blue-300 block">Needs</span>
+                  <span className="text-ink text-xs num">{health.rule503020?.needsPercent ?? 50}%</span>
+                </div>
+                <div className="p-1.5 rounded-lg bg-amber-50/60 dark:bg-amber-950/40 border border-amber-200/50 dark:border-amber-800/40">
+                  <span className="text-[10px] text-amber-700 dark:text-amber-300 block">Wants</span>
+                  <span className="text-ink text-xs num">{health.rule503020?.wantsPercent ?? 30}%</span>
+                </div>
+                <div className="p-1.5 rounded-lg bg-pine-50/60 dark:bg-pine-950/40 border border-pine-200/50 dark:border-pine-800/40">
+                  <span className="text-[10px] text-pine-700 dark:text-pine-300 block">Savings</span>
+                  <span className="text-ink text-xs num">{health.rule503020?.savingsPercent ?? 20}%</span>
+                </div>
               </div>
-              <div className="h-1.5 w-full bg-moss rounded-full overflow-hidden">
+              <div className="h-2 w-full bg-moss rounded-full overflow-hidden flex">
                 <div
-                  className="h-full bg-pine-600 rounded-full"
-                  style={{ width: `${Math.min(100, Math.round(health.savingsRateScore.score * 0.4) * 2.5)}%` }}
+                  className="h-full bg-blue-500 transition-all duration-500"
+                  style={{ width: `${health.rule503020?.needsPercent || 50}%` }}
+                  title={`Needs: ${health.rule503020?.needsPercent}%`}
+                />
+                <div
+                  className="h-full bg-amber-500 transition-all duration-500"
+                  style={{ width: `${health.rule503020?.wantsPercent || 30}%` }}
+                  title={`Wants: ${health.rule503020?.wantsPercent}%`}
+                />
+                <div
+                  className="h-full bg-pine-600 transition-all duration-500"
+                  style={{ width: `${health.rule503020?.savingsPercent || 20}%` }}
+                  title={`Savings: ${health.rule503020?.savingsPercent}%`}
                 />
               </div>
             </div>
@@ -437,21 +479,28 @@ export const HealthScoreView: React.FC = () => {
                 <span className="text-xs font-bold text-ink block">6-Month Emergency Shield</span>
                 <span className="text-[11px] text-ink/50 mt-0.5 block">Liquid survival cushion in accounts</span>
               </div>
-              <Badge tone={health.emergencyFundScore.score >= 80 ? 'pine' : 'mari'}>
-                {health.emergencyFundScore.score >= 80 ? 'Fortress' : 'Growing'}
+              <Badge tone={health.emergencyFundScore.value >= 6 ? 'pine' : health.emergencyFundScore.value >= 3 ? 'mari' : 'flare'}>
+                {health.emergencyFundScore.value >= 6 ? 'Fortress' : health.emergencyFundScore.value >= 3 ? 'Adequate' : 'Growing'}
               </Badge>
             </div>
             <div className="space-y-1.5 pt-1 text-xs">
               <div className="flex justify-between text-ink/70">
                 <span>Emergency Cushion:</span>
                 <span className="font-bold text-ink num">
-                  {(health.emergencyFundScore.score / 16.6).toFixed(1)} / 6.0 Months
+                  {health.emergencyFundScore.value >= 999
+                    ? '6.0+ Months (Fully Secured)'
+                    : `${health.emergencyFundScore.value.toFixed(1)} / 6.0 Months`}
                 </span>
               </div>
-              <div className="h-1.5 w-full bg-moss rounded-full overflow-hidden">
+              <div className="h-2 w-full bg-moss rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-skyx-600 rounded-full"
-                  style={{ width: `${Math.min(100, health.emergencyFundScore.score)}%` }}
+                  className="h-full bg-skyx-600 rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.round((Math.min(6, health.emergencyFundScore.value) / 6) * 100)
+                    )}%`,
+                  }}
                 />
               </div>
             </div>
@@ -464,21 +513,28 @@ export const HealthScoreView: React.FC = () => {
                 <span className="text-xs font-bold text-ink block">30% Debt Ceiling (DTI)</span>
                 <span className="text-[11px] text-ink/50 mt-0.5 block">Max total EMIs as % of income</span>
               </div>
-              <Badge tone={health.debtToIncomeScore.score >= 75 ? 'pine' : 'flare'}>
-                {health.debtToIncomeScore.score >= 75 ? 'Safe Debt' : 'Elevated'}
+              <Badge tone={health.debtToIncomeScore.value <= 30 ? 'pine' : 'flare'}>
+                {health.debtToIncomeScore.value === 0 ? 'Debt-Free ✨' : health.debtToIncomeScore.value <= 30 ? 'Safe Debt' : 'Elevated'}
               </Badge>
             </div>
             <div className="space-y-1.5 pt-1 text-xs">
               <div className="flex justify-between text-ink/70">
-                <span>Debt Safety Rating:</span>
+                <span>Debt Obligations:</span>
                 <span className="font-bold text-ink num">
-                  {health.debtToIncomeScore.score} / 100
+                  {health.debtToIncomeScore.value.toFixed(1)}% of income
                 </span>
               </div>
-              <div className="h-1.5 w-full bg-moss rounded-full overflow-hidden">
+              <div className="h-2 w-full bg-moss rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full ${health.debtToIncomeScore.score >= 75 ? 'bg-pine-600' : 'bg-flare-500'}`}
-                  style={{ width: `${Math.min(100, health.debtToIncomeScore.score)}%` }}
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    health.debtToIncomeScore.value <= 30 ? 'bg-pine-600' : 'bg-flare-500'
+                  }`}
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.round((health.debtToIncomeScore.value / 30) * 100)
+                    )}%`,
+                  }}
                 />
               </div>
             </div>

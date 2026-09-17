@@ -123,6 +123,19 @@
     color-scheme: dark;
   }
 
+  [data-theme="tokyo-oled"] {
+    --color-ink: #c0caf5;
+    --color-moss: #000000;
+    --color-card: #050509;
+    --color-line: #1a1b26;
+
+    --hero-a: #1f2335;
+    --hero-b: #16161e;
+    --hero-c: #000000;
+
+    color-scheme: dark;
+  }
+
   body {
     background-color: var(--color-moss);
     color: var(--color-ink);

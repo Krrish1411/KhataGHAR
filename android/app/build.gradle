@@ -7,8 +7,8 @@ android {
         applicationId "com.khataghar.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.0.0-beta.2"
+        versionCode 3
+        versionName "1.0.0-beta.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -22,24 +22,18 @@ android {
     }
     signingConfigs {
         release {
-            if (file("khataghar-release.keystore").exists()) {
-                storeFile file("khataghar-release.keystore")
-                storePassword "khataghar123"
-                keyAlias "khataghar"
-                keyPassword "khataghar123"
-            }
+            storeFile file("khataghar-release.keystore")
+            storePassword "khataghar123"
+            keyAlias "khataghar"
+            keyPassword "khataghar123"
         }
     }
     buildTypes {
         debug {
-            if (file("khataghar-release.keystore").exists()) {
-                signingConfig signingConfigs.release
-            }
+            signingConfig signingConfigs.release
         }
         release {
-            if (file("khataghar-release.keystore").exists()) {
-                signingConfig signingConfigs.release
-            }
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

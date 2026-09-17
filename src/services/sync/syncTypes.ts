@@ -40,4 +40,5 @@ export interface EncryptedSyncPacket {
   salt: string; // base64 salt
   ciphertext: string; // base64 AES-GCM ciphertext
   tagLength: number;
+  isCompressed?: boolean;
 }

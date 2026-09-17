@@ -59,8 +59,30 @@ async function deriveSyncKey(passphrase: string, salt: Uint8Array): Promise<Cryp
   return derived;
 }
 
+async function compressBytes(data: Uint8Array): Promise<Uint8Array> {
+  if (typeof CompressionStream !== 'undefined') {
+    try {
+      const stream = new Response(data).body!.pipeThrough(new CompressionStream('deflate'));
+      const buffer = await new Response(stream).arrayBuffer();
+      return new Uint8Array(buffer);
+    } catch {}
+  }
+  return data;
+}
+
+async function decompressBytes(data: Uint8Array): Promise<Uint8Array> {
+  if (typeof DecompressionStream !== 'undefined') {
+    try {
+      const stream = new Response(data).body!.pipeThrough(new DecompressionStream('deflate'));
+      const buffer = await new Response(stream).arrayBuffer();
+      return new Uint8Array(buffer);
+    } catch {}
+  }
+  return data;
+}
+
 /**
- * Encrypt a SyncMessage object using AES-GCM 256-bit encryption.
+ * Encrypt a SyncMessage object using AES-GCM 256-bit encryption with deflate compression.
  */
 export async function encryptSyncMessage(
   msg: SyncMessage,
@@ -68,6 +90,9 @@ export async function encryptSyncMessage(
 ): Promise<EncryptedSyncPacket> {
   const enc = new TextEncoder();
   const rawData = enc.encode(JSON.stringify(msg));
+  const compressedData = await compressBytes(rawData);
+  const isCompressed = compressedData.byteLength < rawData.byteLength;
+  const dataToEncrypt = isCompressed ? compressedData : rawData;
 
   // Generate cryptographically random 96-bit IV and 128-bit salt
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -81,7 +106,7 @@ export async function encryptSyncMessage(
       tagLength: 128,
     },
     key,
-    rawData
+    dataToEncrypt
   );
 
   return {
@@ -89,6 +114,7 @@ export async function encryptSyncMessage(
     salt: arrayBufferToBase64(salt.buffer),
     ciphertext: arrayBufferToBase64(ciphertextBuffer),
     tagLength: 128,
+    isCompressed,
   };
 }
 
@@ -114,7 +140,12 @@ export async function decryptSyncMessage(
     ciphertext
   );
 
+  let finalBytes = new Uint8Array(decryptedBuffer);
+  if (packet.isCompressed) {
+    finalBytes = await decompressBytes(finalBytes);
+  }
+
   const dec = new TextDecoder();
-  const jsonStr = dec.decode(decryptedBuffer);
+  const jsonStr = dec.decode(finalBytes);
   return JSON.parse(jsonStr) as SyncMessage;
 }

@@ -90,12 +90,22 @@ export const NotesView: React.FC = () => {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const folderMenuRef = useRef<HTMLDivElement>(null);
   const emojiMenuRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<any>(null);
 
   // Ref tracking currently loaded note ID to prevent auto-scroll & reset bugs
   const lastLoadedNoteIdRef = useRef<string | null>(null);
+  const lastSavedUpdatedAtRef = useRef<string | null>(null);
+
+  // Audio Recording State & Refs
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioTimerRef = useRef<any>(null);
 
   // Close menus on click outside
   useEffect(() => {
@@ -141,12 +151,14 @@ export const NotesView: React.FC = () => {
     });
   }, [notes, searchQuery]);
 
-  // Synchronize active note state into local editor ONLY when note ID changes
-  // This completely eliminates the bug where typing or saving resets the textarea/scroll position!
+  // Synchronize active note state into local editor:
+  // 1. When note ID changes, load note.
+  // 2. When note content updates remotely via sync and user is not mid-typing, refresh editor dynamically!
   useEffect(() => {
     if (activeNote) {
       if (lastLoadedNoteIdRef.current !== activeNote.id) {
         lastLoadedNoteIdRef.current = activeNote.id;
+        lastSavedUpdatedAtRef.current = activeNote.updatedAt;
         setTitle(activeNote.title || '');
         setContent(activeNote.content || '');
         setFolderId(activeNote.folderId || 'general');
@@ -162,6 +174,17 @@ export const NotesView: React.FC = () => {
         if (activeNote.folderId) {
           setExpandedFolderIds((prev) => new Set([...prev, activeNote.folderId]));
         }
+      } else if (activeNote.updatedAt !== lastSavedUpdatedAtRef.current && isSaved) {
+        // Dynamic remote sync update while viewing the note
+        lastSavedUpdatedAtRef.current = activeNote.updatedAt;
+        setTitle(activeNote.title || '');
+        setContent(activeNote.content || '');
+        setFolderId(activeNote.folderId || 'general');
+        setIsPinned(activeNote.isPinned || false);
+        setColor(activeNote.color || '#64748b');
+        setIcon(activeNote.icon || '📝');
+        setTags(activeNote.tags || []);
+        setAttachments(activeNote.attachments || []);
       }
     } else if (notes.length > 0 && !selectedNoteId) {
       const lastId = typeof localStorage !== 'undefined' ? localStorage.getItem('khataghar_last_note_id') : null;
@@ -177,7 +200,7 @@ export const NotesView: React.FC = () => {
         setSelectedNoteId(sorted[0].id);
       }
     }
-  }, [activeNote?.id, notes, selectedNoteId]);
+  }, [activeNote, notes, selectedNoteId, isSaved]);
 
   // Persist selected note id for seamless restoration on next visit
   useEffect(() => {
@@ -227,16 +250,107 @@ export const NotesView: React.FC = () => {
 
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        await updateNote({
+        const updated = {
           ...activeNote,
           ...editorStateRef.current,
           ...updates,
-        });
+        };
+        await updateNote(updated);
+        lastSavedUpdatedAtRef.current = updated.updatedAt || new Date().toISOString();
         setIsSaved(true);
       } catch (err) {
         console.error('Failed to auto-save note:', err);
       }
     }, 600);
+  };
+
+  const flushSave = async () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    if (!isSaved && activeNote) {
+      try {
+        const updated = {
+          ...activeNote,
+          ...editorStateRef.current,
+        };
+        await updateNote(updated);
+        lastSavedUpdatedAtRef.current = updated.updatedAt || new Date().toISOString();
+        setIsSaved(true);
+      } catch (err) {
+        console.error('Failed to flush save note:', err);
+      }
+    }
+  };
+
+  // Audio Recording Handlers
+  const startAudioRecording = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Audio recording is not supported on this device/browser.');
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        if (audioTimerRef.current) {
+          clearInterval(audioTimerRef.current);
+          audioTimerRef.current = null;
+        }
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
+        if (audioBlob.size === 0) return;
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64Data = reader.result as string;
+          const newAttachment: NoteAttachment = {
+            id: 'audio-' + Date.now(),
+            name: `Voice Memo ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.webm`,
+            size: audioBlob.size,
+            type: 'audio',
+            dataUrl: base64Data,
+            createdAt: new Date().toISOString(),
+          };
+          const updated = [...(editorStateRef.current.attachments || []), newAttachment];
+          setAttachments(updated);
+          triggerSave({ attachments: updated });
+        };
+        reader.readAsDataURL(audioBlob);
+      };
+
+      mediaRecorder.start(250);
+      setIsRecordingAudio(true);
+      setAudioDuration(0);
+      audioTimerRef.current = setInterval(() => {
+        setAudioDuration((d) => d + 1);
+      }, 1000);
+    } catch (err: any) {
+      console.warn('Microphone permission or recording error:', err);
+      alert('Microphone permission required for audio recording. Please grant microphone access in settings.');
+    }
+  };
+
+  const stopAudioRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecordingAudio(false);
+    if (audioTimerRef.current) {
+      clearInterval(audioTimerRef.current);
+      audioTimerRef.current = null;
+    }
   };
 
   const handleCreateNewNote = async () => {
@@ -635,6 +749,7 @@ export const NotesView: React.FC = () => {
                         <div
                           key={note.id}
                           onClick={() => {
+                            flushSave();
                             setSelectedNoteId(note.id);
                             setMobileView('editor');
                           }}
@@ -683,7 +798,10 @@ export const NotesView: React.FC = () => {
           <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1 truncate">
             {/* Mobile Back Button */}
             <button
-              onClick={() => setMobileView('list')}
+              onClick={() => {
+                flushSave();
+                setMobileView('list');
+              }}
               className="lg:hidden p-1.5 rounded-lg border border-line text-ink hover:bg-moss mr-0.5 shrink-0"
               aria-label="Back to note list"
             >
@@ -941,7 +1059,7 @@ export const NotesView: React.FC = () => {
                       className="p-2 rounded-xl border border-line bg-moss/70 dark:bg-navy-900/60 flex items-center justify-between gap-1.5 text-xs group"
                     >
                       <div
-                        onClick={() => att.type === 'image' && setViewingAttachment(att)}
+                        onClick={() => setViewingAttachment(att)}
                         className="flex items-center gap-1.5 min-w-0 flex-1 cursor-pointer"
                       >
                         {att.type === 'image' ? (
@@ -950,6 +1068,14 @@ export const NotesView: React.FC = () => {
                             alt={att.name}
                             className="w-7 h-7 rounded-md object-cover border border-line shrink-0"
                           />
+                        ) : att.type === 'video' ? (
+                          <div className="w-7 h-7 rounded-md bg-blue-500/10 text-blue-500 grid place-items-center shrink-0 border border-blue-500/20">
+                            <Video className="w-4 h-4" />
+                          </div>
+                        ) : att.type === 'audio' ? (
+                          <div className="w-7 h-7 rounded-md bg-rose-500/10 text-rose-500 grid place-items-center shrink-0 border border-rose-500/20">
+                            <Mic className="w-4 h-4" />
+                          </div>
                         ) : (
                           <FileText className="w-5 h-5 text-ink/50 shrink-0" />
                         )}
@@ -1122,33 +1248,75 @@ export const NotesView: React.FC = () => {
               ref={fileInputRef}
               onChange={handleFileUpload}
               multiple
-              accept="image/*,video/*,application/pdf,.doc,.docx,.txt"
+              accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.txt"
               className="hidden"
             />
+            <input
+              type="file"
+              ref={cameraInputRef}
+              onChange={handleFileUpload}
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+            />
+            <input
+              type="file"
+              ref={videoInputRef}
+              onChange={handleFileUpload}
+              accept="video/*"
+              capture="environment"
+              className="hidden"
+            />
+
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => cameraInputRef.current?.click()}
               className="px-2.5 py-1 rounded-lg bg-moss/80 dark:bg-navy-900/60 hover:bg-moss dark:hover:bg-navy-800 text-ink text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors border border-line/40"
+              title="Take a photo with device camera"
             >
               <ImageIcon className="w-3.5 h-3.5 text-pine-600 dark:text-pine-400" />
-              <span>Photo</span>
+              <span>Camera</span>
             </button>
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => videoInputRef.current?.click()}
               className="px-2.5 py-1 rounded-lg bg-moss/80 dark:bg-navy-900/60 hover:bg-moss dark:hover:bg-navy-800 text-ink text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors border border-line/40"
+              title="Record video with device camera"
             >
-              <Video className="w-3.5 h-3.5 text-pine-600 dark:text-pine-400" />
+              <Video className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
               <span>Video</span>
             </button>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="px-2.5 py-1 rounded-lg bg-moss/80 dark:bg-navy-900/60 hover:bg-moss dark:hover:bg-navy-800 text-ink text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors border border-line/40"
+              title="Attach documents or photos from gallery"
             >
-              <Mic className="w-3.5 h-3.5 text-rose-500" />
-              <span>Record</span>
+              <Folder className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>Files</span>
             </button>
+
+            {isRecordingAudio ? (
+              <button
+                type="button"
+                onClick={stopAudioRecording}
+                className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer animate-pulse shadow-sm"
+                title="Stop recording voice memo"
+              >
+                <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                <span>Stop ({Math.floor(audioDuration / 60)}:{(audioDuration % 60).toString().padStart(2, '0')})</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={startAudioRecording}
+                className="px-2.5 py-1 rounded-lg bg-moss/80 dark:bg-navy-900/60 hover:bg-moss dark:hover:bg-navy-800 text-ink text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors border border-line/40"
+                title="Record audio memo with microphone"
+              >
+                <Mic className="w-3.5 h-3.5 text-rose-500" />
+                <span>Audio</span>
+              </button>
+            )}
           </div>
 
           {/* Far Right Status */}
@@ -1210,7 +1378,7 @@ export const NotesView: React.FC = () => {
         </Modal>
       )}
 
-      {/* Modal for Previewing Image Attachment */}
+      {/* Modal for Previewing Image, Video, or Audio Attachment */}
       {viewingAttachment && (
         <Modal
           isOpen={true}
@@ -1221,18 +1389,37 @@ export const NotesView: React.FC = () => {
         >
           <div className="space-y-3">
             <div className="max-h-[70vh] overflow-auto rounded-xl border border-line flex items-center justify-center bg-black/5 dark:bg-black/30 p-2">
-              <img
-                src={viewingAttachment.dataUrl}
-                alt={viewingAttachment.name}
-                className="max-h-[65vh] object-contain rounded-lg"
-              />
+              {viewingAttachment.type === 'video' ? (
+                <video
+                  src={viewingAttachment.dataUrl}
+                  controls
+                  className="max-h-[65vh] max-w-full rounded-lg"
+                />
+              ) : viewingAttachment.type === 'audio' ? (
+                <div className="p-4 w-full flex flex-col items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 grid place-items-center">
+                    <Mic className="w-6 h-6" />
+                  </div>
+                  <audio
+                    src={viewingAttachment.dataUrl}
+                    controls
+                    className="w-full max-w-md"
+                  />
+                </div>
+              ) : (
+                <img
+                  src={viewingAttachment.dataUrl}
+                  alt={viewingAttachment.name}
+                  className="max-h-[65vh] object-contain rounded-lg"
+                />
+              )}
             </div>
             <div className="flex justify-between items-center text-xs">
               <span className="text-ink/60 font-mono">{(viewingAttachment.size / 1024).toFixed(0)} KB</span>
               <a
                 href={viewingAttachment.dataUrl}
                 download={viewingAttachment.name}
-                className="px-3 py-1.5 rounded-xl bg-pine-600 text-white font-bold flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-xl bg-pine-600 text-white font-bold flex items-center gap-1.5 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Download</span>

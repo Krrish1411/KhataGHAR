@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { useAuth } from '../../context/AuthContext';
@@ -77,7 +77,7 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
   const [isSyncing, setIsSyncing] = useState(false);
   const [isMasterEstablished, setIsMasterEstablished] = useState(() => syncEngine.isMasterEstablished());
   const [notificationsAllowed, setNotificationsAllowed] = useState(false);
-  const isPaired = status === 'connected' || status === 'syncing' || status === 'synced';
+  const isPaired = status === 'connected' || status === 'syncing' || status === 'synced' || connectedPeer !== null;
 
   const localPlatform = useMemo(() => detectPlatform(), []);
   const localDeviceName = useMemo(() => {
@@ -97,11 +97,26 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
     isFreshSeed: transactions.length === 0 && accounts.length <= 2,
   }), [accounts.length, transactions.length, assets.length, notes, peopleLedger.length]);
 
-  // Register state getters and listeners on mount
+  const activeVaultRef = useRef(activeVault);
+  useEffect(() => {
+    activeVaultRef.current = activeVault;
+  }, [activeVault]);
+
+  const sessionPinRef = useRef(sessionPin);
+  useEffect(() => {
+    sessionPinRef.current = sessionPin;
+  }, [sessionPin]);
+
+  const getDecryptedVaultDataRef = useRef(getDecryptedVaultData);
+  useEffect(() => {
+    getDecryptedVaultDataRef.current = getDecryptedVaultData;
+  });
+
+  // Register state getters and listeners once on mount
   useEffect(() => {
     syncEngine.registerLocalStateGetter(() => ({
-      data: getDecryptedVaultData(),
-      meta: activeVault || undefined,
+      data: getDecryptedVaultDataRef.current(),
+      meta: activeVaultRef.current || undefined,
     }));
 
     const unsubStatus = syncEngine.onStatusChange((newStatus, peer) => {
@@ -112,7 +127,7 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
 
     const unsubState = syncEngine.onStateApply(async (receivedState, receivedMeta) => {
       try {
-        const metaToUse: VaultMeta = receivedMeta || activeVault || {
+        const metaToUse: VaultMeta = receivedMeta || activeVaultRef.current || {
           id: 'synced-vault-' + Date.now(),
           name: 'KhataGHAR Enclave',
           salt: 'salt',
@@ -136,9 +151,10 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
           data: receivedState,
         });
 
+        const pinToUse = sessionPinRef.current || syncEngine.getActivePin() || 'khataghar-sync-pin';
         const imported = await importPlainSnapshot(
           snapshotJson,
-          sessionPin || 'khataghar-sync-pin',
+          pinToUse,
           `${metaToUse.name} (Synced)`
         );
 
@@ -168,7 +184,7 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
       unsubState();
       unsubMaster();
     };
-  }, [activeVault, sessionPin]);
+  }, []);
 
   // Host: Generate PIN
   const handleStartHosting = async () => {
@@ -250,11 +266,12 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
   };
 
   const handleDisconnect = async () => {
-    await syncEngine.disconnect(true);
+    await syncEngine.unlink();
     setSessionPin(null);
     setConnectedPeer(null);
     setInputPin('');
-    setStatusMessage('Device pairing disconnected.');
+    setIsMasterEstablished(false);
+    setStatusMessage('Device pairing unlinked.');
   };
 
   const handleCopyPin = () => {
