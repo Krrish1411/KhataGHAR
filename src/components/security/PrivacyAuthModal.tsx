@@ -4,7 +4,7 @@ import { Input } from '../common/Input';
 import { Button } from '../common/Button';
 import { useAuth } from '../../context/AuthContext';
 import { usePrivacy } from '../../context/PrivacyContext';
-import { deriveKey, verifyKey } from '../../services/crypto';
+import { deriveKey, verifyKey, DEFAULT_PBKDF2_ITERATIONS, LEGACY_PBKDF2_ITERATIONS } from '../../services/crypto';
 import { Eye, ShieldAlert } from 'lucide-react';
 
 export const PrivacyAuthModal: React.FC = () => {
@@ -22,8 +22,14 @@ export const PrivacyAuthModal: React.FC = () => {
     setError('');
 
     try {
-      const key = await deriveKey(password, activeVault.salt);
-      const isValid = await verifyKey(key, activeVault.verifier);
+      const targetIterations = activeVault.iterations || DEFAULT_PBKDF2_ITERATIONS;
+      let key = await deriveKey(password, activeVault.salt, targetIterations);
+      let isValid = await verifyKey(key, activeVault.verifier);
+
+      if (!isValid && !activeVault.iterations) {
+        const legacyKey = await deriveKey(password, activeVault.salt, LEGACY_PBKDF2_ITERATIONS);
+        isValid = await verifyKey(legacyKey, activeVault.verifier);
+      }
 
       if (isValid) {
         setPrivacyMode(false);

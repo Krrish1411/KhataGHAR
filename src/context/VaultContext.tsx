@@ -26,6 +26,7 @@ import {
   deleteRecord,
   generateUUID,
   DEFAULT_NOTE_FOLDERS,
+  autoMigrateVaultTo600k,
 } from '../services/storage';
 import { decryptData, encryptData, verifyKey } from '../services/crypto';
 import { syncEngine, mergeFullState } from '../services/sync/syncEngine';
@@ -156,12 +157,17 @@ interface VaultContextType {
 
   // Vault Settings Operations
   updateVaultSettings: (updatedSettings: Partial<VaultMeta>) => Promise<void>;
+
+  // Data Migration Recovery
+  needsMigrationRecovery: boolean;
+  recoverVaultData: (password: string) => Promise<{ success: boolean; count: number; error?: string }>;
+  dismissMigrationRecovery: () => void;
 }
 
 const VaultContext = createContext<VaultContextType | undefined>(undefined);
 
 export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { activeVault, sessionKey, isUnlocked, isDecoyMode, setActiveVaultMeta, refreshVaultList } = useAuth();
+  const { activeVault, sessionKey, isUnlocked, isDecoyMode, setActiveVaultMeta, refreshVaultList, setSessionCredentials } = useAuth();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -176,6 +182,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [notes, setNotes] = useState<VaultNote[]>([]);
   const [folders, setFolders] = useState<NoteFolder[]>([]);
   const [isDecrypting, setIsDecrypting] = useState<boolean>(false);
+  const [needsMigrationRecovery, setNeedsMigrationRecovery] = useState<boolean>(false);
 
   // Synchronous refs to prevent stale closure bugs during multi-step batch / import loops
   const accountsRef = useRef<Account[]>(accounts);
@@ -419,6 +426,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const nts: VaultNote[] = [];
       const fldrs: NoteFolder[] = [];
 
+      let failedDecryptionCount = 0;
       await Promise.all(
         records.map(async (row) => {
           try {
@@ -461,10 +469,19 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
             }
           } catch (err) {
+            failedDecryptionCount++;
             console.error(`Failed to decrypt record ${row.id}:`, err);
           }
         })
       );
+
+      // Detect if records exist in DB but failed decryption because of iteration upgrade
+      if (records.length > 0 && failedDecryptionCount > 0 && accs.length === 0 && txs.length === 0) {
+        console.warn(`[VaultContext] ${failedDecryptionCount} records in vault ${activeVault.name} failed to decrypt with current session key. Prompting for migration recovery.`);
+        setNeedsMigrationRecovery(true);
+      } else {
+        setNeedsMigrationRecovery(false);
+      }
 
       // Sort transactions descending by date
       txs.sort((a, b) => b.date.localeCompare(a.date));
@@ -594,6 +611,28 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       loadVaultData();
     }
   }, [isUnlocked, activeVault?.id, sessionKey, loadVaultData]);
+
+  const recoverVaultData = async (
+    password: string
+  ): Promise<{ success: boolean; count: number; error?: string }> => {
+    if (!activeVault) return { success: false, count: 0, error: 'No active vault' };
+    try {
+      const result = await autoMigrateVaultTo600k(activeVault, password);
+      if (!result.isValid) {
+        return { success: false, count: 0, error: 'Incorrect master password' };
+      }
+      setSessionCredentials(activeVault, result.modernKey);
+      setNeedsMigrationRecovery(false);
+      await loadVaultData();
+      return { success: true, count: result.migratedCount };
+    } catch (err: any) {
+      return { success: false, count: 0, error: err?.message || 'Recovery failed' };
+    }
+  };
+
+  const dismissMigrationRecovery = () => {
+    setNeedsMigrationRecovery(false);
+  };
 
   // Auto broadcast to connected sync peers
   const broadcastTimerRef = useRef<any>(null);
@@ -3037,6 +3076,9 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addFolder,
         deleteFolder,
         updateVaultSettings,
+        needsMigrationRecovery,
+        recoverVaultData,
+        dismissMigrationRecovery,
       }}
     >
       {children}

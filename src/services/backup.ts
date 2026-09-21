@@ -11,6 +11,8 @@ import {
   base64ToBuffer,
   generateVerifier,
   encryptData,
+  DEFAULT_PBKDF2_ITERATIONS,
+  LEGACY_PBKDF2_ITERATIONS,
 } from './crypto';
 import { db } from '../db';
 import { generateUUID } from './storage';
@@ -114,37 +116,35 @@ export async function importVaultEncrypted(
   let decryptedBuffer: ArrayBuffer | null = null;
   let effectiveSecret = backupSecret;
 
-  try {
-    const key = await deriveKey(backupSecret, salt);
-    decryptedBuffer = await crypto.subtle.decrypt(
-      {
-        name: 'AES-GCM',
-        iv: ivBytes,
-      },
-      key,
-      ciphertextBytes
-    );
-  } catch (err) {
-    // If decryption fails, try normalizing whitespace, newlines, commas & casing (crucial for 12-word recovery phrases)
-    const normalized = backupSecret.trim().toLowerCase().replace(/[\r\n\t,]+/g, ' ').replace(/\s+/g, ' ');
-    if (normalized !== backupSecret) {
+  const candidateSecrets = [backupSecret];
+  const normalized = backupSecret.trim().toLowerCase().replace(/[\r\n\t,]+/g, ' ').replace(/\s+/g, ' ');
+  if (normalized !== backupSecret) {
+    candidateSecrets.push(normalized);
+  }
+
+  const candidateIterations = [DEFAULT_PBKDF2_ITERATIONS, LEGACY_PBKDF2_ITERATIONS];
+
+  for (const secret of candidateSecrets) {
+    for (const iter of candidateIterations) {
       try {
-        const altKey = await deriveKey(normalized, salt);
+        const key = await deriveKey(secret, salt, iter);
         decryptedBuffer = await crypto.subtle.decrypt(
           {
             name: 'AES-GCM',
             iv: ivBytes,
           },
-          altKey,
+          key,
           ciphertextBytes
         );
-        effectiveSecret = normalized;
-      } catch (altErr) {
-        throw new Error('Incorrect backup password or passphrase. Decryption failed.');
+        if (decryptedBuffer) {
+          effectiveSecret = secret;
+          break;
+        }
+      } catch {
+        // Try next iteration / secret candidate
       }
-    } else {
-      throw new Error('Incorrect backup password or passphrase. Decryption failed.');
     }
+    if (decryptedBuffer) break;
   }
 
   if (!decryptedBuffer) {

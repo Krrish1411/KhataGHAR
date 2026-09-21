@@ -12,6 +12,7 @@ import { Button } from '../common/Button';
 import { P2PSyncModal } from '../sync/P2PSyncModal';
 import { SupportCoffeeModal } from '../common/SupportCoffeeModal';
 import { UpdateModal } from '../common/UpdateModal';
+import { VaultRecoveryModal } from '../security/VaultRecoveryModal';
 import { checkDailyUpdate } from '../../services/updater';
 import { APP_VERSION, AppVersionInfo } from '../../types';
 import { useAuth } from '../../context/AuthContext';
@@ -452,6 +453,9 @@ export const AppLayout: React.FC = () => {
           data={autoUpdateData}
         />
       )}
+
+      {/* Vault Migration & Recovery Modal */}
+      <VaultRecoveryModal />
     </div>
   );
 };

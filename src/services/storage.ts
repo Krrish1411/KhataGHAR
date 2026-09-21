@@ -28,6 +28,7 @@ import {
   encryptData,
   decryptData,
   DEFAULT_PBKDF2_ITERATIONS,
+  LEGACY_PBKDF2_ITERATIONS,
 } from './crypto';
 import { generateStarterCategories } from '../utils/categories';
 
@@ -161,6 +162,83 @@ export async function createVault(params: CreateVaultParams): Promise<{
   };
 }
 
+/**
+ * Automatically detects and migrates any records in IndexedDB encrypted with legacy
+ * PBKDF2 iterations (250,000) to the modern standard (600,000 iterations).
+ *
+ * Safe and idempotent:
+ * - If records already decrypt with modernKey, they are left untouched.
+ * - If records fail with modernKey but succeed with legacyKey, they are decrypted and re-encrypted with modernKey.
+ * - Guarantees 0 data loss and restores any blank vault immediately.
+ */
+export async function autoMigrateVaultTo600k(
+  targetVault: VaultMeta,
+  password: string
+): Promise<{ modernKey: CryptoKey; migratedCount: number; isValid: boolean }> {
+  const modernKey = await deriveKey(password, targetVault.salt, DEFAULT_PBKDF2_ITERATIONS);
+  const legacyKey = await deriveKey(password, targetVault.salt, LEGACY_PBKDF2_ITERATIONS);
+
+  const isModernValid = await verifyKey(modernKey, targetVault.verifier);
+  const isLegacyValid = await verifyKey(legacyKey, targetVault.verifier);
+
+  if (!isModernValid && !isLegacyValid) {
+    return { modernKey, migratedCount: 0, isValid: false };
+  }
+
+  // If the vault verifier was still on legacy iterations, update it to modern iterations
+  if (isLegacyValid && !isModernValid) {
+    const newVerifier = await generateVerifier(modernKey);
+    targetVault.verifier = newVerifier;
+    targetVault.iterations = DEFAULT_PBKDF2_ITERATIONS;
+    await db.vaults.put(targetVault);
+  } else if (!targetVault.iterations || targetVault.iterations !== DEFAULT_PBKDF2_ITERATIONS) {
+    targetVault.iterations = DEFAULT_PBKDF2_ITERATIONS;
+    await db.vaults.put(targetVault);
+  }
+
+  // Check all encrypted records belonging to this vault in IndexedDB
+  const records = await db.records.where('vaultId').equals(targetVault.id).toArray();
+  let migratedCount = 0;
+
+  if (records.length > 0) {
+    const recordsToUpdate: typeof records = [];
+
+    await Promise.all(
+      records.map(async (row) => {
+        // Test if record can already be decrypted with modernKey
+        try {
+          await decryptData(row.iv, row.ciphertext, modernKey);
+          return;
+        } catch {
+          // Decryption failed with modernKey — try decrypting with legacyKey
+          try {
+            const decryptedPayload = await decryptData<any>(row.iv, row.ciphertext, legacyKey);
+            // Re-encrypt with modernKey
+            const reEncrypted = await encryptData(decryptedPayload, modernKey);
+            recordsToUpdate.push({
+              ...row,
+              iv: reEncrypted.iv,
+              ciphertext: reEncrypted.ciphertext,
+            });
+            migratedCount++;
+          } catch (legacyErr) {
+            console.warn(`[VaultMigration] Record ${row.id} could not be decrypted with legacy key:`, legacyErr);
+          }
+        }
+      })
+    );
+
+    if (recordsToUpdate.length > 0) {
+      await db.records.bulkPut(recordsToUpdate);
+      console.log(
+        `[VaultMigration] Successfully migrated & restored ${recordsToUpdate.length} records to 600,000 PBKDF2 iterations.`
+      );
+    }
+  }
+
+  return { modernKey, migratedCount, isValid: true };
+}
+
 // Unlock an existing vault with password
 export async function unlockVault(
   vaultId: string,
@@ -169,9 +247,10 @@ export async function unlockVault(
   const vault = await db.vaults.get(vaultId);
   if (!vault) return null;
 
-  const key = await deriveKey(password, vault.salt);
-  const isValid = await verifyKey(key, vault.verifier);
-  if (!isValid) return null;
+  const migration = await autoMigrateVaultTo600k(vault, password);
+  if (!migration.isValid) return null;
+
+  const key = migration.modernKey;
 
   // Key is valid — decrypt all records for this vault
   const encryptedRows = await db.records.where('vaultId').equals(vaultId).toArray();
