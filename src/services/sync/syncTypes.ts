@@ -18,6 +18,7 @@ export interface SyncPeerInfo {
   platform: 'android' | 'windows' | 'linux' | 'macos' | 'web';
   connectedAt: number;
   stats?: DeviceStats;
+  relayServer?: string;
 }
 
 export type SyncTransport = 'relay' | 'webrtc';
@@ -25,6 +26,8 @@ export type SyncTransport = 'relay' | 'webrtc';
 export type SyncMessage =
   | { type: 'HANDSHAKE'; peer: SyncPeerInfo; lastSyncTs: number; stats?: DeviceStats }
   | { type: 'HANDSHAKE_ACK'; peer: SyncPeerInfo; lastSyncTs: number; stats?: DeviceStats }
+  | { type: 'SDP_OFFER'; sdpOffer: string; peer: SyncPeerInfo }
+  | { type: 'SDP_ANSWER'; sdpAnswer: string; peer: SyncPeerInfo }
   | { type: 'FULL_STATE'; state: VaultData; vaultMeta?: VaultMeta; timestamp: number }
   | { type: 'FORCE_REPLACE_STATE'; state: VaultData; vaultMeta?: VaultMeta; timestamp: number; masterDeviceName?: string }
   | { type: 'MASTER_SETUP_EVENT'; mode: 'clone_to_peer' | 'two_way'; masterDeviceName: string; timestamp: number }

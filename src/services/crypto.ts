@@ -1,7 +1,8 @@
 // Native Web Crypto API (crypto.subtle) encryption service for Khata Ghar
-// Uses PBKDF2-SHA256 (250,000 iterations) for key derivation & AES-256-GCM for encryption
+// Uses PBKDF2-SHA256 (600,000+ iterations, OWASP standard) for key derivation & AES-256-GCM for encryption
 
-const PBKDF2_ITERATIONS = 250000;
+export const DEFAULT_PBKDF2_ITERATIONS = 600000;
+export const LEGACY_PBKDF2_ITERATIONS = 250000;
 const KEY_LENGTH = 256;
 const VERIFIER_PLAINTEXT = 'KHATA_GHAR_VAULT_KEY_VERIFIER_V1';
 
@@ -57,7 +58,11 @@ export function generateIV(): Uint8Array {
 }
 
 // Derive a 256-bit AES-GCM CryptoKey from password and salt using PBKDF2-SHA256
-export async function deriveKey(password: string, saltHex: string): Promise<CryptoKey> {
+export async function deriveKey(
+  password: string,
+  saltHex: string,
+  iterations: number = DEFAULT_PBKDF2_ITERATIONS
+): Promise<CryptoKey> {
   const encoder = new TextEncoder();
   const passwordKey = await crypto.subtle.importKey(
     'raw',
@@ -73,7 +78,7 @@ export async function deriveKey(password: string, saltHex: string): Promise<Cryp
     {
       name: 'PBKDF2',
       salt: saltBytes,
-      iterations: PBKDF2_ITERATIONS,
+      iterations,
       hash: 'SHA-256',
     },
     passwordKey,

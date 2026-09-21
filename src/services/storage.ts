@@ -27,6 +27,7 @@ import {
   verifyKey,
   encryptData,
   decryptData,
+  DEFAULT_PBKDF2_ITERATIONS,
 } from './crypto';
 import { generateStarterCategories } from '../utils/categories';
 
@@ -76,6 +77,7 @@ export async function createVault(params: CreateVaultParams): Promise<{
     name: params.name || 'My Vault',
     salt,
     verifier,
+    iterations: DEFAULT_PBKDF2_ITERATIONS,
     createdAt: new Date().toISOString(),
     currency: params.currency || 'INR',
     numberFormat: params.numberFormat || 'indian',

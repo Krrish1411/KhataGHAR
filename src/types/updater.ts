@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.0.0-beta.1';
+export const APP_VERSION = '1.0.0-beta.4';
 export const APP_CHANNEL = 'Beta Preview';
 
 export type AppDistribution =

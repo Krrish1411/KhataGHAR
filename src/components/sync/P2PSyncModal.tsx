@@ -4,7 +4,6 @@ import { Button } from '../common/Button';
 import { useAuth } from '../../context/AuthContext';
 import { useVault } from '../../context/VaultContext';
 import { syncEngine, detectPlatform } from '../../services/sync/syncEngine';
-import { importPlainSnapshot } from '../../services/backup';
 import type { SyncStatus, SyncPeerInfo, DeviceStats } from '../../services/sync/syncTypes';
 import type { VaultData, VaultMeta } from '../../types';
 import { sendNativeNotification, requestNotificationPermission } from '../../utils/nativeNotification';
@@ -125,48 +124,20 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
       setIsMasterEstablished(syncEngine.isMasterEstablished());
     });
 
-    const unsubState = syncEngine.onStateApply(async (receivedState, receivedMeta) => {
-      try {
-        const metaToUse: VaultMeta = receivedMeta || activeVaultRef.current || {
-          id: 'synced-vault-' + Date.now(),
-          name: 'KhataGHAR Enclave',
-          salt: 'salt',
-          verifier: 'verifier',
-          createdAt: new Date().toISOString(),
-          currency: 'INR',
-          numberFormat: 'indian',
-          fyStartMonth: 4,
-          isPrimary: true,
-          includeInFamilyOverview: true,
-          autoLockMinutes: 5,
-          exchangeRates: { USD: 86.5, EUR: 92.0, GBP: 110.0 },
-        };
-
-        const snapshotJson = JSON.stringify({
-          app: 'KhataGHAR',
-          format: 'khataghar-portable-snapshot',
-          version: 2,
-          isEncrypted: false,
-          vaultMeta: metaToUse,
-          data: receivedState,
-        });
-
-        const pinToUse = sessionPinRef.current || syncEngine.getActivePin() || 'khataghar-sync-pin';
-        const imported = await importPlainSnapshot(
-          snapshotJson,
-          pinToUse,
-          `${metaToUse.name} (Synced)`
-        );
-
-        await refreshVaultList();
-        setSessionCredentials(imported.vault, imported.key);
-        await reloadVaultData();
-
-        setStatusMessage('Vault successfully updated and verified!');
-      } catch (e: any) {
-        console.error('[Sync] Failed to apply received state:', e);
-        setStatusMessage('Failed to import synced vault: ' + e.message);
+    const unsubRole = syncEngine.onRoleSelection(async (event) => {
+      if (event.mode === 'clone_to_peer') {
+        if (activeVaultRef.current) {
+          const data = getDecryptedVaultDataRef.current();
+          await syncEngine.forceCloneToPeer(data, activeVaultRef.current, localDeviceName);
+        }
+      } else if (event.mode === 'two_way') {
+        setIsMasterEstablished(true);
+        setStatusMessage(`Bidirectional two-way sync active.`);
       }
+    });
+
+    const unsubState = syncEngine.onStateApply(() => {
+      setStatusMessage('Vault synchronized live in real-time.');
     });
 
     const unsubMaster = syncEngine.onMasterSetup((event) => {
@@ -181,6 +152,7 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
 
     return () => {
       unsubStatus();
+      unsubRole();
       unsubState();
       unsubMaster();
     };
@@ -189,6 +161,7 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
   // Host: Generate PIN
   const handleStartHosting = async () => {
     try {
+      setIsMasterEstablished(false);
       setIsSyncing(true);
       setStatusMessage('Initializing encrypted host session...');
       const pin = await syncEngine.hostSession(localDeviceName, (msg) => {
@@ -206,6 +179,7 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
   const handleJoinSession = async () => {
     if (!inputPin.trim()) return;
     try {
+      setIsMasterEstablished(false);
       setIsSyncing(true);
       setStatusMessage(`Searching for host session with PIN ${inputPin}...`);
       await syncEngine.joinWithPin(inputPin.trim(), localDeviceName, (msg) => {
@@ -249,7 +223,29 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
     }
   };
 
-  // Two-Way Sync
+  // Master Selection 3: Two-Way Bidirectional Sync
+  const handleEnableTwoWaySync = async () => {
+    if (!activeVault) return;
+    try {
+      setIsSyncing(true);
+      setStatusMessage('Enabling bidirectional two-way sync...');
+      await syncEngine.sendRoleSelection('two_way', localDeviceName);
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('khataghar_sync_masterEstablished', 'true');
+        localStorage.setItem('khataghar_sync_masterRole', 'two_way');
+      }
+      setIsMasterEstablished(true);
+      const data = getDecryptedVaultData();
+      await syncEngine.broadcastFullState(data, activeVault);
+      setStatusMessage('Two-way sync active!');
+    } catch (err: any) {
+      setStatusMessage('Failed to enable two-way sync: ' + err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Two-Way Sync Manual Trigger
   const handlePushFullSync = async () => {
     if (!activeVault) return;
     try {
@@ -603,6 +599,17 @@ export const P2PSyncModal: React.FC<P2PSyncModalProps> = ({ isOpen, onClose }) =
                       <span>Pull Master from Remote</span>
                     </Button>
                   </div>
+                </div>
+
+                <div className="pt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={handleEnableTwoWaySync}
+                    className="text-xs font-semibold text-pine-600 dark:text-pine-400 hover:underline cursor-pointer inline-flex items-center gap-1.5 py-1 px-3 rounded-lg hover:bg-pine-50 dark:hover:bg-pine-950/30 transition-colors"
+                  >
+                    <ArrowLeftRight className="w-3.5 h-3.5" />
+                    <span>Or keep both &amp; merge entries (Two-Way Sync)</span>
+                  </button>
                 </div>
               </div>
             ) : (

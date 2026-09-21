@@ -1,7 +1,14 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import type { VaultMeta } from '../types';
 import { db } from '../db';
-import { deriveKey, verifyKey, hashStringSHA256 } from '../services/crypto';
+import {
+  deriveKey,
+  verifyKey,
+  generateVerifier,
+  hashStringSHA256,
+  DEFAULT_PBKDF2_ITERATIONS,
+  LEGACY_PBKDF2_ITERATIONS,
+} from '../services/crypto';
 
 interface AuthContextType {
   activeVault: VaultMeta | null;
@@ -127,8 +134,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const key = await deriveKey(password, targetVault.salt);
-      const isValid = await verifyKey(key, targetVault.verifier);
+      const targetIterations = targetVault.iterations || DEFAULT_PBKDF2_ITERATIONS;
+      let key = await deriveKey(password, targetVault.salt, targetIterations);
+      let isValid = await verifyKey(key, targetVault.verifier);
+
+      // Transparent legacy migration (250,000 -> 600,000 iterations):
+      if (!isValid && !targetVault.iterations) {
+        const legacyKey = await deriveKey(password, targetVault.salt, LEGACY_PBKDF2_ITERATIONS);
+        const isLegacyValid = await verifyKey(legacyKey, targetVault.verifier);
+        if (isLegacyValid) {
+          // Re-derive with modern 600,000 iterations & update verifier
+          key = await deriveKey(password, targetVault.salt, DEFAULT_PBKDF2_ITERATIONS);
+          const newVerifier = await generateVerifier(key);
+          const updatedVault: VaultMeta = {
+            ...targetVault,
+            iterations: DEFAULT_PBKDF2_ITERATIONS,
+            verifier: newVerifier,
+          };
+          await db.vaults.put(updatedVault);
+          targetVault.iterations = DEFAULT_PBKDF2_ITERATIONS;
+          targetVault.verifier = newVerifier;
+          isValid = true;
+        }
+      }
+
       if (!isValid) return false;
 
       lastUnlockTimeRef.current = Date.now();

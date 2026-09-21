@@ -179,7 +179,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <span>Zero-Server Cryptographic Isolation</span>
           </div>
           <p className="leading-relaxed text-[11px]">
-            Your master password is never transmitted anywhere. An AES-256-GCM key is derived locally using PBKDF2 with 250,000 SHA-256 iterations.
+            Your master password is never transmitted anywhere. An AES-256-GCM key is derived locally using PBKDF2 with 600,000+ SHA-256 iterations (OWASP standard).
           </p>
         </Surface>
 

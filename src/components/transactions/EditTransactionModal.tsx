@@ -16,6 +16,10 @@ import {
   Landmark,
   Sparkles,
 } from 'lucide-react';
+import { AssetModal } from '../assets/AssetModal';
+import { LiabilityModal } from '../liabilities/LiabilityModal';
+import { AccountModal } from '../accounts/AccountModal';
+import { CategoryModal } from '../categories/CategoryModal';
 import { getCategoryEmoji } from '../common/IconRenderer';
 import { formatCurrency } from '../../utils/formatters';
 
@@ -68,6 +72,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Inline sub-modals for dynamic entity creation
+  const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
+  const [isLiabilityModalOpen, setIsLiabilityModalOpen] = useState(false);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [accountModalTarget, setAccountModalTarget] = useState<'from' | 'to'>('from');
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
 
   const baseCurrency = activeVault?.currency || 'INR';
   const numberFormat = activeVault?.numberFormat || 'indian';
@@ -186,9 +197,52 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     }
   };
 
+  const renderInlineModals = () => (
+    <>
+      <AssetModal
+        isOpen={isAssetModalOpen}
+        onClose={() => setIsAssetModalOpen(false)}
+        onAssetCreated={(newAsset) => {
+          setLinkedAssetId(newAsset.id);
+          setIsAssetModalOpen(false);
+        }}
+      />
+      <LiabilityModal
+        isOpen={isLiabilityModalOpen}
+        onClose={() => setIsLiabilityModalOpen(false)}
+        onLiabilityCreated={(newLiability) => {
+          setLinkedLiabilityId(newLiability.id);
+          setIsLiabilityModalOpen(false);
+        }}
+      />
+      <AccountModal
+        isOpen={isAccountModalOpen}
+        onClose={() => setIsAccountModalOpen(false)}
+        onAccountCreated={(newAcc) => {
+          if (accountModalTarget === 'to') {
+            setToAccountId(newAcc.id);
+          } else {
+            setAccountId(newAcc.id);
+          }
+          setIsAccountModalOpen(false);
+        }}
+      />
+      <CategoryModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        defaultType={type === 'income' ? 'income' : 'expense'}
+        onCategoryCreated={(newCat) => {
+          setCategoryId(newCat.id);
+          setIsCategoryModalOpen(false);
+        }}
+      />
+    </>
+  );
+
   // 1. DEDICATED ASSET SALE / REDEMPTION FORM
   if (isAssetSaleInit) {
     return (
+      <>
       <Modal
         isOpen={isOpen}
         onClose={onClose}
@@ -304,11 +358,21 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           <Select
             label="Deposited Into Account"
             value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            options={accounts.map((a: Account) => ({
-              value: a.id,
-              label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
-            }))}
+            onChange={(e) => {
+              if (e.target.value === '__new_account__') {
+                setAccountModalTarget('from');
+                setIsAccountModalOpen(true);
+              } else {
+                setAccountId(e.target.value);
+              }
+            }}
+            options={[
+              ...accounts.map((a: Account) => ({
+                value: a.id,
+                label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
+              })),
+              { value: '__new_account__', label: '+ Add New Account…' },
+            ]}
           />
 
           {/* Notes & Tags */}
@@ -336,12 +400,15 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           </div>
         </form>
       </Modal>
-    );
+      {renderInlineModals()}
+    </>
+  );
   }
 
   // 2. DEDICATED ASSET PURCHASE / INVESTMENT FORM
   if (isAssetBuyInit) {
     return (
+      <>
       <Modal
         isOpen={isOpen}
         onClose={onClose}
@@ -372,11 +439,20 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           <Select
             label="Target Asset"
             value={linkedAssetId}
-            onChange={(e) => setLinkedAssetId(e.target.value)}
-            options={assets.map((a: Asset) => ({
-              value: a.id,
-              label: `${a.name} (${a.type})`,
-            }))}
+            onChange={(e) => {
+              if (e.target.value === '__new_asset__') {
+                setIsAssetModalOpen(true);
+              } else {
+                setLinkedAssetId(e.target.value);
+              }
+            }}
+            options={[
+              ...assets.map((a: Asset) => ({
+                value: a.id,
+                label: `${a.name} (${a.type})`,
+              })),
+              { value: '__new_asset__', label: '+ Add New Asset…' },
+            ]}
           />
 
           <div className="grid grid-cols-2 gap-3">
@@ -424,11 +500,21 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           <Select
             label="Funded From Account (Debit)"
             value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            options={accounts.map((a: Account) => ({
-              value: a.id,
-              label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
-            }))}
+            onChange={(e) => {
+              if (e.target.value === '__new_account__') {
+                setAccountModalTarget('from');
+                setIsAccountModalOpen(true);
+              } else {
+                setAccountId(e.target.value);
+              }
+            }}
+            options={[
+              ...accounts.map((a: Account) => ({
+                value: a.id,
+                label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
+              })),
+              { value: '__new_account__', label: '+ Add New Account…' },
+            ]}
           />
 
           <Input
@@ -455,13 +541,16 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           </div>
         </form>
       </Modal>
-    );
+      {renderInlineModals()}
+    </>
+  );
   }
 
   // 3. DEDICATED LIABILITY DEBT PAYMENT / LOAN INFLOW FORM
   if (isDebtPaymentInit || isLoanReceivedInit) {
     const isReceived = isLoanReceivedInit;
     return (
+      <>
       <Modal
         isOpen={isOpen}
         onClose={onClose}
@@ -496,11 +585,20 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           <Select
             label="Linked Liability / Loan"
             value={linkedLiabilityId}
-            onChange={(e) => setLinkedLiabilityId(e.target.value)}
-            options={liabilities.map((l: Liability) => ({
-              value: l.id,
-              label: `${l.name} (${l.lender}, Balance: ${formatCurrency(l.outstandingBalance, l.currency || baseCurrency, numberFormat)})`,
-            }))}
+            onChange={(e) => {
+              if (e.target.value === '__new_liability__') {
+                setIsLiabilityModalOpen(true);
+              } else {
+                setLinkedLiabilityId(e.target.value);
+              }
+            }}
+            options={[
+              ...liabilities.map((l: Liability) => ({
+                value: l.id,
+                label: `${l.name} (${l.lender}, Balance: ${formatCurrency(l.outstandingBalance, l.currency || baseCurrency, numberFormat)})`,
+              })),
+              { value: '__new_liability__', label: '+ Add New Loan…' },
+            ]}
           />
 
           <div className="grid grid-cols-2 gap-3">
@@ -527,11 +625,21 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           <Select
             label={isReceived ? 'Deposited Into Account (Credit)' : 'Paid From Account (Debit)'}
             value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            options={accounts.map((a: Account) => ({
-              value: a.id,
-              label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
-            }))}
+            onChange={(e) => {
+              if (e.target.value === '__new_account__') {
+                setAccountModalTarget('from');
+                setIsAccountModalOpen(true);
+              } else {
+                setAccountId(e.target.value);
+              }
+            }}
+            options={[
+              ...accounts.map((a: Account) => ({
+                value: a.id,
+                label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
+              })),
+              { value: '__new_account__', label: '+ Add New Account…' },
+            ]}
           />
 
           <Input
@@ -558,11 +666,14 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           </div>
         </form>
       </Modal>
-    );
+      {renderInlineModals()}
+    </>
+  );
   }
 
   // 4. STANDARD EXPENSE / INCOME / TRANSFER FORM
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onClose={onClose}
@@ -650,22 +761,42 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             <Select
               label="From Account (Debit)"
               value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              options={accounts.map((a: Account) => ({
-                value: a.id,
-                label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
-              }))}
+              onChange={(e) => {
+                if (e.target.value === '__new_account__') {
+                  setAccountModalTarget('from');
+                  setIsAccountModalOpen(true);
+                } else {
+                  setAccountId(e.target.value);
+                }
+              }}
+              options={[
+                ...accounts.map((a: Account) => ({
+                  value: a.id,
+                  label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
+                })),
+                { value: '__new_account__', label: '+ Add New Account…' },
+              ]}
             />
             <Select
               label="To Account (Credit)"
               value={toAccountId}
-              onChange={(e) => setToAccountId(e.target.value)}
-              options={accounts
-                .filter((a) => a.id !== accountId)
-                .map((a: Account) => ({
-                  value: a.id,
-                  label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
-                }))}
+              onChange={(e) => {
+                if (e.target.value === '__new_account__') {
+                  setAccountModalTarget('to');
+                  setIsAccountModalOpen(true);
+                } else {
+                  setToAccountId(e.target.value);
+                }
+              }}
+              options={[
+                ...accounts
+                  .filter((a) => a.id !== accountId)
+                  .map((a: Account) => ({
+                    value: a.id,
+                    label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
+                  })),
+                { value: '__new_account__', label: '+ Add New Account…' },
+              ]}
             />
           </div>
         ) : (
@@ -673,22 +804,39 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
             <Select
               label="Account"
               value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              options={accounts.map((a: Account) => ({
-                value: a.id,
-                label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
-              }))}
+              onChange={(e) => {
+                if (e.target.value === '__new_account__') {
+                  setAccountModalTarget('from');
+                  setIsAccountModalOpen(true);
+                } else {
+                  setAccountId(e.target.value);
+                }
+              }}
+              options={[
+                ...accounts.map((a: Account) => ({
+                  value: a.id,
+                  label: `${a.name} (${a.currency} ${a.balance.toFixed(2)})`,
+                })),
+                { value: '__new_account__', label: '+ Add New Account…' },
+              ]}
             />
             <Select
               label="Category"
               value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
+              onChange={(e) => {
+                if (e.target.value === '__new_category__') {
+                  setIsCategoryModalOpen(true);
+                } else {
+                  setCategoryId(e.target.value);
+                }
+              }}
               options={[
                 { value: '', label: 'Uncategorized' },
                 ...filteredCategories.map((c: Category) => ({
                   value: c.id,
                   label: `${getCategoryEmoji(c.icon, c.type)} ${c.name}`,
                 })),
+                { value: '__new_category__', label: '+ Add New Category…' },
               ]}
             />
           </div>
@@ -721,5 +869,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         </div>
       </form>
     </Modal>
+    {renderInlineModals()}
+    </>
   );
 };

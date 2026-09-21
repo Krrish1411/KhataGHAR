@@ -13,7 +13,7 @@ import { SyncMergedVaultModal } from '../components/vault/SyncMergedVaultModal';
 import { changeVaultPassword, deleteVaultCompletely } from '../services/storage';
 import { isAcceptablePassword, hashStringSHA256, deriveKey, encryptData } from '../services/crypto';
 import { NotificationSettingsCard } from '../components/settings/NotificationSettingsCard';
-import type { CurrencyCode, NumberFormatType, Account, Transaction } from '../types';
+import type { CurrencyCode, NumberFormatType, Account, Transaction, Category } from '../types';
 import {
   Settings,
   KeyRound,
@@ -44,8 +44,10 @@ import {
   AlertCircle,
   CheckCircle2,
   ArrowLeftRight,
+  Palette,
 } from 'lucide-react';
-import { IconRenderer } from '../components/common/IconRenderer';
+import { IconRenderer, suggestCategoryIcon } from '../components/common/IconRenderer';
+import { CategoryModal } from '../components/categories/CategoryModal';
 import { APP_SHORTCUTS, formatKeyDisplay } from '../services/shortcuts';
 import { UniversalBackupCard } from '../components/settings/UniversalBackupCard';
 import { P2PSyncCard } from '../components/settings/P2PSyncCard';
@@ -116,6 +118,8 @@ export const SettingsView: React.FC = () => {
   const [catEditName, setCatEditName] = useState('');
   const [catEditIsEssential, setCatEditIsEssential] = useState<boolean>(false);
   const [catFilter, setCatFilter] = useState<'all' | 'expense' | 'income'>('all');
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [categoryModalEditTarget, setCategoryModalEditTarget] = useState<Category | null>(null);
 
   // Keyboard Shortcuts Customization state
   const [recordingActionId, setRecordingActionId] = useState<string | null>(null);
@@ -716,7 +720,21 @@ export const SettingsView: React.FC = () => {
 
         {/* Add New Category */}
         <div className="p-3.5 rounded-2xl bg-moss/50 border border-line space-y-2.5">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-ink/50">Add Custom Category</p>
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-ink/50">Add Custom Category</p>
+            <button
+              type="button"
+              onClick={() => {
+                setCategoryModalEditTarget(null);
+                setIsCategoryModalOpen(true);
+              }}
+              className="text-pine-600 hover:text-pine-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+              title="Open rich icon pack and color category designer"
+            >
+              <Palette className="w-3.5 h-3.5" />
+              <span>Open Icon Designer</span>
+            </button>
+          </div>
           <div className="flex flex-wrap gap-2">
             <select
               value={catNewType}
@@ -727,8 +745,8 @@ export const SettingsView: React.FC = () => {
               }}
               className="px-2 py-2 rounded-xl border border-line bg-card text-xs font-semibold text-ink outline-none focus:border-pine-500 cursor-pointer shrink-0"
             >
-              <option value="expense">🔴 Expense</option>
-              <option value="income">🟢 Income</option>
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
             </select>
             {catNewType === 'expense' && (
               <button
@@ -754,7 +772,7 @@ export const SettingsView: React.FC = () => {
                   addCategory({
                     name: catNewName.trim(),
                     type: catNewType,
-                    icon: catNewType === 'expense' ? '🔴' : '🟢',
+                    icon: suggestCategoryIcon(catNewName.trim(), catNewType),
                     isEssential: catNewType === 'expense' ? catNewEssential : true,
                   });
                   setCatNewName('');
@@ -770,7 +788,7 @@ export const SettingsView: React.FC = () => {
                 addCategory({
                   name: catNewName.trim(),
                   type: catNewType,
-                  icon: catNewType === 'expense' ? '🔴' : '🟢',
+                  icon: suggestCategoryIcon(catNewName.trim(), catNewType),
                   isEssential: catNewType === 'expense' ? catNewEssential : true,
                 });
                 setCatNewName('');
@@ -792,7 +810,7 @@ export const SettingsView: React.FC = () => {
               onClick={() => setCatFilter(f)}
               className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer capitalize ${catFilter === f ? 'bg-pine-700 text-white' : 'bg-moss text-ink/60 hover:text-ink'}`}
             >
-              {f === 'all' ? 'All' : f === 'expense' ? '🔴 Expense' : '🟢 Income'}
+              {f === 'all' ? 'All' : f === 'expense' ? 'Expense' : 'Income'}
             </button>
           ))}
         </div>
@@ -924,9 +942,17 @@ export const SettingsView: React.FC = () => {
                       : 'border-line bg-card/60 hover:bg-moss/50'
                   }`}
                 >
-                  <div className="w-7 h-7 rounded-xl bg-moss/80 border border-line flex items-center justify-center shrink-0 text-pine-700 dark:text-pine-300">
-                    <IconRenderer name={cat.icon} className="w-3.5 h-3.5" />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCategoryModalEditTarget(cat);
+                      setIsCategoryModalOpen(true);
+                    }}
+                    className="w-7 h-7 rounded-xl bg-moss/80 hover:bg-pine-100 dark:hover:bg-pine-950/60 border border-line hover:border-pine-400 flex items-center justify-center shrink-0 text-pine-700 dark:text-pine-300 transition-all cursor-pointer group"
+                    title="Click to customize icon and color"
+                  >
+                    <IconRenderer name={cat.icon} className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                  </button>
 
                   <span className="flex-1 text-xs font-semibold text-ink truncate">{cat.name}</span>
 
@@ -959,12 +985,23 @@ export const SettingsView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => {
+                        setCategoryModalEditTarget(cat);
+                        setIsCategoryModalOpen(true);
+                      }}
+                      className="p-1 rounded-lg text-ink/40 hover:text-pine-600 hover:bg-moss transition-all cursor-pointer"
+                      title="Customize Icon & Color"
+                    >
+                      <Palette className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
                         setCatEditId(cat.id);
                         setCatEditName(cat.name);
                         setCatEditIsEssential(Boolean(cat.isEssential));
                       }}
                       className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-moss transition-all cursor-pointer"
-                      title="Edit Category"
+                      title="Rename Category"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
@@ -1006,6 +1043,25 @@ export const SettingsView: React.FC = () => {
         <p className="text-[11px] text-ink/40">
           👁 Hidden categories are invisible in dropdowns but existing transactions keep their category. Deleted categories cascade to subcategories.
         </p>
+
+        {/* Rich Category Designer / Editor Modal */}
+        <CategoryModal
+          isOpen={isCategoryModalOpen}
+          onClose={() => {
+            setIsCategoryModalOpen(false);
+            setCategoryModalEditTarget(null);
+          }}
+          categoryToEdit={categoryModalEditTarget}
+          defaultType={catFilter === 'income' ? 'income' : 'expense'}
+          onCategoryCreated={(newCat) => {
+            setIsCategoryModalOpen(false);
+            setCategoryModalEditTarget(null);
+          }}
+          onCategoryUpdated={(updCat) => {
+            setIsCategoryModalOpen(false);
+            setCategoryModalEditTarget(null);
+          }}
+        />
       </div>
 
       {/* ── KEYBOARD SHORTCUTS CUSTOMIZATION ─────────────────────── */}

@@ -28,10 +28,11 @@ import {
   DEFAULT_NOTE_FOLDERS,
 } from '../services/storage';
 import { decryptData, encryptData, verifyKey } from '../services/crypto';
-import { syncEngine } from '../services/sync/syncEngine';
+import { syncEngine, mergeFullState } from '../services/sync/syncEngine';
 import { generateDemoDataset } from '../services/demoData';
 import { isTxAfterBaseline } from '../utils/dates';
 import { generateStarterCategories } from '../utils/categories';
+import { suggestCategoryIcon } from '../components/common/IconRenderer';
 import { checkAndNotifyUpcomingReminders } from '../utils/nativeNotification';
 
 interface VaultContextType {
@@ -493,6 +494,26 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         cleanCats = cats.filter((c) => !c.parentId && !c.id.includes('_sub_'));
       }
 
+      // Auto-migrate legacy 🟢 / 🔴 category icons to authentic semantic Lucide icons
+      let migratedCats = cleanCats;
+      const catsWithDots = cleanCats.filter((c) => c.icon === '🟢' || c.icon === '🔴');
+      if (catsWithDots.length > 0) {
+        migratedCats = await Promise.all(
+          cleanCats.map(async (c) => {
+            if (c.icon === '🟢' || c.icon === '🔴') {
+              const upgraded: Category = {
+                ...c,
+                icon: suggestCategoryIcon(c.name, c.type),
+                updatedAt: new Date().toISOString(),
+              };
+              await saveEncryptedRecord('category', upgraded, sessionKey);
+              return upgraded;
+            }
+            return c;
+          })
+        );
+      }
+
       // Self-heal and auto-rebalance any unbalanced settlements (e.g. 2k + 2k holding vs 4k return)
       const rebalancedPeople = await rebalancePeopleSettlements(people, sessionKey);
 
@@ -530,10 +551,11 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       peopleLedgerRef.current = rebalancedPeople;
       assetsRef.current = healedAssets;
       liabilitiesRef.current = liabs;
+      categoriesRef.current = migratedCats;
 
       setAccounts(accs);
       setTransactions(txs);
-      setCategories(cleanCats);
+      setCategories(migratedCats);
       setPeopleLedger(rebalancedPeople);
       setBudgets(bdgs);
       setGoals(gls);
@@ -597,7 +619,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       syncEngine.broadcastFullState(payload, activeVault).catch((err) => {
         console.warn('[VaultContext] Sync auto-broadcast failed:', err);
       });
-    }, 300);
+    }, 150);
   }, [activeVault]);
 
   // Register local state getter for syncEngine
@@ -637,23 +659,41 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         isApplyingRemoteSyncRef.current = true;
         const currentVaultId = activeVault.id;
 
-        // Clear existing records for active vault in db.records and rewrite with receivedState
+        const isTwoWay = typeof localStorage !== 'undefined' && localStorage.getItem('khataghar_sync_masterRole') === 'two_way';
+        const currentState: VaultData = {
+          accounts: accountsRef.current,
+          transactions: transactionsRef.current,
+          categories: categoriesRef.current,
+          peopleLedger: peopleLedgerRef.current,
+          budgets: budgetsRef.current,
+          goals: goalsRef.current,
+          assets: assetsRef.current,
+          liabilities: liabilitiesRef.current,
+          documents: documentsRef.current,
+          plannedExpenses: plannedExpensesRef.current,
+          notes: notesRef.current,
+          folders: foldersRef.current,
+        };
+
+        const stateToApply = isTwoWay ? mergeFullState(currentState, receivedState) : receivedState;
+
+        // Clear existing records for active vault in db.records and rewrite with stateToApply
         await db.records.where('vaultId').equals(currentVaultId).delete();
 
         const encryptedRecords: Array<{ id: string; vaultId: string; type: any; iv: string; ciphertext: string; updatedAt: string }> = [];
         const groups: Array<{ type: any; items: any[] }> = [
-          { type: 'account', items: receivedState.accounts || [] },
-          { type: 'transaction', items: receivedState.transactions || [] },
-          { type: 'category', items: receivedState.categories || [] },
-          { type: 'people', items: receivedState.peopleLedger || [] },
-          { type: 'budget', items: receivedState.budgets || [] },
-          { type: 'goal', items: receivedState.goals || [] },
-          { type: 'asset', items: receivedState.assets || [] },
-          { type: 'liability', items: receivedState.liabilities || [] },
-          { type: 'document', items: receivedState.documents || [] },
-          { type: 'plan', items: receivedState.plannedExpenses || [] },
-          { type: 'note', items: receivedState.notes || [] },
-          { type: 'folder', items: receivedState.folders || [] },
+          { type: 'account', items: stateToApply.accounts || [] },
+          { type: 'transaction', items: stateToApply.transactions || [] },
+          { type: 'category', items: stateToApply.categories || [] },
+          { type: 'people', items: stateToApply.peopleLedger || [] },
+          { type: 'budget', items: stateToApply.budgets || [] },
+          { type: 'goal', items: stateToApply.goals || [] },
+          { type: 'asset', items: stateToApply.assets || [] },
+          { type: 'liability', items: stateToApply.liabilities || [] },
+          { type: 'document', items: stateToApply.documents || [] },
+          { type: 'plan', items: stateToApply.plannedExpenses || [] },
+          { type: 'note', items: stateToApply.notes || [] },
+          { type: 'folder', items: stateToApply.folders || [] },
         ];
 
         for (const grp of groups) {
@@ -674,55 +714,59 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         await db.records.bulkPut(encryptedRecords);
 
         // Update in-memory state & refs
-        const newAccs = receivedState.accounts || [];
+        const newAccs = stateToApply.accounts || [];
         setAccounts(newAccs);
         accountsRef.current = newAccs;
 
-        const newTxs = receivedState.transactions || [];
+        const newTxs = stateToApply.transactions || [];
         setTransactions(newTxs);
         transactionsRef.current = newTxs;
 
-        const newCats = receivedState.categories || [];
+        const newCats = stateToApply.categories || [];
         setCategories(newCats);
         categoriesRef.current = newCats;
 
-        const newPeople = receivedState.peopleLedger || [];
+        const newPeople = stateToApply.peopleLedger || [];
         setPeopleLedger(newPeople);
         peopleLedgerRef.current = newPeople;
 
-        const newBdgs = receivedState.budgets || [];
+        const newBdgs = stateToApply.budgets || [];
         setBudgets(newBdgs);
         budgetsRef.current = newBdgs;
 
-        const newGoals = receivedState.goals || [];
+        const newGoals = stateToApply.goals || [];
         setGoals(newGoals);
         goalsRef.current = newGoals;
 
-        const newAssets = receivedState.assets || [];
+        const newAssets = stateToApply.assets || [];
         setAssets(newAssets);
         assetsRef.current = newAssets;
 
-        const newLiabs = receivedState.liabilities || [];
+        const newLiabs = stateToApply.liabilities || [];
         setLiabilities(newLiabs);
         liabilitiesRef.current = newLiabs;
 
-        const newDocs = receivedState.documents || [];
+        const newDocs = stateToApply.documents || [];
         setDocuments(newDocs);
         documentsRef.current = newDocs;
 
-        const newPlans = receivedState.plannedExpenses || [];
+        const newPlans = stateToApply.plannedExpenses || [];
         setPlannedExpenses(newPlans);
         plannedExpensesRef.current = newPlans;
 
-        const newNotes = receivedState.notes || [];
+        const newNotes = stateToApply.notes || [];
         setNotes(newNotes);
         notesRef.current = newNotes;
 
-        const newFolders = receivedState.folders || [];
+        const newFolders = stateToApply.folders || [];
         setFolders(newFolders);
         foldersRef.current = newFolders;
       } catch (err) {
         console.error('[VaultContext] Error applying live state from peer:', err);
+      } finally {
+        setTimeout(() => {
+          isApplyingRemoteSyncRef.current = false;
+        }, 500);
       }
     });
 
@@ -732,10 +776,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Automatically broadcast local mutations to connected peer with debounce & echo protection
   useEffect(() => {
     if (!isUnlocked || isDecrypting || !activeVault) return;
-    if (isApplyingRemoteSyncRef.current) {
-      isApplyingRemoteSyncRef.current = false;
-      return;
-    }
+    if (isApplyingRemoteSyncRef.current) return;
     scheduleBroadcast();
   }, [
     accounts,
@@ -777,6 +818,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     accountsRef.current = [...accountsRef.current, newAccount];
     setAccounts(accountsRef.current);
     await saveEncryptedRecord('account', newAccount, sessionKey);
+    scheduleBroadcast();
     return newAccount;
   };
 
@@ -796,12 +838,14 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     accountsRef.current = accountsRef.current.map((a) => (a.id === updated.id ? updated : a));
     setAccounts(accountsRef.current);
     await saveEncryptedRecord('account', updated, sessionKey);
+    scheduleBroadcast();
   };
 
   const deleteAccount = async (id: string): Promise<void> => {
     accountsRef.current = accountsRef.current.filter((a) => a.id !== id);
     setAccounts(accountsRef.current);
     await deleteRecord(id);
+    scheduleBroadcast();
   };
 
   // Financial arithmetic precision helper (avoids floating-point errors like 0.1 + 0.2 = 0.30000000000000004)

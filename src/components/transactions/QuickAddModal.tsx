@@ -29,8 +29,10 @@ import {
   Search,
   UserPlus,
   Share2,
+  Palette,
 } from 'lucide-react';
-import { IconRenderer, getCategoryEmoji } from '../common/IconRenderer';
+import { IconRenderer, getCategoryEmoji, suggestCategoryIcon } from '../common/IconRenderer';
+import { CategoryModal } from '../categories/CategoryModal';
 
 export type TransactionEntryMode = 'expense' | 'income' | 'transfer' | 'invest' | 'debt_payment' | 'people';
 
@@ -77,6 +79,8 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
   const [isLiabilityModalOpen, setIsLiabilityModalOpen] = useState(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [accountModalTarget, setAccountModalTarget] = useState<'from' | 'to'>('from');
 
   // Paid by Contact State (Someone else paid for my expense directly)
   const [isPaidByContact, setIsPaidByContact] = useState(false);
@@ -160,11 +164,12 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
     const trimmed = name.trim();
     if (!trimmed) return;
     try {
+      const catType = entryMode === 'income' ? 'income' : 'expense';
       const newCat = await addCategory({
         name: trimmed,
-        type: entryMode === 'income' ? 'income' : 'expense',
-        icon: entryMode === 'income' ? '🟢' : '🔴',
-        color: entryMode === 'income' ? '#10b981' : '#f43f5e',
+        type: catType,
+        icon: suggestCategoryIcon(trimmed, catType),
+        color: catType === 'income' ? '#10b981' : '#f43f5e',
         isEssential: false,
       });
       setCategoryId(newCat.id);
@@ -751,12 +756,30 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
           <div className="p-3.5 rounded-2xl bg-moss border border-line space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
-                  From Account
-                </label>
+                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                  <label>From Account</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountModalTarget('from');
+                      setIsAccountModalOpen(true);
+                    }}
+                    className="text-pine-600 hover:text-pine-700 flex items-center gap-1 font-semibold cursor-pointer lowercase"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>+ new account</span>
+                  </button>
+                </div>
                 <select
                   value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value === '__new_account__') {
+                      setAccountModalTarget('from');
+                      setIsAccountModalOpen(true);
+                    } else {
+                      setAccountId(e.target.value);
+                    }
+                  }}
                   className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-pine-500 cursor-pointer"
                   required
                 >
@@ -765,16 +788,35 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                       {a.name} ({a.currency} {a.balance.toFixed(2)})
                     </option>
                   ))}
+                  <option value="__new_account__">+ Add New Account…</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
-                  To Destination Account
-                </label>
+                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-ink/50 mb-1">
+                  <label>To Destination Account</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccountModalTarget('to');
+                      setIsAccountModalOpen(true);
+                    }}
+                    className="text-pine-600 hover:text-pine-700 flex items-center gap-1 font-semibold cursor-pointer lowercase"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>+ new account</span>
+                  </button>
+                </div>
                 <select
                   value={toAccountId}
-                  onChange={(e) => setToAccountId(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value === '__new_account__') {
+                      setAccountModalTarget('to');
+                      setIsAccountModalOpen(true);
+                    } else {
+                      setToAccountId(e.target.value);
+                    }
+                  }}
                   className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-pine-500 cursor-pointer"
                   required
                 >
@@ -786,6 +828,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                         {a.name} ({a.currency} {a.balance.toFixed(2)})
                       </option>
                     ))}
+                  <option value="__new_account__">+ Add New Account…</option>
                 </select>
               </div>
             </div>
@@ -816,17 +859,27 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
 
             {/* Asset Selector */}
             <div>
-              <label className={`block text-[11px] font-bold uppercase tracking-wider mb-1 ${investSubMode === 'sell' ? 'text-flare-700 dark:text-flare-300' : 'text-emerald-800 dark:text-emerald-300'}`}>
-                {investSubMode === 'sell' ? 'Asset to Sell / Redeem' : 'Target Asset / Mutual Fund / Gold'}
-              </label>
+              <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider mb-1">
+                <label className={investSubMode === 'sell' ? 'text-flare-700 dark:text-flare-300' : 'text-emerald-800 dark:text-emerald-300'}>
+                  {investSubMode === 'sell' ? 'Asset to Sell / Redeem' : 'Target Asset / Mutual Fund / Gold'}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsAssetModalOpen(true)}
+                  className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 flex items-center gap-1 font-semibold cursor-pointer lowercase"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>+ new asset</span>
+                </button>
+              </div>
               {assets.length === 0 ? (
                 <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-800/50 text-xs text-amber-800 dark:text-amber-200">
                   <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span className="flex-1">No assets added yet. Add an asset in the Assets tab first.</span>
+                  <span className="flex-1">No assets added yet. Add an asset to track holdings.</span>
                   <button
                     type="button"
                     onClick={() => setIsAssetModalOpen(true)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold transition-all cursor-pointer shrink-0"
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition-all cursor-pointer shrink-0"
                   >
                     <Plus className="w-3 h-3" />
                     Add Asset
@@ -835,7 +888,13 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
               ) : (
                 <select
                   value={selectedAssetId}
-                  onChange={(e) => setSelectedAssetId(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value === '__new_asset__') {
+                      setIsAssetModalOpen(true);
+                    } else {
+                      setSelectedAssetId(e.target.value);
+                    }
+                  }}
                   className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-emerald-500 cursor-pointer"
                   required
                 >
@@ -844,6 +903,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                       {a.name} ({a.type.replace('_', ' ')}) — Val: ₹{a.currentValue.toLocaleString('en-IN')}
                     </option>
                   ))}
+                  <option value="__new_asset__">+ Add New Asset…</option>
                 </select>
               )}
             </div>
@@ -910,13 +970,23 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
               ))}
             </div>
 
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
-              {debtSubMode === 'received' ? 'Loan / Liability Record' : 'Target Loan to Pay Down'}
-            </label>
+            <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 mb-1">
+              <label>
+                {debtSubMode === 'received' ? 'Loan / Liability Record' : 'Target Loan to Pay Down'}
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsLiabilityModalOpen(true)}
+                className="text-amber-600 hover:text-amber-700 dark:text-amber-400 flex items-center gap-1 font-semibold cursor-pointer lowercase"
+              >
+                <Plus className="w-3 h-3" />
+                <span>+ new loan</span>
+              </button>
+            </div>
             {liabilities.length === 0 ? (
               <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-800/50 text-xs text-amber-800 dark:text-amber-200">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                <span className="flex-1">No liabilities added yet. Add a loan in the Liabilities tab first.</span>
+                <span className="flex-1">No liabilities added yet. Add a loan to track debt repayment.</span>
                 <button
                   type="button"
                   onClick={() => setIsLiabilityModalOpen(true)}
@@ -929,7 +999,13 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
             ) : (
               <select
                 value={selectedLiabilityId}
-                onChange={(e) => setSelectedLiabilityId(e.target.value)}
+                onChange={(e) => {
+                  if (e.target.value === '__new_liability__') {
+                    setIsLiabilityModalOpen(true);
+                  } else {
+                    setSelectedLiabilityId(e.target.value);
+                  }
+                }}
                 className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-amber-500 cursor-pointer"
                 required
               >
@@ -938,6 +1014,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                     {l.name} ({l.lender}) — Outstanding: ₹{l.outstandingBalance.toLocaleString('en-IN')}
                   </option>
                 ))}
+                <option value="__new_liability__">+ Add New Loan…</option>
               </select>
             )}
 
@@ -1327,6 +1404,16 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                       <span>Add &quot;{categorySearch.trim()}&quot;</span>
                     </button>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => setIsCategoryModalOpen(true)}
+                    className="p-1.5 px-2.5 rounded-xl border border-line bg-card hover:bg-moss text-pine-700 dark:text-pine-300 flex items-center gap-1 text-xs font-bold shrink-0 cursor-pointer transition-all shadow-2xs"
+                    title="Design custom category with rich icon pack & colors"
+                  >
+                    <Palette className="w-3.5 h-3.5 text-pine-600" />
+                    <span className="hidden sm:inline">+ Custom</span>
+                  </button>
                 </div>
 
                 {/* Category Pills */}
@@ -1414,7 +1501,10 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
               </label>
               <button
                 type="button"
-                onClick={() => setIsAccountModalOpen(true)}
+                onClick={() => {
+                  setAccountModalTarget('from');
+                  setIsAccountModalOpen(true);
+                }}
                 className="text-pine-600 hover:text-pine-700 flex items-center gap-1 font-semibold cursor-pointer lowercase"
               >
                 <Plus className="w-3 h-3" />
@@ -1423,7 +1513,14 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
             </div>
             <select
               value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
+              onChange={(e) => {
+                if (e.target.value === '__new_account__') {
+                  setAccountModalTarget('from');
+                  setIsAccountModalOpen(true);
+                } else {
+                  setAccountId(e.target.value);
+                }
+              }}
               className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-pine-500 cursor-pointer"
               required
             >
@@ -1432,6 +1529,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                   {a.name} ({a.currency} {a.balance.toFixed(2)})
                 </option>
               ))}
+              <option value="__new_account__">+ Add New Account…</option>
             </select>
           </div>
 
@@ -1566,6 +1664,31 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       onLiabilityCreated={(newLiability) => {
         setSelectedLiabilityId(newLiability.id);
         setIsLiabilityModalOpen(false);
+      }}
+    />
+
+    {/* Inline Account Modal — opens without leaving QuickAdd */}
+    <AccountModal
+      isOpen={isAccountModalOpen}
+      onClose={() => setIsAccountModalOpen(false)}
+      onAccountCreated={(newAcc) => {
+        if (entryMode === 'transfer' && accountModalTarget === 'to') {
+          setToAccountId(newAcc.id);
+        } else {
+          setAccountId(newAcc.id);
+        }
+        setIsAccountModalOpen(false);
+      }}
+    />
+
+    {/* Inline Category Modal — opens without leaving QuickAdd */}
+    <CategoryModal
+      isOpen={isCategoryModalOpen}
+      onClose={() => setIsCategoryModalOpen(false)}
+      defaultType={entryMode === 'income' ? 'income' : 'expense'}
+      onCategoryCreated={(newCat) => {
+        setCategoryId(newCat.id);
+        setIsCategoryModalOpen(false);
       }}
     />
     </>

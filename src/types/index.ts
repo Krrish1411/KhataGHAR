@@ -19,6 +19,7 @@ export interface VaultMeta {
   name: string;
   salt: string; // Hex or base64 encoded salt for PBKDF2
   verifier: string; // Encrypted known string to verify password
+  iterations?: number; // PBKDF2 iteration count (default: 600,000)
   createdAt: string; // ISO string
   currency: CurrencyCode; // Base currency, e.g. 'INR'
   numberFormat: NumberFormatType;

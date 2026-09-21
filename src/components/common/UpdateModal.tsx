@@ -81,6 +81,27 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ open, onClose, data })
 
   const githubReleaseUrl = data.htmlUrl || `https://github.com/Krrish1411/KhataGHAR/releases/tag/${data.tagName}`;
 
+  const handleReloadApp = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.unregister();
+        }
+      }
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        for (const name of cacheNames) {
+          await caches.delete(name);
+        }
+      }
+    } catch (e) {
+      console.warn('[UpdateModal] Error clearing caches:', e);
+    } finally {
+      window.location.reload();
+    }
+  };
+
   return (
     <Modal
       isOpen={open}
@@ -145,7 +166,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ open, onClose, data })
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => window.location.reload()}
+                onClick={handleReloadApp}
                 className="gap-1.5 font-bold shrink-0 self-start sm:self-auto"
               >
                 <RefreshCw className="w-3.5 h-3.5" />

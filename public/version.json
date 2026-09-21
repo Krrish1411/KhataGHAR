@@ -1,26 +1,25 @@
 {
-  "version": "1.0.0-beta.2",
-  "tagName": "v1.0.0-beta.2",
-  "releaseDate": "2026-09-16",
+  "version": "1.0.0-beta.4",
+  "tagName": "v1.0.0-beta.4",
+  "releaseDate": "2026-09-21",
   "minRequiredVersion": "1.0.0-beta.1",
-  "htmlUrl": "https://github.com/Krrish1411/KhataGHAR/releases/tag/v1.0.0-beta.2",
+  "htmlUrl": "https://github.com/Krrish1411/KhataGHAR/releases/tag/v1.0.0-beta.4",
   "changelog": [
-    "Brand Identity Overhaul: Multi-platform native graphical icon suite for Desktop (Windows ICO, macOS ICNS, Linux PNG), Android Adaptive Launcher, and Web PWA.",
-    "Global Dynamic P2P Sync: Duplex background sync listener directly in VaultContext, echo loop prevention, and Master Device reset selection.",
-    "Native Scheduled Notifications: High-importance reminders notification channel with customizable lead times (1-7 days before) on bills and goals.",
-    "Financial Calculators Suite: 6 institutional calculators (SIP, Step-Up, Lumpsum, SWP, FIRE Runway, Loan Schedule with full Amortization & Prepayments).",
-    "Reconciliation Diff Modal: Side-by-side stored vs ledger balance comparison with selective per-account reconciliation and demo data safety guard.",
-    "Lifelog Mobile Parity: Safe area insets, native status bar synchronization, hardware back button routing, tactile haptics, and AST Markdown Notes parser."
+    "Security Hardening: Upgraded key derivation to 600,000+ PBKDF2-HMAC-SHA256 iterations (OWASP compliance) with automatic seamless legacy vault migration.",
+    "Universal Inline Entity Creation: Create new Assets during Investments, new Loans during Debt repayments, new Accounts during Transfers, and Custom Categories on the fly.",
+    "Category Icon Engine Overhaul: Replaced legacy red/green dots with categorized Lucide icon packs and introduced rich Category Designer with search and custom color pickers.",
+    "Lifelog-Grade Sync Architecture: Multi-relay fallback (ntfy.envs.net + ntfy.sh in parallel), Google STUN direct WebRTC DataChannel, and entity-level LWW state synchronization.",
+    "PWA & Android Live Update Immunity: Workbox NetworkFirst cache strategy, instant service worker updates, and Android WebView cache-trap immunity."
   ],
   "downloads": {
-    "windows": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-Windows-Setup-1.0.0-beta.2.exe",
-    "windowsPortable": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-Windows-Portable-1.0.0-beta.2.exe",
-    "linux": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-Linux-1.0.0-beta.2-x64.AppImage",
-    "linuxDeb": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-Linux-1.0.0-beta.2-x64.deb",
-    "linuxTar": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-Linux-1.0.0-beta.2-x64.tar.gz",
-    "mac": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-macOS-1.0.0-beta.2-x64.dmg",
-    "macZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-macOS-1.0.0-beta.2-x64.zip",
-    "android": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/KhataGHAR-Android-v1.0.0-beta.2.apk",
-    "webZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.2/khata-ghar-v1.0.0-beta.2.zip"
+    "windows": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.4/KhataGHAR-Windows-Setup-1.0.0-beta.4.exe",
+    "windowsPortable": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.4/KhataGHAR-Windows-Portable-1.0.0-beta.4.exe",
+    "linux": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.4/KhataGHAR-Linux-1.0.0-beta.4-x64.AppImage",
+    "linuxDeb": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.4/KhataGHAR-Linux-1.0.0-beta.4-x64.deb",
+    "linuxTar": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.4/KhataGHAR-Linux-1.0.0-beta.4-x64.tar.gz",
+    "mac": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.4/KhataGHAR-macOS-1.0.0-beta.4-x64.dmg",
+    "macZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.4/KhataGHAR-macOS-1.0.0-beta.4-x64.zip",
+    "android": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.4/KhataGHAR-Android-v1.0.0-beta.4.apk",
+    "webZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.4/khata-ghar-v1.0.0-beta.4.zip"
   }
 }

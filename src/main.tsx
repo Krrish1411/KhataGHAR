@@ -3,12 +3,13 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 import { registerSW } from 'virtual:pwa-register';
+import { Capacitor } from '@capacitor/core';
 
 // Android APK & Desktop Stale Cache Trap Fix:
 // If running inside Capacitor Android or Electron, wipe Service Worker and CacheStorage to prevent stale cached bundles.
 // Only register SW for actual Web / PWA environments.
 if (typeof window !== 'undefined') {
-  const isNative = (window as any).Capacitor?.isNativePlatform?.() || navigator.userAgent.includes('wv');
+  const isNative = Capacitor.isNativePlatform() || (window as any).Capacitor?.isNativePlatform?.() || navigator.userAgent.includes('wv');
   const isElectron = Boolean((window as any).electronAPI);
 
   if (isNative || isElectron) {

@@ -47,7 +47,7 @@ export const SecurityPrivacyView: React.FC = () => {
           <div className="p-3.5 rounded-xl bg-moss/70 border border-line space-y-0.5">
             <span className="text-[10px] uppercase font-bold text-ink/45 block tracking-wider">Key Derivation</span>
             <span className="font-mono font-bold text-ink block text-sm">PBKDF2-SHA256</span>
-            <span className="text-[11px] text-ink/50 block">250,000 Iterations</span>
+            <span className="text-[11px] text-ink/50 block">600,000+ Iterations (OWASP)</span>
           </div>
 
           <div className="p-3.5 rounded-xl bg-moss/70 border border-line space-y-0.5">
