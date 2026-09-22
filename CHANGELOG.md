@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Smart Optimized vs. Original RAW Toggle**: Complete sovereign control for users to store bit-for-bit uncompressed original files or apply smart client-side 1080p canvas WebP/JPEG compression for massive disk savings.
 
 ### 🗄️ Central Document & Attachment Hub
+- **Dual Platform Personality**:
+  - **Android File Manager View**: Mobile-first file manager interface (inspired by Google Files / Samsung My Files) featuring segmented internal vault storage cards, category touch tiles (Images, PDFs, Deeds, Receipts), collections carousel, folder drill-down, and mobile FAB with action bottom sheets.
+  - **Google Drive Web & Desktop Workspace**: Cloud storage workspace layout featuring a left navigation tree (`+ New`, My Drive, Recent, Starred, Linked Entities), clickable breadcrumbs, centered search bar, right details inspector panel (`I`), right-click context menu, and an interactive keyboard shortcuts engine.
+  - **Working Keyboard Shortcuts Suite**: Instant navigation via keyboard (`/` focus search, `↑↓←→` navigate items, `Enter` preview, `Del` delete, `V` toggle view, `I` inspector, `N` new folder, `U` upload, `S` star, `Ctrl+A` select all, `?` shortcuts cheat sheet).
 - **Anti-Clutter Folder Organization**: Pre-built system folders (`Receipts`, `Deeds`, `Loans`, `People`, `Bank`, `Tax`, `Unfiled`) plus user-created custom folders with customizable colors and emoji icons.
 - **Sub-5ms Ultra-Fast Search**: High-speed full-text search across document names, notes, tags, and linked entity names with instant client-side filtering.
 - **Dual Visual Modes**: Seamless toggle between a Visual Media Gallery Grid and a Dense Structured Table.
