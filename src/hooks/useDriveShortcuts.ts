@@ -6,6 +6,8 @@ export interface DriveShortcutsConfig {
   onNewFolder?: () => void;
   onUpload?: () => void;
   onToggleInspector?: () => void;
+  onToggleWidget?: () => void;
+  onToggleTools?: () => void;
   onToggleStar?: () => void;
   onShowShortcuts?: () => void;
   onSelectNext?: () => void;
@@ -28,6 +30,8 @@ export function useDriveShortcuts(config: DriveShortcutsConfig) {
     onNewFolder,
     onUpload,
     onToggleInspector,
+    onToggleWidget,
+    onToggleTools,
     onToggleStar,
     onShowShortcuts,
     onSelectNext,
@@ -115,6 +119,20 @@ export function useDriveShortcuts(config: DriveShortcutsConfig) {
       if (!isMetaOrCtrl && (e.key === 'i' || e.key === 'I')) {
         e.preventDefault();
         onToggleInspector?.();
+        return;
+      }
+
+      // W -> Toggle Sovereign Status Widget
+      if (!isMetaOrCtrl && (e.key === 'w' || e.key === 'W')) {
+        e.preventDefault();
+        onToggleWidget?.();
+        return;
+      }
+
+      // T -> Toggle Drive Tools Modal (Scanner & Cleaner)
+      if (!isMetaOrCtrl && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        onToggleTools?.();
         return;
       }
 
@@ -212,6 +230,8 @@ export function useDriveShortcuts(config: DriveShortcutsConfig) {
     onNewFolder,
     onUpload,
     onToggleInspector,
+    onToggleWidget,
+    onToggleTools,
     onToggleStar,
     onShowShortcuts,
     onSelectNext,

@@ -34,6 +34,7 @@ dist-ssr/
 # Temp working folders
 temp working/
 temp/
+drive-desktop*/
 
 # OS files
 Thumbs.db

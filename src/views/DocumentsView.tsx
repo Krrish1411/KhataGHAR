@@ -15,7 +15,9 @@ import {
   HardDrive,
   Smartphone,
   ShieldCheck,
+  Wrench,
 } from 'lucide-react';
+import { DriveToolsModal } from '../components/documents/DriveToolsModal';
 
 export const DocumentsView: React.FC = () => {
   const {
@@ -58,6 +60,14 @@ export const DocumentsView: React.FC = () => {
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
+  const [isToolsModalOpen, setIsToolsModalOpen] = useState(false);
+  const [toolsModalInitialTab, setToolsModalInitialTab] = useState<'scanner' | 'cleaner' | 'storage' | 'preferences'>('scanner');
+
+  const handleBatchDeleteDocuments = async (docIds: string[]) => {
+    for (const id of docIds) {
+      await deleteDocument(id);
+    }
+  };
 
   // Total vault storage used
   const totalStorageBytes = useMemo(() => {
@@ -146,6 +156,19 @@ export const DocumentsView: React.FC = () => {
               <span className="hidden md:inline">Files View</span>
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setToolsModalInitialTab('scanner');
+              setIsToolsModalOpen(true);
+            }}
+            className="px-3 py-2 rounded-2xl border border-line bg-surface hover:bg-moss text-ink text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+            title="Drive Tools: Integrity Scanner & Storage Cleaner"
+          >
+            <Wrench className="w-3.5 h-3.5 text-brand-600" />
+            <span className="hidden sm:inline">Vault Tools</span>
+          </button>
 
           <button
             type="button"
@@ -245,6 +268,18 @@ export const DocumentsView: React.FC = () => {
           documentId={selectedDocId}
           isOpen={Boolean(selectedDocId)}
           onClose={() => setSelectedDocId(null)}
+        />
+      )}
+
+      {/* Sovereign Drive Tools Modal (Integrity Scanner, Cleaner, Storage Analytics) */}
+      {isToolsModalOpen && (
+        <DriveToolsModal
+          isOpen={isToolsModalOpen}
+          onClose={() => setIsToolsModalOpen(false)}
+          initialTab={toolsModalInitialTab}
+          documents={documents}
+          onDeleteDocuments={handleBatchDeleteDocuments}
+          totalStorageBytes={totalStorageBytes}
         />
       )}
     </div>

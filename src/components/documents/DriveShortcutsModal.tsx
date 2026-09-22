@@ -12,6 +12,8 @@ import {
   CornerDownLeft,
   ArrowUpDown,
   CheckSquare,
+  HardDrive,
+  Wrench,
 } from 'lucide-react';
 
 interface DriveShortcutsModalProps {
@@ -49,6 +51,8 @@ export const DriveShortcutsModal: React.FC<DriveShortcutsModalProps> = ({
       shortcuts: [
         { key: 'V', desc: 'Toggle Grid / List view mode', icon: <SlidersHorizontal className="w-3.5 h-3.5 text-brand-500" /> },
         { key: 'I', desc: 'Toggle details inspector drawer', icon: <Eye className="w-3.5 h-3.5 text-brand-500" /> },
+        { key: 'W', desc: 'Toggle Sovereign Status Widget', icon: <HardDrive className="w-3.5 h-3.5 text-pine-500" /> },
+        { key: 'T', desc: 'Toggle Drive Tools (Scanner & Cleaner)', icon: <Wrench className="w-3.5 h-3.5 text-brand-500" /> },
         { key: '?', desc: 'Show this keyboard shortcuts cheat sheet', icon: <Keyboard className="w-3.5 h-3.5 text-brand-500" /> },
       ],
     },

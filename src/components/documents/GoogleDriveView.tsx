@@ -44,9 +44,13 @@ import {
   Landmark,
   FolderLock,
   TrendingUp,
+  HardDrive,
+  Wrench,
 } from 'lucide-react';
 import { useDriveShortcuts } from '../../hooks/useDriveShortcuts';
 import { DriveShortcutsModal } from './DriveShortcutsModal';
+import { DriveDesktopWidget } from './DriveDesktopWidget';
+import { DriveToolsModal } from './DriveToolsModal';
 
 // Helper to render beautiful native Drive folder icons with custom color
 export const FolderIconBadge: React.FC<{
@@ -157,6 +161,9 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   // Inspector panel: DEFAULT CLOSED so it doesn't squish the UI
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [isDesktopWidgetOpen, setIsDesktopWidgetOpen] = useState(false);
+  const [isToolsModalOpen, setIsToolsModalOpen] = useState(false);
+  const [toolsModalInitialTab, setToolsModalInitialTab] = useState<'scanner' | 'cleaner' | 'storage' | 'preferences'>('scanner');
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isMoveMenuOpen, setIsMoveMenuOpen] = useState(false);
@@ -439,6 +446,11 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     onNewFolder: () => onNewFolderClick(),
     onUpload: () => onUploadClick(),
     onToggleInspector: () => setIsInspectorOpen((prev) => !prev),
+    onToggleWidget: () => setIsDesktopWidgetOpen((prev) => !prev),
+    onToggleTools: () => {
+      setToolsModalInitialTab('scanner');
+      setIsToolsModalOpen((prev) => !prev);
+    },
     onToggleStar: () => {
       if (primarySelectedDoc) toggleStar(primarySelectedDoc.id);
     },
@@ -882,6 +894,32 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 <option value="size">Size (Largest)</option>
               </select>
 
+              {/* Sovereign Local Vault Status Pill (Inspired by Internxt Desktop Tray) */}
+              <button
+                type="button"
+                onClick={() => setIsDesktopWidgetOpen((prev) => !prev)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-pine-50 dark:bg-pine-950/50 border border-pine-200/80 dark:border-pine-800/80 text-pine-700 dark:text-pine-300 text-xs font-bold shadow-2xs hover:bg-pine-100 dark:hover:bg-pine-900/50 transition-all"
+                title="Open Sovereign Desktop Status Widget"
+              >
+                <span className="w-2 h-2 rounded-full bg-pine-500 animate-pulse" />
+                <span className="hidden sm:inline">Local Vault</span>
+                <span className="text-[10px] opacity-75 font-mono hidden md:inline">AES-256</span>
+              </button>
+
+              {/* Drive Tools (Integrity Scanner & Storage Cleaner) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setToolsModalInitialTab('scanner');
+                  setIsToolsModalOpen(true);
+                }}
+                className="p-2 rounded-xl border border-line bg-surface hover:bg-moss text-ink/70 hover:text-ink transition-all shadow-2xs flex items-center gap-1.5 text-xs font-bold"
+                title="Drive Tools: Integrity Scanner & Storage Cleaner"
+              >
+                <Wrench className="w-3.5 h-3.5 text-brand-600" />
+                <span className="hidden xl:inline">Tools</span>
+              </button>
+
               {/* Inspector panel toggle */}
               <button
                 type="button"
@@ -1133,11 +1171,11 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
             </div>
           </div>
 
-          {/* Bottom Storage Meter Widget (Internxt Style) */}
+          {/* Bottom Storage Meter Widget (Internxt Desktop Style) */}
           <div className="p-3 bg-surface rounded-2xl border border-line shadow-2xs space-y-2 mt-4">
             <div className="flex items-center justify-between text-[11px] font-bold text-ink">
               <span className="flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-pine-500" /> Vault Storage
+                <ShieldCheck className="w-3.5 h-3.5 text-pine-500" /> Local Vault
               </span>
               <span className="font-mono text-[10px] text-ink/50">{storageFormatted}</span>
             </div>
@@ -1151,9 +1189,26 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               />
             </div>
 
-            <p className="text-[10px] text-ink/50 leading-tight">
-              Zero-knowledge client-side encrypted in SQLite.
-            </p>
+            <div className="flex items-center justify-between pt-0.5 text-[10px] font-bold">
+              <button
+                type="button"
+                onClick={() => {
+                  setToolsModalInitialTab('cleaner');
+                  setIsToolsModalOpen(true);
+                }}
+                className="text-brand-600 hover:text-brand-700 flex items-center gap-1"
+              >
+                <Sparkles className="w-3 h-3" /> Clean Up
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsDesktopWidgetOpen(true)}
+                className="text-ink/50 hover:text-ink flex items-center gap-1"
+              >
+                <HardDrive className="w-3 h-3" /> Widget
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1751,6 +1806,41 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
         <DriveShortcutsModal
           isOpen={isShortcutsModalOpen}
           onClose={() => setIsShortcutsModalOpen(false)}
+        />
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          5. DESKTOP TRAY WIDGET & TOOLS MODALS
+      ───────────────────────────────────────────────────────────── */}
+      {isDesktopWidgetOpen && (
+        <DriveDesktopWidget
+          isOpen={isDesktopWidgetOpen}
+          onClose={() => setIsDesktopWidgetOpen(false)}
+          documents={documents}
+          totalStorageBytes={totalStorageBytes}
+          onOpenTools={(tab) => {
+            setToolsModalInitialTab(tab || 'scanner');
+            setIsToolsModalOpen(true);
+          }}
+          onUploadClick={onUploadClick}
+        />
+      )}
+
+      {isToolsModalOpen && (
+        <DriveToolsModal
+          isOpen={isToolsModalOpen}
+          onClose={() => setIsToolsModalOpen(false)}
+          initialTab={toolsModalInitialTab}
+          documents={documents}
+          onDeleteDocuments={async (docIds) => {
+            for (const id of docIds) {
+              const doc = documents.find((d) => d.id === id);
+              if (doc) {
+                await onDeleteDoc(doc);
+              }
+            }
+          }}
+          totalStorageBytes={totalStorageBytes}
         />
       )}
     </div>
