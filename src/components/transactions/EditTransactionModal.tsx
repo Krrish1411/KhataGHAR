@@ -22,6 +22,7 @@ import { AccountModal } from '../accounts/AccountModal';
 import { CategoryModal } from '../categories/CategoryModal';
 import { getCategoryEmoji } from '../common/IconRenderer';
 import { formatCurrency } from '../../utils/formatters';
+import { AttachmentField, type AttachmentItem } from '../documents/AttachmentField';
 
 interface EditTransactionModalProps {
   isOpen: boolean;
@@ -34,7 +35,18 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   onClose,
   transaction,
 }) => {
-  const { accounts, categories, assets, liabilities, updateTransaction, activeVault } = useVault();
+  const {
+    accounts,
+    categories,
+    assets,
+    liabilities,
+    documents,
+    updateTransaction,
+    addDocument,
+    linkDocumentToEntity,
+    unlinkDocumentFromEntity,
+    activeVault,
+  } = useVault();
 
   const isAssetSaleInit =
     transaction.subType === 'asset_sale' ||
@@ -69,6 +81,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [linkedLiabilityId, setLinkedLiabilityId] = useState<string>(transaction.linkedLiabilityId || '');
   const [units, setUnits] = useState<string>(transaction.units ? String(transaction.units) : '');
   const [unitPrice, setUnitPrice] = useState<string>(transaction.unitPrice ? String(transaction.unitPrice) : '');
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -97,7 +110,24 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     setUnits(transaction.units ? String(transaction.units) : '');
     setUnitPrice(transaction.unitPrice ? String(transaction.unitPrice) : '');
     setError('');
-  }, [transaction]);
+
+    // Populate existing attachments
+    const existingAttachedDocs = documents.filter(
+      (d) => d.linkedId === transaction.id || d.links?.some((l) => l.entityId === transaction.id)
+    );
+    setAttachments(
+      existingAttachedDocs.map((d) => ({
+        id: d.id,
+        name: d.name,
+        dataUrl: d.dataUrl || '',
+        thumbnailUrl: d.thumbnailUrl,
+        fileSize: d.fileSize,
+        fileType: d.fileType,
+        isUncompressed: d.isUncompressed,
+        isExistingHubDoc: true,
+      }))
+    );
+  }, [transaction, documents]);
 
   const filteredCategories = categories.filter((c) => c.type === type && !c.hidden && !c.parentId);
 
@@ -189,6 +219,55 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       };
 
       await updateTransaction(updatedTx);
+
+      // Sync attachments in Document Hub:
+      const existingAttachedDocs = documents.filter(
+        (d) => d.linkedId === transaction.id || d.links?.some((l) => l.entityId === transaction.id)
+      );
+      const currentAttachedIds = new Set(attachments.map((a) => a.id).filter(Boolean));
+
+      // 1. Unlink removed docs
+      for (const oldDoc of existingAttachedDocs) {
+        if (!currentAttachedIds.has(oldDoc.id)) {
+          await unlinkDocumentFromEntity(oldDoc.id, 'transaction', transaction.id);
+        }
+      }
+
+      // 2. Link or Add new items
+      for (const item of attachments) {
+        if (item.isExistingHubDoc && item.id) {
+          await linkDocumentToEntity(
+            item.id,
+            'transaction',
+            transaction.id,
+            `${updatedTx.currency} ${updatedTx.amount} (${updatedTx.date})`
+          );
+        } else if (!item.id && item.dataUrl) {
+          await addDocument(
+            {
+              name: item.name,
+              fileType: item.fileType,
+              fileSize: item.fileSize,
+              folderId: 'receipts',
+              thumbnailUrl: item.thumbnailUrl,
+              isUncompressed: item.isUncompressed,
+              linkedType: 'transaction',
+              linkedId: transaction.id,
+              links: [
+                {
+                  entityType: 'transaction',
+                  entityId: transaction.id,
+                  entityName: `${updatedTx.currency} ${updatedTx.amount} (${updatedTx.date})`,
+                  linkedAt: new Date().toISOString(),
+                },
+              ],
+            },
+            item.dataUrl,
+            { isUncompressed: item.isUncompressed }
+          );
+        }
+      }
+
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to update transaction');
@@ -857,6 +936,15 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
           value={tagsInput}
           onChange={(e) => setTagsInput(e.target.value)}
         />
+
+        {/* Receipts & Document Attachments */}
+        <div className="pt-2 border-t border-line/60">
+          <AttachmentField
+            attachments={attachments}
+            onChange={setAttachments}
+            entityType="transaction"
+          />
+        </div>
 
         {/* Form Actions */}
         <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-line">

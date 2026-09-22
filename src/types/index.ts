@@ -54,6 +54,7 @@ export interface Account {
   accountNumberLast4?: string;
   color?: string;
   notes?: string;
+  documentIds?: string[];
   updatedAt: string;
 }
 
@@ -160,6 +161,7 @@ export interface PeopleLedgerEntry {
   // Custodial Asset Holding Location Tracking
   heldInType?: 'account' | 'asset' | 'unallocated';
   linkedAssetId?: string; // Asset where held funds are invested/parked (e.g. Liquid MF, Gold, FD)
+  documentIds?: string[];
   updatedAt: string;
 }
 
@@ -190,6 +192,7 @@ export interface SavingsGoal {
   icon?: string;
   isCompleted?: boolean;
   deductFromAvailableToSpend?: boolean; // When true, unfulfilled target is deducted from Available to Spend (Hero Green Box)
+  documentIds?: string[];
   updatedAt: string;
 }
 
@@ -306,16 +309,56 @@ export interface Liability {
   updatedAt: string;
 }
 
+export type LinkedEntityType =
+  | 'transaction'
+  | 'asset'
+  | 'liability'
+  | 'goal'
+  | 'people'
+  | 'account'
+  | 'none';
+
+export interface DocumentLink {
+  entityType: LinkedEntityType;
+  entityId: string;
+  entityName?: string;
+  linkedAt: string;
+}
+
+export interface DocumentFolder {
+  id: string;
+  vaultId?: string;
+  name: string;
+  icon?: string;
+  color?: string;
+  isSystem?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DocumentPayload {
+  id: string; // Matches document id
+  vaultId: string;
+  dataUrl: string; // Full uncompressed or optimized base64 payload
+  updatedAt: string;
+}
+
 export interface DocumentRecord {
   id: string;
   vaultId: string;
   name: string;
   fileType: string;
   fileSize: number; // in bytes, max 50MB
-  linkedType: 'asset' | 'liability' | 'account' | 'transaction' | 'none';
+  thumbnailUrl?: string; // Light ~15KB preview thumbnail for ultra-fast gallery loading
+  dataUrl?: string; // Optional for backwards compatibility, lazy-loaded on demand from doc_payload
+  isUncompressed?: boolean; // True if user selected Original Uncompressed
+  folderId?: string; // Built-in: 'receipts' | 'deeds' | 'loans' | 'people' | 'bank' | 'tax' | 'unfiled' or custom UUID
+  tags?: string[];
+  notes?: string;
+  linkedType: LinkedEntityType; // Primary link for backward compatibility
   linkedId?: string;
+  links?: DocumentLink[]; // Multi-entity linkage
   expiryDate?: string;
-  dataUrl: string; // Base64 data url, stored inside encrypted blob
   createdAt: string;
   updatedAt: string;
 }
@@ -361,7 +404,7 @@ export interface VaultNote {
 export interface EncryptedRecord {
   id: string; // Plaintext UUID
   vaultId: string; // Plaintext UUID
-  type: 'account' | 'transaction' | 'category' | 'people' | 'budget' | 'goal' | 'asset' | 'liability' | 'document' | 'plan' | 'note' | 'folder';
+  type: 'account' | 'transaction' | 'category' | 'people' | 'budget' | 'goal' | 'asset' | 'liability' | 'document' | 'doc_payload' | 'doc_folder' | 'plan' | 'note' | 'folder';
   iv: string; // Hex / Base64 IV
   ciphertext: string; // Base64 encrypted JSON
   updatedAt: string;
@@ -378,6 +421,7 @@ export interface VaultData {
   assets: Asset[];
   liabilities: Liability[];
   documents: DocumentRecord[];
+  documentFolders?: DocumentFolder[];
   plannedExpenses?: PlannedExpense[];
   notes?: VaultNote[];
   folders?: NoteFolder[];

@@ -44,12 +44,16 @@ jobs:
             ## KhataGHAR ${{ github.ref_name }} — Sovereign Wealth Operating System
 
             ### 🚀 What's New in ${{ github.ref_name }}
-            - 🎨 **Brand Identity Overhaul**: Complete multi-platform native icon suite for Windows (multi-res ICO 16-256px), macOS (ICNS 16-1024px), Linux (PNGs 16-512px), Android Adaptive Launcher (#1c263e backdrop), and Web PWA.
-            - ⚡ **Global Dynamic P2P Sync Engine**: Duplex background sync listener directly in VaultContext, echo loop prevention, and Master Device reset selection.
-            - 🔔 **Native Scheduled Reminders**: High-importance notifications channel with customizable lead times (1-7 days before) on bills and goals.
-            - 🧮 **Financial Calculators Suite**: 6 institutional calculators (SIP, Step-Up, Lumpsum, SWP, FIRE Runway, Loan Schedule with full Amortization & Prepayments) starting from 0% baseline.
-            - ⚖️ **Reconciliation Diff Modal**: Side-by-side stored vs ledger balance comparison with selective per-account reconciliation and demo data safety guard.
-            - 📱 **Lifelog Mobile Parity**: Safe area insets, native status bar synchronization, hardware back button routing, tactile haptics, and AST Markdown Notes parser.
+            - 📁 **Universal Multi-Attachment Engine Everywhere**: Attach multiple receipts, deeds, agreements, IOUs, bank passbooks, and goal brochures directly to any Transaction, Asset, Liability / Loan, Savings Goal, People Ledger Entry, or Account.
+            - 🗄️ **Central Document & Attachment Hub**: Sovereign encrypted file manager with pre-built system folders (Receipts, Deeds, Loans, People, Bank, Tax, Unfiled) and custom folders with custom colors and emoji icons.
+            - ⚡ **Two-Tier Split-Payload Storage Architecture**: Sub-second vault unlock (< 50ms) and ultra-low RAM footprint (< 30MB) across 1,000+ attachments by separating searchable metadata from heavy binary blobs (lazy-loaded on demand).
+            - 🔗 **Dual-Directional Entity Linking**: Attach files inside any modal or link/unlink existing files across multiple entries directly from the Document Hub.
+            - 🎛️ **Smart Optimized vs. Original RAW**: Toggle between smart client-side 1080p compression and bit-exact uncompressed raw file storage.
+            - 🔍 **Sub-5ms Instant Search & Filter**: High-speed full-text search across attachment names, notes, and tags with entity filters and dual view modes (Visual Gallery Grid & Dense List Table).
+            - 🖼️ **Interactive Lightbox Document Viewer**: Preview images and PDFs with smooth pan/zoom, 90-degree rotation, folder mover, and sovereign export.
+            - 🎯 **Hero Card Real-Time Reactivity**: Instant live balance calculations down to the single paisa for every entry without freezing.
+            - 💎 **First-Class Asset Redemption & Debt Payoff**: Dedicated redemption tab with NAV calculations and one-click loan payoffs.
+            - 📱 **Android In-Place Update Fix**: Continuous release signatures (v1, v2, v3) with persistent keystore ensuring seamless updates over existing installations.
 
             ### 📦 Direct Downloads
             - **Android APK**: Attached below as `KhataGHAR-Android-${{ github.ref_name }}.apk`

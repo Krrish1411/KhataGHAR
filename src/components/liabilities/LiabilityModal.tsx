@@ -6,6 +6,7 @@ import { Button } from '../common/Button';
 import { useVault } from '../../context/VaultContext';
 import type { Liability, LiabilityType, CurrencyCode } from '../../types';
 import { CreditCard } from 'lucide-react';
+import { AttachmentField, type AttachmentItem } from '../documents/AttachmentField';
 
 interface LiabilityModalProps {
   isOpen: boolean;
@@ -20,7 +21,17 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
   liabilityToEdit,
   onLiabilityCreated,
 }) => {
-  const { addLiability, updateLiability, activeVault, accounts, addTransaction } = useVault();
+  const {
+    addLiability,
+    updateLiability,
+    activeVault,
+    accounts,
+    addTransaction,
+    documents,
+    addDocument,
+    linkDocumentToEntity,
+    unlinkDocumentFromEntity,
+  } = useVault();
 
   const [name, setName] = useState(liabilityToEdit?.name || '');
   const [type, setType] = useState<LiabilityType>(liabilityToEdit?.type || 'home_loan');
@@ -62,6 +73,21 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
   const [notes, setNotes] = useState(liabilityToEdit?.notes || '');
   const [linkToBank, setLinkToBank] = useState(false);
   const [bankAccountId, setBankAccountId] = useState(accounts[0]?.id || '');
+  const [attachments, setAttachments] = useState<AttachmentItem[]>(() => {
+    if (!liabilityToEdit) return [];
+    return documents
+      .filter((d) => d.linkedId === liabilityToEdit.id || d.links?.some((l) => l.entityId === liabilityToEdit.id))
+      .map((d) => ({
+        id: d.id,
+        name: d.name,
+        dataUrl: d.dataUrl || '',
+        thumbnailUrl: d.thumbnailUrl,
+        fileSize: d.fileSize,
+        fileType: d.fileType,
+        isUncompressed: d.isUncompressed,
+        isExistingHubDoc: true,
+      }));
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -87,6 +113,7 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
     setError('');
 
     try {
+      let targetLiabId = liabilityToEdit ? liabilityToEdit.id : '';
       if (liabilityToEdit) {
         await updateLiability({
           ...liabilityToEdit,
@@ -126,6 +153,7 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
           currency,
           notes: notes.trim() || undefined,
         });
+        targetLiabId = newLiability.id;
 
         if (linkToBank && bankAccountId && numOutstanding > 0) {
           await addTransaction({
@@ -143,6 +171,50 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
           onLiabilityCreated(newLiability);
         }
       }
+
+      const targetLiabName = name.trim();
+
+      // Sync attachments in Document Hub:
+      const existingAttachedDocs = documents.filter(
+        (d) => d.linkedId === targetLiabId || d.links?.some((l) => l.entityId === targetLiabId)
+      );
+      const currentAttachedIds = new Set(attachments.map((a) => a.id).filter(Boolean));
+
+      for (const oldDoc of existingAttachedDocs) {
+        if (!currentAttachedIds.has(oldDoc.id)) {
+          await unlinkDocumentFromEntity(oldDoc.id, 'liability', targetLiabId);
+        }
+      }
+
+      for (const item of attachments) {
+        if (item.isExistingHubDoc && item.id) {
+          await linkDocumentToEntity(item.id, 'liability', targetLiabId, targetLiabName);
+        } else if (!item.id && item.dataUrl) {
+          await addDocument(
+            {
+              name: item.name,
+              fileType: item.fileType,
+              fileSize: item.fileSize,
+              folderId: 'loans',
+              thumbnailUrl: item.thumbnailUrl,
+              isUncompressed: item.isUncompressed,
+              linkedType: 'liability',
+              linkedId: targetLiabId,
+              links: [
+                {
+                  entityType: 'liability',
+                  entityId: targetLiabId,
+                  entityName: targetLiabName,
+                  linkedAt: new Date().toISOString(),
+                },
+              ],
+            },
+            item.dataUrl,
+            { isUncompressed: item.isUncompressed }
+          );
+        }
+      }
+
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to save liability');
@@ -500,6 +572,14 @@ export const LiabilityModal: React.FC<LiabilityModalProps> = ({
             )}
           </div>
         )}
+
+        <AttachmentField
+          label="Loan Documents, Sanctions & NOCs"
+          attachments={attachments}
+          onChange={setAttachments}
+          entityType="liability"
+          defaultFolderId="loans"
+        />
 
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>

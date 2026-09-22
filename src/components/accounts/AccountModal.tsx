@@ -5,9 +5,10 @@ import { Select } from '../common/Select';
 import { Button } from '../common/Button';
 import { useVault } from '../../context/VaultContext';
 import { formatCurrency } from '../../utils/formatters';
-import { isTxAfterBaseline } from '../../utils/dates';
+import { isTxAfterBaseline, formatDateISO } from '../../utils/dates';
 import type { Account, AccountType, AccountTag, CurrencyCode } from '../../types';
 import { Landmark, Wallet, ShieldCheck } from 'lucide-react';
+import { AttachmentField, type AttachmentItem } from '../documents/AttachmentField';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -22,11 +23,21 @@ export const AccountModal: React.FC<AccountModalProps> = ({
   accountToEdit,
   onAccountCreated,
 }) => {
-  const { addAccount, updateAccount, transactions, peopleLedger } = useVault();
+  const {
+    addAccount,
+    updateAccount,
+    activeVault,
+    transactions,
+    peopleLedger,
+    documents,
+    addDocument,
+    linkDocumentToEntity,
+    unlinkDocumentFromEntity,
+  } = useVault();
 
   const [name, setName] = useState(accountToEdit?.name || '');
   const [type, setType] = useState<AccountType>(accountToEdit?.type || 'bank');
-  const [currency, setCurrency] = useState<CurrencyCode>(accountToEdit?.currency || 'INR');
+  const [currency, setCurrency] = useState<CurrencyCode>(accountToEdit?.currency || activeVault?.currency || 'INR');
   const [initialBalance, setInitialBalance] = useState(
     accountToEdit?.initialBalance !== undefined
       ? String(accountToEdit.type === 'credit_card' ? Math.abs(accountToEdit.initialBalance) : accountToEdit.initialBalance)
@@ -35,13 +46,28 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           : '0')
   );
   const [balanceAsOfDate, setBalanceAsOfDate] = useState(
-    accountToEdit?.balanceAsOfDate || new Date().toISOString().split('T')[0]
+    accountToEdit?.balanceAsOfDate || formatDateISO(new Date())
   );
   const [tag, setTag] = useState<AccountTag>(accountToEdit?.tag || 'personal');
   const [isVisibleOnDashboard, setIsVisibleOnDashboard] = useState(accountToEdit?.isVisibleOnDashboard ?? true);
   const [institutionName, setInstitutionName] = useState(accountToEdit?.institutionName || '');
   const [accountNumberLast4, setAccountNumberLast4] = useState(accountToEdit?.accountNumberLast4 || '');
   const [notes, setNotes] = useState(accountToEdit?.notes || '');
+  const [attachments, setAttachments] = useState<AttachmentItem[]>(() => {
+    if (!accountToEdit) return [];
+    return documents
+      .filter((d) => d.linkedId === accountToEdit.id || d.links?.some((l) => l.entityId === accountToEdit.id))
+      .map((d) => ({
+        id: d.id,
+        name: d.name,
+        dataUrl: d.dataUrl || '',
+        thumbnailUrl: d.thumbnailUrl,
+        fileSize: d.fileSize,
+        fileType: d.fileType,
+        isUncompressed: d.isUncompressed,
+        isExistingHubDoc: true,
+      }));
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -95,7 +121,8 @@ export const AccountModal: React.FC<AccountModalProps> = ({
     setError('');
 
     try {
-      const finalDate = balanceAsOfDate || new Date().toISOString().split('T')[0];
+      const finalDate = balanceAsOfDate || formatDateISO(new Date());
+      let targetAccId = accountToEdit ? accountToEdit.id : '';
       if (accountToEdit) {
         // Recompute current balance = new fixed initial balance + ledger activity post-baseline
         const finalCurrentBalance = Math.round((finalInitial + ledgerActivity + Number.EPSILON) * 100) / 100;
@@ -128,10 +155,55 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           accountNumberLast4: accountNumberLast4.trim() || undefined,
           notes: notes.trim() || undefined,
         });
+        targetAccId = newAcc.id;
         if (onAccountCreated) {
           onAccountCreated(newAcc);
         }
       }
+
+      const targetAccName = name.trim();
+
+      // Sync attachments in Document Hub:
+      const existingAttachedDocs = documents.filter(
+        (d) => d.linkedId === targetAccId || d.links?.some((l) => l.entityId === targetAccId)
+      );
+      const currentAttachedIds = new Set(attachments.map((a) => a.id).filter(Boolean));
+
+      for (const oldDoc of existingAttachedDocs) {
+        if (!currentAttachedIds.has(oldDoc.id)) {
+          await unlinkDocumentFromEntity(oldDoc.id, 'account', targetAccId);
+        }
+      }
+
+      for (const item of attachments) {
+        if (item.isExistingHubDoc && item.id) {
+          await linkDocumentToEntity(item.id, 'account', targetAccId, targetAccName);
+        } else if (!item.id && item.dataUrl) {
+          await addDocument(
+            {
+              name: item.name,
+              fileType: item.fileType,
+              fileSize: item.fileSize,
+              folderId: 'bank',
+              thumbnailUrl: item.thumbnailUrl,
+              isUncompressed: item.isUncompressed,
+              linkedType: 'account',
+              linkedId: targetAccId,
+              links: [
+                {
+                  entityType: 'account',
+                  entityId: targetAccId,
+                  entityName: targetAccName,
+                  linkedAt: new Date().toISOString(),
+                },
+              ],
+            },
+            item.dataUrl,
+            { isUncompressed: item.isUncompressed }
+          );
+        }
+      }
+
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to save account');
@@ -302,6 +374,14 @@ export const AccountModal: React.FC<AccountModalProps> = ({
           placeholder="e.g. Primary salary account"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
+        />
+
+        <AttachmentField
+          label="Bank Passbooks, Cheques & KYC Records"
+          attachments={attachments}
+          onChange={setAttachments}
+          entityType="account"
+          defaultFolderId="bank"
         />
 
         <div className="flex items-center justify-end gap-2 pt-2">

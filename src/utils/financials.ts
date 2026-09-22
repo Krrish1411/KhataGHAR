@@ -31,7 +31,7 @@ export interface DerivedFinancials {
 }
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const r2 = (v: number) => Math.round(v * 100) / 100;
+const r2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 export function computeDerivedFinancials(
   accounts: Account[],
@@ -52,22 +52,25 @@ export function computeDerivedFinancials(
   const visibleAccounts = accounts.filter((a) => a.isVisibleOnDashboard !== false);
 
   // Overdraft on non-credit accounts (negative balances)
-  const overdraftDebt = visibleAccounts
-    .filter((a) => a.type !== 'credit_card' && a.balance < 0)
-    .reduce((sum, a) => sum + Math.abs(a.balance), 0);
+  const overdraftDebt = r2(
+    visibleAccounts
+      .filter((a) => a.type !== 'credit_card' && a.balance < 0)
+      .reduce((sum, a) => sum + Math.abs(a.balance), 0)
+  );
 
-  // Net positive liquid money across non-credit accounts
-  const liquidBalance = Math.max(
-    0,
+  // Net liquid money across non-credit bank, cash, and wallet accounts
+  const liquidBalance = r2(
     visibleAccounts
       .filter((a) => a.type !== 'credit_card')
       .reduce((sum, a) => sum + a.balance, 0)
   );
 
   // Credit card debt is negative balance on credit accounts
-  const creditOutstanding = Math.max(
-    0,
-    -visibleAccounts.filter((a) => a.type === 'credit_card').reduce((sum, a) => sum + Math.min(0, a.balance), 0)
+  const creditOutstanding = r2(
+    Math.max(
+      0,
+      -visibleAccounts.filter((a) => a.type === 'credit_card').reduce((sum, a) => sum + Math.min(0, a.balance), 0)
+    )
   );
 
   const extraAssetsVal = assets.reduce((sum, a) => sum + (a.currentValue || 0), 0);
@@ -146,16 +149,20 @@ export function computeDerivedFinancials(
   const committedTotal = r2(remainingBudgetsTotal + remainingEMIsTotal);
   const committedPaidThisMonth = r2(Math.max(0, grossCommittedTotal - committedTotal));
 
-  // 4. Savings Goals Deductions: Deduct current saved amount (e.g. 20K saved, not 80K unfulfilled target)
-  // When a user saves money towards a goal, that saved amount is reserved from spendable cash.
+  // 4. Savings Goals Deductions: Deduct current saved amount if explicitly designated by user
+  // When a user saves money towards a goal and opts into deduction, that saved amount is reserved from spendable cash.
   const goalReservations = r2(
     goals
-      .filter((g) => g.deductFromAvailableToSpend !== false)
+      .filter((g) => g.deductFromAvailableToSpend === true)
       .reduce((sum, g) => sum + Math.max(0, g.currentAmount || 0), 0)
   );
 
-  // 5. Available to Spend: True liquid cash minus custodial liquid funds minus remaining unpaid commitments minus saved goal reservations
-  const availableToSpend = r2(Math.max(0, liquidBalance - reservedLiquidTotal - committedTotal - goalReservations));
+  // 5. Available to Spend:
+  // True liquid cash minus custodial funds minus upcoming fixed obligations (EMIs) minus goal reservations.
+  // By separating fixed debt obligations from variable discretionary budgets, every single expense logged
+  // immediately and accurately decrements spendable cash without zero-sum budget cancellation.
+  const fixedUpcomingObligations = r2(reservedLiquidTotal + remainingEMIsTotal);
+  const availableToSpend = r2(liquidBalance - fixedUpcomingObligations - goalReservations);
 
   // 6. Net Worth: Verified Balance Sheet Assets − Liabilities
   const netWorth = r2(totalAssets - totalLiabilities);

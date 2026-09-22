@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.0.0-beta.6] - 2026-09-22
+
+### 📁 Universal Multi-Attachment Engine Everywhere
+- **Multi-Attachment Support**: Attach multiple receipts, deeds, agreements, IOUs, bank passbooks, and goal brochures directly to any **Transaction**, **Asset**, **Liability / Loan**, **Savings Goal**, **People Ledger Entry**, or **Account**.
+- **Bi-Directional Entity Linking**: Files attached inside any modal automatically index into the central Document Hub; conversely, any file in the Document Hub can be dynamically linked to or unlinked from multiple entities at any time.
+- **Smart Optimized vs. Original RAW Toggle**: Complete sovereign control for users to store bit-for-bit uncompressed original files or apply smart client-side 1080p canvas WebP/JPEG compression for massive disk savings.
+
+### 🗄️ Central Document & Attachment Hub
+- **Anti-Clutter Folder Organization**: Pre-built system folders (`Receipts`, `Deeds`, `Loans`, `People`, `Bank`, `Tax`, `Unfiled`) plus user-created custom folders with customizable colors and emoji icons.
+- **Sub-5ms Ultra-Fast Search**: High-speed full-text search across document names, notes, tags, and linked entity names with instant client-side filtering.
+- **Dual Visual Modes**: Seamless toggle between a Visual Media Gallery Grid and a Dense Structured Table.
+- **Interactive Lightbox Viewer**: High-fidelity in-app viewer for images and PDFs with smooth pan/zoom, 90-degree rotation, folder transfer, and sovereign file download.
+- **Storage Consumption Meter**: Real-time breakdown of total storage utilized by attachments in the encrypted vault.
+
+### ⚡ Two-Tier Split-Payload Storage Architecture
+- **Sub-Second Vault Unlock (< 50ms)**: Separates lightweight searchable metadata (`DocumentRecord`) from heavy binary payloads (`doc_payload`).
+- **Low RAM Overhead (< 30MB)**: Prevents browser webview memory exhaustion and UI freezes when managing 1,000+ attachments by lazy-loading file blobs on demand only when opened.
+
+### 🎯 Hero Card 1-Paisa Reactivity & Core Fixes
+- **Exact Paisa Reactivity**: Resolved cash balance freeze; all fractional amounts down to 1 paisa (₹0.01) immediately update the Hero card cash balance in real time.
+- **Asset Redemption**: Dedicated 'Redeem' tab in the Add Entry modal with proceeds account routing and NAV valuation calculations.
+- **Debt & Loan Full Payoff**: Dedicated 'Loan / Debt Repaid' mode with one-click full payoff and automatic status settlement.
+- **Android In-Place Update Fix**: Android package installer compatibility with explicit v1/v2/v3 signatures, permanent release keystore, and disabled testOnly flag (`versionCode 6`).
+
+---
+
+## [1.0.0-beta.5] - 2026-09-22
+
+### 🐛 Bug Fixes & Architectural Improvements
+- **Hero Card Real-Time Reactivity**: Instant live updates down to the single paisa for every transaction without freeze or stale caching.
+- **First-Class Asset Redemption**: Direct dedicated 'Redeem' tab in Add Entry modal with proceeds account routing and NAV valuation calculations.
+- **Debt & Loan Full Repayment**: Dedicated 'Loan / Debt Repaid' mode with one-click full payoff and automatic status settlement.
+- **Android In-Place Update Fix**: Android package installer compatibility with explicit v1/v2/v3 signatures, permanent release keystore, and disabled testOnly flag.
+
+---
+
 ## [1.0.0-beta.2] - 2026-09-16
 
 ### 🎨 Brand Identity Overhaul & Multi-Platform Native Icons

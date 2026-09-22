@@ -63,7 +63,7 @@ export const DashboardView: React.FC = () => {
   const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
   const [netWorthMode, setNetWorthMode] = useState<'total' | 'liquid'>('total');
   const [showLiquidCash, setShowLiquidCash] = useState<boolean>(() => {
-    return typeof localStorage !== 'undefined' ? localStorage.getItem('khataghar_hero_show_liquid') === 'true' : false;
+    return typeof localStorage !== 'undefined' ? localStorage.getItem('khataghar_hero_show_liquid') !== 'false' : true;
   });
 
   const toggleShowLiquidCash = () => {
@@ -335,6 +335,7 @@ export const DashboardView: React.FC = () => {
               currency={baseCurrency}
               numberFormat={numberFormat}
               isPrivacyMode={isPrivacyMode}
+              decimals={2}
             />
           </div>
 
@@ -351,14 +352,14 @@ export const DashboardView: React.FC = () => {
               <ArrowDownLeft className="w-3.5 h-3.5 text-pine-300" />
               <span>In</span>
               <b className="num text-pine-50">
-                {formatCompactCurrency(d.thisMonthIncome, baseCurrency, numberFormat, isPrivacyMode)}
+                {formatCurrency(d.thisMonthIncome, baseCurrency, numberFormat, isPrivacyMode)}
               </b>
             </span>
             <span className="flex items-center gap-1.5 text-pine-200">
               <ArrowUpRight className="w-3.5 h-3.5 text-mari-300" />
               <span>Out</span>
               <b className="num text-pine-50">
-                {formatCompactCurrency(d.thisMonthExpense, baseCurrency, numberFormat, isPrivacyMode)}
+                {formatCurrency(d.thisMonthExpense, baseCurrency, numberFormat, isPrivacyMode)}
               </b>
             </span>
           </div>

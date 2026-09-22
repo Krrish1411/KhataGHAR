@@ -10,6 +10,10 @@ import type {
   AssetTranche,
   Liability,
   DocumentRecord,
+  LinkedEntityType,
+  DocumentLink,
+  DocumentFolder,
+  DocumentPayload,
   PlannedExpense,
   VaultMeta,
   SettlementRecord,
@@ -26,12 +30,14 @@ import {
   deleteRecord,
   generateUUID,
   DEFAULT_NOTE_FOLDERS,
+  DEFAULT_DOCUMENT_FOLDERS,
   autoMigrateVaultTo600k,
 } from '../services/storage';
+import { generateThumbnail } from '../utils/imageCompressor';
 import { decryptData, encryptData, verifyKey } from '../services/crypto';
 import { syncEngine, mergeFullState } from '../services/sync/syncEngine';
 import { generateDemoDataset } from '../services/demoData';
-import { isTxAfterBaseline } from '../utils/dates';
+import { isTxAfterBaseline, formatDateISO } from '../utils/dates';
 import { generateStarterCategories } from '../utils/categories';
 import { suggestCategoryIcon } from '../components/common/IconRenderer';
 import { checkAndNotifyUpcomingReminders } from '../utils/nativeNotification';
@@ -145,8 +151,30 @@ interface VaultContextType {
   deleteLiability: (id: string) => Promise<void>;
 
   // Document Operations
-  addDocument: (doc: Omit<DocumentRecord, 'id' | 'vaultId' | 'createdAt' | 'updatedAt'>) => Promise<DocumentRecord>;
+  documentFolders: DocumentFolder[];
+  loadDocumentDataUrl: (docId: string) => Promise<string>;
+  addDocument: (
+    doc: Omit<DocumentRecord, 'id' | 'vaultId' | 'createdAt' | 'updatedAt'>,
+    fileDataUrl?: string,
+    options?: { isUncompressed?: boolean }
+  ) => Promise<DocumentRecord>;
+  updateDocument: (id: string, updates: Partial<DocumentRecord>) => Promise<DocumentRecord>;
   deleteDocument: (id: string) => Promise<void>;
+  linkDocumentToEntity: (
+    docId: string,
+    entityType: LinkedEntityType,
+    entityId: string,
+    entityName?: string
+  ) => Promise<void>;
+  unlinkDocumentFromEntity: (
+    docId: string,
+    entityType: LinkedEntityType,
+    entityId: string
+  ) => Promise<void>;
+  addDocumentFolder: (
+    folder: Omit<DocumentFolder, 'id' | 'vaultId' | 'createdAt' | 'updatedAt'>
+  ) => Promise<DocumentFolder>;
+  deleteDocumentFolder: (id: string) => Promise<void>;
 
   // Notes & Folders Operations
   addNote: (note: Omit<VaultNote, 'id' | 'vaultId' | 'createdAt' | 'updatedAt'>) => Promise<VaultNote>;
@@ -181,6 +209,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [plannedExpenses, setPlannedExpenses] = useState<PlannedExpense[]>([]);
   const [notes, setNotes] = useState<VaultNote[]>([]);
   const [folders, setFolders] = useState<NoteFolder[]>([]);
+  const [documentFolders, setDocumentFolders] = useState<DocumentFolder[]>(DEFAULT_DOCUMENT_FOLDERS);
   const [isDecrypting, setIsDecrypting] = useState<boolean>(false);
   const [needsMigrationRecovery, setNeedsMigrationRecovery] = useState<boolean>(false);
 
@@ -203,6 +232,8 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   liabilitiesRef.current = liabilities;
   const documentsRef = useRef<DocumentRecord[]>(documents);
   documentsRef.current = documents;
+  const documentFoldersRef = useRef<DocumentFolder[]>(documentFolders);
+  documentFoldersRef.current = documentFolders;
   const plannedExpensesRef = useRef<PlannedExpense[]>(plannedExpenses);
   plannedExpensesRef.current = plannedExpenses;
   const notesRef = useRef<VaultNote[]>(notes);
@@ -422,6 +453,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const asts: Asset[] = [];
       const liabs: Liability[] = [];
       const docs: DocumentRecord[] = [];
+      const docFldrs: DocumentFolder[] = [];
       const plans: PlannedExpense[] = [];
       const nts: VaultNote[] = [];
       const fldrs: NoteFolder[] = [];
@@ -457,6 +489,12 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 break;
               case 'document':
                 docs.push(await decryptData<DocumentRecord>(row.iv, row.ciphertext, sessionKey));
+                break;
+              case 'doc_folder':
+                docFldrs.push(await decryptData<DocumentFolder>(row.iv, row.ciphertext, sessionKey));
+                break;
+              case 'doc_payload':
+                // Lazy loaded on demand to keep RAM low and vault unlocking instant (<50ms)
                 break;
               case 'plan':
                 plans.push(await decryptData<PlannedExpense>(row.iv, row.ciphertext, sessionKey));
@@ -579,6 +617,21 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setAssets(healedAssets);
       setLiabilities(liabs);
       setDocuments(docs);
+      documentsRef.current = docs;
+      const mergedDocFolders: DocumentFolder[] = [
+        ...DEFAULT_DOCUMENT_FOLDERS.map((df) => ({
+          id: df.id,
+          vaultId: activeVault.id,
+          name: df.name,
+          icon: df.icon,
+          color: df.color,
+          isSystem: true,
+          updatedAt: new Date().toISOString(),
+        })),
+        ...docFldrs.filter((f) => !DEFAULT_DOCUMENT_FOLDERS.some((df) => df.id === f.id)),
+      ];
+      documentFoldersRef.current = mergedDocFolders;
+      setDocumentFolders(mergedDocFolders);
       setPlannedExpenses(plans);
       checkAndNotifyUpcomingReminders(plans, gls).catch(() => {});
 
@@ -843,7 +896,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const validInitial = typeof data.initialBalance === 'number' && !isNaN(data.initialBalance)
       ? round2(data.initialBalance)
       : validBal;
-    const baseDate = data.balanceAsOfDate || new Date().toISOString().split('T')[0];
+    const baseDate = data.balanceAsOfDate || formatDateISO(new Date());
 
     const newAccount: Account = {
       ...data,
@@ -871,7 +924,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ...account,
       balance: validBal,
       initialBalance: validInitial,
-      balanceAsOfDate: account.balanceAsOfDate || new Date().toISOString().split('T')[0],
+      balanceAsOfDate: account.balanceAsOfDate || formatDateISO(new Date()),
       updatedAt: new Date().toISOString(),
     };
     accountsRef.current = accountsRef.current.map((a) => (a.id === updated.id ? updated : a));
@@ -1008,48 +1061,68 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     transactionsRef.current = [newTx, ...transactionsRef.current].sort((a, b) => b.date.localeCompare(a.date));
     setTransactions(transactionsRef.current);
 
-    // Update connected account balances with precise 2-decimal rounding (strictly after baseline opening date)
+    // Update connected account balances with precise 2-decimal rounding
     if (newTx.type === 'expense') {
       if (!newTx.paidByContactName && !newTx.paidByContactId) {
         accountsRef.current = accountsRef.current.map((acc) => {
           if (acc.id === newTx.accountId) {
-            if (!isTxAfterBaseline(newTx.date, acc.balanceAsOfDate)) return acc;
-            const updated = { ...acc, balance: round2(acc.balance - newTx.amount), updatedAt: new Date().toISOString() };
+            const newBaseline = !acc.balanceAsOfDate || newTx.date < acc.balanceAsOfDate ? newTx.date : acc.balanceAsOfDate;
+            const updated = {
+              ...acc,
+              balance: round2(acc.balance - newTx.amount),
+              balanceAsOfDate: newBaseline,
+              updatedAt: new Date().toISOString(),
+            };
             saveEncryptedRecord('account', updated, sessionKey);
             return updated;
           }
           return acc;
         });
-        setAccounts(accountsRef.current);
+        setAccounts([...accountsRef.current]);
       }
     } else if (newTx.type === 'income') {
       accountsRef.current = accountsRef.current.map((acc) => {
         if (acc.id === newTx.accountId) {
-          if (!isTxAfterBaseline(newTx.date, acc.balanceAsOfDate)) return acc;
-          const updated = { ...acc, balance: round2(acc.balance + newTx.amount), updatedAt: new Date().toISOString() };
+          const newBaseline = !acc.balanceAsOfDate || newTx.date < acc.balanceAsOfDate ? newTx.date : acc.balanceAsOfDate;
+          const updated = {
+            ...acc,
+            balance: round2(acc.balance + newTx.amount),
+            balanceAsOfDate: newBaseline,
+            updatedAt: new Date().toISOString(),
+          };
           saveEncryptedRecord('account', updated, sessionKey);
           return updated;
         }
         return acc;
       });
-      setAccounts(accountsRef.current);
+      setAccounts([...accountsRef.current]);
     } else if (newTx.type === 'transfer' && newTx.toAccountId) {
       accountsRef.current = accountsRef.current.map((acc) => {
         if (acc.id === newTx.accountId) {
-          if (!isTxAfterBaseline(newTx.date, acc.balanceAsOfDate)) return acc;
-          const updated = { ...acc, balance: round2(acc.balance - newTx.amount), updatedAt: new Date().toISOString() };
+          const newBaseline = !acc.balanceAsOfDate || newTx.date < acc.balanceAsOfDate ? newTx.date : acc.balanceAsOfDate;
+          const updated = {
+            ...acc,
+            balance: round2(acc.balance - newTx.amount),
+            balanceAsOfDate: newBaseline,
+            updatedAt: new Date().toISOString(),
+          };
           saveEncryptedRecord('account', updated, sessionKey);
           return updated;
         }
         if (acc.id === newTx.toAccountId) {
-          if (!isTxAfterBaseline(newTx.date, acc.balanceAsOfDate)) return acc;
-          const updated = { ...acc, balance: round2(acc.balance + newTx.amount), updatedAt: new Date().toISOString() };
+          const newBaseline = !acc.balanceAsOfDate || newTx.date < acc.balanceAsOfDate ? newTx.date : acc.balanceAsOfDate;
+          const updated = {
+            ...acc,
+            balance: round2(acc.balance + newTx.amount),
+            balanceAsOfDate: newBaseline,
+            updatedAt: new Date().toISOString(),
+          };
           saveEncryptedRecord('account', updated, sessionKey);
           return updated;
         }
         return acc;
       });
-      setAccounts(accountsRef.current);
+      setAccounts([...accountsRef.current]);
     }
 
     // If linked to an Asset (Investment / SIP / Asset purchase OR Asset Sale / Redemption)
@@ -2892,24 +2965,221 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Document Operations
+  const loadDocumentDataUrl = async (docId: string): Promise<string> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const memDoc = documentsRef.current.find((d) => d.id === docId);
+    if (memDoc?.dataUrl) {
+      return memDoc.dataUrl;
+    }
+
+    try {
+      const row = await db.records.get(docId);
+      if (row) {
+        if ((row.type as any) === 'doc_payload') {
+          const payload = await decryptData<DocumentPayload>(row.iv, row.ciphertext, sessionKey);
+          return payload.dataUrl;
+        } else if ((row.type as any) === 'document') {
+          const fullDoc = await decryptData<DocumentRecord>(row.iv, row.ciphertext, sessionKey);
+          return fullDoc.dataUrl || '';
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load document data URL:', err);
+    }
+    return '';
+  };
+
   const addDocument = async (
-    data: Omit<DocumentRecord, 'id' | 'vaultId' | 'createdAt' | 'updatedAt'>
+    data: Omit<DocumentRecord, 'id' | 'vaultId' | 'createdAt' | 'updatedAt'>,
+    fileDataUrl?: string,
+    options?: { isUncompressed?: boolean }
   ): Promise<DocumentRecord> => {
     if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const docId = generateUUID();
+    const now = new Date().toISOString();
+    const actualDataUrl = fileDataUrl || data.dataUrl || '';
+
+    // Auto-compute thumbnail for image if missing
+    let thumbUrl = data.thumbnailUrl;
+    if (!thumbUrl && actualDataUrl.startsWith('data:image/')) {
+      try {
+        thumbUrl = await generateThumbnail(actualDataUrl);
+      } catch {
+        thumbUrl = undefined;
+      }
+    }
+
+    // Auto-assign folderId if missing based on linkedType
+    let folderId = data.folderId;
+    if (!folderId) {
+      if (data.linkedType === 'transaction') folderId = 'receipts';
+      else if (data.linkedType === 'asset') folderId = 'deeds';
+      else if (data.linkedType === 'liability') folderId = 'loans';
+      else if (data.linkedType === 'people') folderId = 'people';
+      else if (data.linkedType === 'account') folderId = 'bank';
+      else folderId = 'unfiled';
+    }
+
+    // Format links array
+    const links: DocumentLink[] = data.links ? [...data.links] : [];
+    if (links.length === 0 && data.linkedType && data.linkedType !== 'none' && data.linkedId) {
+      links.push({
+        entityType: data.linkedType,
+        entityId: data.linkedId,
+        linkedAt: now,
+      });
+    }
+
+    // 1. Save doc_payload (the heavy dataUrl)
+    if (actualDataUrl) {
+      const payload: DocumentPayload = {
+        id: docId,
+        vaultId: activeVault.id,
+        dataUrl: actualDataUrl,
+        updatedAt: now,
+      };
+      await saveEncryptedRecord('doc_payload' as any, payload, sessionKey);
+    }
+
+    // 2. Save DocumentRecord metadata (ultra-light, low RAM!)
     const newDoc: DocumentRecord = {
       ...data,
-      id: generateUUID(),
+      id: docId,
       vaultId: activeVault.id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      folderId,
+      thumbnailUrl: thumbUrl,
+      isUncompressed: options?.isUncompressed ?? data.isUncompressed ?? false,
+      links,
+      dataUrl: actualDataUrl, // in-memory for instant preview
+      createdAt: now,
+      updatedAt: now,
     };
-    setDocuments((prev) => [...prev, newDoc]);
-    await saveEncryptedRecord('document', newDoc, sessionKey);
+
+    documentsRef.current = [newDoc, ...documentsRef.current];
+    setDocuments(documentsRef.current);
+
+    // Encrypt metadata row without the heavy dataUrl to keep IndexedDB row tiny and unlock fast
+    const metadataToSave: DocumentRecord = {
+      ...newDoc,
+      dataUrl: undefined,
+    };
+    await saveEncryptedRecord('document', metadataToSave, sessionKey);
+
     return newDoc;
   };
 
+  const updateDocument = async (id: string, updates: Partial<DocumentRecord>): Promise<DocumentRecord> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const existing = documentsRef.current.find((d) => d.id === id);
+    if (!existing) throw new Error('Document not found');
+
+    const updatedDoc: DocumentRecord = {
+      ...existing,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    documentsRef.current = documentsRef.current.map((d) => (d.id === id ? updatedDoc : d));
+    setDocuments(documentsRef.current);
+
+    const metadataToSave: DocumentRecord = {
+      ...updatedDoc,
+      dataUrl: undefined,
+    };
+    await saveEncryptedRecord('document', metadataToSave, sessionKey);
+    return updatedDoc;
+  };
+
   const deleteDocument = async (id: string): Promise<void> => {
-    setDocuments((prev) => prev.filter((d) => d.id !== id));
+    documentsRef.current = documentsRef.current.filter((d) => d.id !== id);
+    setDocuments(documentsRef.current);
+    await deleteRecord(id);
+    try {
+      await deleteRecord(id);
+    } catch {}
+  };
+
+  const linkDocumentToEntity = async (
+    docId: string,
+    entityType: LinkedEntityType,
+    entityId: string,
+    entityName?: string
+  ): Promise<void> => {
+    const doc = documentsRef.current.find((d) => d.id === docId);
+    if (!doc) return;
+
+    const existingLinks = doc.links || [];
+    const alreadyLinked = existingLinks.some((l) => l.entityType === entityType && l.entityId === entityId);
+    if (alreadyLinked) return;
+
+    const newLink: DocumentLink = {
+      entityType,
+      entityId,
+      entityName,
+      linkedAt: new Date().toISOString(),
+    };
+
+    const newLinks = [...existingLinks, newLink];
+    const newLinkedType = doc.linkedType === 'none' ? entityType : doc.linkedType;
+    const newLinkedId = !doc.linkedId ? entityId : doc.linkedId;
+
+    await updateDocument(docId, {
+      links: newLinks,
+      linkedType: newLinkedType,
+      linkedId: newLinkedId,
+    });
+  };
+
+  const unlinkDocumentFromEntity = async (
+    docId: string,
+    entityType: LinkedEntityType,
+    entityId: string
+  ): Promise<void> => {
+    const doc = documentsRef.current.find((d) => d.id === docId);
+    if (!doc) return;
+
+    const newLinks = (doc.links || []).filter((l) => !(l.entityType === entityType && l.entityId === entityId));
+    let newLinkedType = doc.linkedType;
+    let newLinkedId = doc.linkedId;
+
+    if (doc.linkedType === entityType && doc.linkedId === entityId) {
+      if (newLinks.length > 0) {
+        newLinkedType = newLinks[0].entityType;
+        newLinkedId = newLinks[0].entityId;
+      } else {
+        newLinkedType = 'none';
+        newLinkedId = undefined;
+      }
+    }
+
+    await updateDocument(docId, {
+      links: newLinks,
+      linkedType: newLinkedType,
+      linkedId: newLinkedId,
+    });
+  };
+
+  const addDocumentFolder = async (
+    folder: Omit<DocumentFolder, 'id' | 'vaultId' | 'createdAt' | 'updatedAt'>
+  ): Promise<DocumentFolder> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const newFolder: DocumentFolder & { id: string; vaultId: string; updatedAt: string } = {
+      ...folder,
+      id: generateUUID(),
+      vaultId: activeVault.id,
+      isSystem: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    documentFoldersRef.current = [...documentFoldersRef.current, newFolder];
+    setDocumentFolders(documentFoldersRef.current);
+    await saveEncryptedRecord('doc_folder' as any, newFolder, sessionKey);
+    return newFolder;
+  };
+
+  const deleteDocumentFolder = async (id: string): Promise<void> => {
+    documentFoldersRef.current = documentFoldersRef.current.filter((f) => f.id !== id);
+    setDocumentFolders(documentFoldersRef.current);
     await deleteRecord(id);
   };
 
@@ -3068,8 +3338,15 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addLiability,
         updateLiability,
         deleteLiability,
+        documentFolders,
+        loadDocumentDataUrl,
         addDocument,
+        updateDocument,
         deleteDocument,
+        linkDocumentToEntity,
+        unlinkDocumentFromEntity,
+        addDocumentFolder,
+        deleteDocumentFolder,
         addNote,
         updateNote,
         deleteNote,

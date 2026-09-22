@@ -19,6 +19,7 @@ import type {
   NumberFormatType,
   VaultNote,
   NoteFolder,
+  DocumentFolder,
 } from '../types';
 import {
   generateSalt,
@@ -39,6 +40,16 @@ export const DEFAULT_NOTE_FOLDERS: Array<{ id: string; name: string; icon: strin
   { id: 'investments', name: 'Investments & Plans', icon: 'TrendingUp', color: '#059669' },
   { id: 'agreements', name: 'Agreements & IOUs', icon: 'FileText', color: '#92400e' },
   { id: 'general', name: 'Personal Memos', icon: 'Sparkles', color: '#6366f1' },
+];
+
+export const DEFAULT_DOCUMENT_FOLDERS: Array<{ id: string; name: string; icon: string; color: string; isSystem: boolean }> = [
+  { id: 'receipts', name: 'Receipts & Invoices', icon: 'Receipt', color: '#10b981', isSystem: true },
+  { id: 'deeds', name: 'Asset Deeds & Valuations', icon: 'FileText', color: '#6366f1', isSystem: true },
+  { id: 'loans', name: 'Loan Agreements & NOCs', icon: 'ShieldAlert', color: '#f59e0b', isSystem: true },
+  { id: 'people', name: 'IOUs & Promissory Notes', icon: 'Users', color: '#ec4899', isSystem: true },
+  { id: 'bank', name: 'Bank Passbooks & KYC', icon: 'Landmark', color: '#0ea5e9', isSystem: true },
+  { id: 'tax', name: 'Tax, Insurance & Policies', icon: 'FolderLock', color: '#8b5cf6', isSystem: true },
+  { id: 'unfiled', name: 'General & Unfiled', icon: 'Folder', color: '#64748b', isSystem: true },
 ];
 
 export function generateUUID(): string {
@@ -265,6 +276,7 @@ export async function unlockVault(
     assets: [],
     liabilities: [],
     documents: [],
+    documentFolders: [],
     plannedExpenses: [],
     notes: [],
     folders: [],
@@ -317,6 +329,15 @@ export async function unlockVault(
           case 'document': {
             const item = await decryptData<DocumentRecord>(row.iv, row.ciphertext, key);
             data.documents.push(item);
+            break;
+          }
+          case 'doc_folder': {
+            const item = await decryptData<DocumentFolder>(row.iv, row.ciphertext, key);
+            data.documentFolders!.push(item);
+            break;
+          }
+          case 'doc_payload': {
+            // Lazy loaded on demand to preserve low RAM and sub-second vault unlocking
             break;
           }
           case 'plan': {

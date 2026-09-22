@@ -424,6 +424,7 @@ export function generateDemoDataset(vaultId: string, baseCurrency: CurrencyCode 
       targetDate: addDays(180),
       currency: baseCurrency,
       category: 'Safety',
+      deductFromAvailableToSpend: false,
       updatedAt: nowISO,
     },
     {
@@ -435,6 +436,7 @@ export function generateDemoDataset(vaultId: string, baseCurrency: CurrencyCode 
       targetDate: addDays(240),
       currency: baseCurrency,
       category: 'Travel',
+      deductFromAvailableToSpend: false,
       updatedAt: nowISO,
     },
   ];

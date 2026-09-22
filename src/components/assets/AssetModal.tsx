@@ -7,6 +7,7 @@ import { useVault } from '../../context/VaultContext';
 import { formatDateISO } from '../../utils/dates';
 import type { Asset, AssetType, CurrencyCode } from '../../types';
 import { Landmark, Coins, RefreshCw } from 'lucide-react';
+import { AttachmentField, type AttachmentItem } from '../documents/AttachmentField';
 
 interface AssetModalProps {
   isOpen: boolean;
@@ -21,7 +22,17 @@ export const AssetModal: React.FC<AssetModalProps> = ({
   assetToEdit,
   onAssetCreated,
 }) => {
-  const { addAsset, updateAsset, activeVault, accounts, addTransaction } = useVault();
+  const {
+    addAsset,
+    updateAsset,
+    activeVault,
+    accounts,
+    addTransaction,
+    documents,
+    addDocument,
+    linkDocumentToEntity,
+    unlinkDocumentFromEntity,
+  } = useVault();
 
   const [name, setName] = useState(assetToEdit?.name || '');
   const [type, setType] = useState<AssetType>(assetToEdit?.type || 'mutual_fund');
@@ -58,6 +69,21 @@ export const AssetModal: React.FC<AssetModalProps> = ({
   const [notes, setNotes] = useState(assetToEdit?.notes || '');
   const [linkToBank, setLinkToBank] = useState(false);
   const [bankAccountId, setBankAccountId] = useState(accounts[0]?.id || '');
+  const [attachments, setAttachments] = useState<AttachmentItem[]>(() => {
+    if (!assetToEdit) return [];
+    return documents
+      .filter((d) => d.linkedId === assetToEdit.id || d.links?.some((l) => l.entityId === assetToEdit.id))
+      .map((d) => ({
+        id: d.id,
+        name: d.name,
+        dataUrl: d.dataUrl || '',
+        thumbnailUrl: d.thumbnailUrl,
+        fileSize: d.fileSize,
+        fileType: d.fileType,
+        isUncompressed: d.isUncompressed,
+        isExistingHubDoc: true,
+      }));
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -199,6 +225,7 @@ export const AssetModal: React.FC<AssetModalProps> = ({
         ? parseFloat(purchaseUnitPrice)
         : undefined;
 
+      let targetAssetId = assetToEdit?.id || '';
       if (assetToEdit) {
         await updateAsset({
           ...assetToEdit,
@@ -236,6 +263,7 @@ export const AssetModal: React.FC<AssetModalProps> = ({
           maturityDate: maturityDate || undefined,
           notes: notes.trim() || undefined,
         });
+        targetAssetId = newAsset.id;
 
         if (linkToBank && bankAccountId) {
           const costToDeduct = purchasePrice ? parseFloat(purchasePrice) : numVal;
@@ -259,6 +287,50 @@ export const AssetModal: React.FC<AssetModalProps> = ({
           onAssetCreated(newAsset);
         }
       }
+
+      const targetAssetName = name.trim();
+
+      // Sync attachments in Document Hub:
+      const existingAttachedDocs = documents.filter(
+        (d) => d.linkedId === targetAssetId || d.links?.some((l) => l.entityId === targetAssetId)
+      );
+      const currentAttachedIds = new Set(attachments.map((a) => a.id).filter(Boolean));
+
+      for (const oldDoc of existingAttachedDocs) {
+        if (!currentAttachedIds.has(oldDoc.id)) {
+          await unlinkDocumentFromEntity(oldDoc.id, 'asset', targetAssetId);
+        }
+      }
+
+      for (const item of attachments) {
+        if (item.isExistingHubDoc && item.id) {
+          await linkDocumentToEntity(item.id, 'asset', targetAssetId, targetAssetName);
+        } else if (!item.id && item.dataUrl) {
+          await addDocument(
+            {
+              name: item.name,
+              fileType: item.fileType,
+              fileSize: item.fileSize,
+              folderId: 'deeds',
+              thumbnailUrl: item.thumbnailUrl,
+              isUncompressed: item.isUncompressed,
+              linkedType: 'asset',
+              linkedId: targetAssetId,
+              links: [
+                {
+                  entityType: 'asset',
+                  entityId: targetAssetId,
+                  entityName: targetAssetName,
+                  linkedAt: new Date().toISOString(),
+                },
+              ],
+            },
+            item.dataUrl,
+            { isUncompressed: item.isUncompressed }
+          );
+        }
+      }
+
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to save asset');
@@ -555,6 +627,17 @@ export const AssetModal: React.FC<AssetModalProps> = ({
             )}
           </div>
         )}
+
+        {/* Deeds, Valuations & Warranty Documents */}
+        <div className="pt-2 border-t border-line/60">
+          <AttachmentField
+            label="Deeds, Valuations & Documents"
+            description="Attach purchase invoices, gold certificates, vehicle RC, or policy bonds"
+            attachments={attachments}
+            onChange={setAttachments}
+            entityType="asset"
+          />
+        </div>
 
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>

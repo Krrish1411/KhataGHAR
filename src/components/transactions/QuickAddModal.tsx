@@ -30,11 +30,13 @@ import {
   UserPlus,
   Share2,
   Palette,
+  CheckCircle2,
 } from 'lucide-react';
 import { IconRenderer, getCategoryEmoji, suggestCategoryIcon } from '../common/IconRenderer';
 import { CategoryModal } from '../categories/CategoryModal';
+import { AttachmentField, type AttachmentItem } from '../documents/AttachmentField';
 
-export type TransactionEntryMode = 'expense' | 'income' | 'transfer' | 'invest' | 'debt_payment' | 'people';
+export type TransactionEntryMode = 'expense' | 'income' | 'transfer' | 'invest' | 'redeem' | 'debt_payment' | 'people';
 
 interface QuickAddModalProps {
   isOpen: boolean;
@@ -47,13 +49,29 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   onClose,
   initialType = 'expense',
 }) => {
-  const { activeVault, accounts, categories, assets, liabilities, addTransaction, addCategory, addPeopleEntry, addSettlement, peopleLedger, sellAsset, updateLiability } = useVault();
+  const {
+    activeVault,
+    accounts,
+    categories,
+    assets,
+    liabilities,
+    addTransaction,
+    addCategory,
+    addPeopleEntry,
+    addSettlement,
+    peopleLedger,
+    sellAsset,
+    updateLiability,
+    addDocument,
+    linkDocumentToEntity,
+  } = useVault();
 
   const [entryMode, setEntryMode] = useState<TransactionEntryMode>(initialType);
   const [amount, setAmount] = useState('');
   const [accountId, setAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
   const [categoryId, setCategoryId] = useState<string>('');
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState('');
   const [selectedLiabilityId, setSelectedLiabilityId] = useState('');
   const [peopleType, setPeopleType] = useState<'lent' | 'borrowed' | 'holding' | 'holding_returned' | 'lent_repaid' | 'borrowed_repaid'>('lent');
@@ -73,7 +91,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
   const [investSubMode, setInvestSubMode] = useState<'buy' | 'sell'>('buy');
   const [saleUnits, setSaleUnits] = useState('');
   const [salePricePerUnit, setSalePricePerUnit] = useState('');
-  const [debtSubMode, setDebtSubMode] = useState<'emi' | 'received'>('emi');
+  const [debtSubMode, setDebtSubMode] = useState<'emi' | 'repayment' | 'received'>('emi');
 
   // Inline modal states (open nested modals without leaving QuickAdd)
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
@@ -105,6 +123,15 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       linkedAssetId?: string;
     }>
   >([]);
+
+  const selectedAsset = useMemo(
+    () => assets.find((a) => a.id === selectedAssetId),
+    [assets, selectedAssetId]
+  );
+  const selectedLiability = useMemo(
+    () => liabilities.find((l) => l.id === selectedLiabilityId),
+    [liabilities, selectedLiabilityId]
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -375,6 +402,13 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       }
     }
 
+    if (entryMode === 'redeem') {
+      if (!selectedAssetId) {
+        setError('Please select an asset to redeem/sell');
+        return;
+      }
+    }
+
     if (entryMode === 'debt_payment' && !selectedLiabilityId) {
       setError('Please select a loan/liability');
       return;
@@ -503,7 +537,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       }
 
       // --- ASSET SELL / REDEEM ---
-      if (entryMode === 'invest' && investSubMode === 'sell') {
+      if (entryMode === 'redeem' || (entryMode === 'invest' && investSubMode === 'sell')) {
         const unitsSold = saleUnits ? parseFloat(saleUnits) : 0;
         const salePPU = salePricePerUnit ? parseFloat(salePricePerUnit) : undefined;
         await sellAsset(selectedAssetId, {
@@ -512,7 +546,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
           totalProceeds: numAmount,
           accountId,
           date,
-          note: note.trim() || `Asset sale / redemption`,
+          note: note.trim() || `Asset redemption / sale`,
         });
         onClose();
         return;
@@ -539,7 +573,9 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
       const txType: TransactionType =
         entryMode === 'income' ? 'income' : entryMode === 'transfer' ? 'transfer' : 'expense';
 
-      await addTransaction({
+      const isRepayment = entryMode === 'debt_payment' && debtSubMode === 'repayment';
+
+      const createdTx = await addTransaction({
         date,
         amount: numAmount,
         type: txType,
@@ -551,10 +587,15 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
           note.trim() ||
           (entryMode === 'invest'
             ? 'Asset Investment / SIP'
+            : isRepayment
+            ? 'Debt / Loan Repayment (Principal Paydown)'
             : entryMode === 'debt_payment'
-            ? 'Debt / Loan Payment'
+            ? 'Debt / Loan EMI Payment'
             : undefined),
-        tags: parsedTags.length > 0 ? parsedTags : undefined,
+        tags: [
+          ...(parsedTags.length > 0 ? parsedTags : []),
+          ...(isRepayment ? ['debt-repayment', 'loan-repaid'] : []),
+        ],
         isRecurring,
         recurringFrequency: isRecurring ? recurringFrequency : undefined,
         linkedAssetId: entryMode === 'invest' ? selectedAssetId : undefined,
@@ -562,6 +603,8 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
         subType:
           entryMode === 'invest'
             ? 'investment'
+            : isRepayment
+            ? 'debt_repayment'
             : entryMode === 'debt_payment'
             ? 'debt_payment'
             : 'regular',
@@ -570,6 +613,44 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
         ...(parsedUnitPrice ? { unitPrice: parsedUnitPrice } : {}),
       } as any);
 
+      // Save and link attachments to created transaction in Document Hub
+      if (createdTx && attachments.length > 0) {
+        for (const item of attachments) {
+          if (item.isExistingHubDoc && item.id) {
+            await linkDocumentToEntity(
+              item.id,
+              'transaction',
+              createdTx.id,
+              `${createdTx.currency} ${createdTx.amount} (${createdTx.date})`
+            );
+          } else if (item.dataUrl) {
+            await addDocument(
+              {
+                name: item.name,
+                fileType: item.fileType,
+                fileSize: item.fileSize,
+                folderId: 'receipts',
+                thumbnailUrl: item.thumbnailUrl,
+                isUncompressed: item.isUncompressed,
+                linkedType: 'transaction',
+                linkedId: createdTx.id,
+                links: [
+                  {
+                    entityType: 'transaction',
+                    entityId: createdTx.id,
+                    entityName: `${createdTx.currency} ${createdTx.amount} (${createdTx.date})`,
+                    linkedAt: new Date().toISOString(),
+                  },
+                ],
+              },
+              item.dataUrl,
+              { isUncompressed: item.isUncompressed }
+            );
+          }
+        }
+      }
+
+      setAttachments([]);
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to save transaction');
@@ -622,15 +703,36 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
         : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/25',
       btnText: investSubMode === 'sell' ? 'Record Asset Sale' : 'Record Investment',
     },
+    redeem: {
+      title: 'Redeem / Sell Asset',
+      desc: 'Liquidate stocks, mutual funds, gold, or crypto and credit proceeds to bank/cash',
+      icon: <TrendingDown className="w-4 h-4 text-amber-500" />,
+      activeTab: 'bg-amber-600 text-white shadow-sm shadow-amber-900/20',
+      btnBg: 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/25',
+      btnText: 'Record Asset Redemption',
+    },
     debt_payment: {
-      title: debtSubMode === 'received' ? 'Record Loan Disbursement' : 'Pay Down Loan / Debt',
-      desc: debtSubMode === 'received'
-        ? 'Credits bank account with loan amount received and increases liability'
-        : 'Debits bank and reduces outstanding loan principal',
+      title:
+        debtSubMode === 'received'
+          ? 'Record Loan Disbursement'
+          : debtSubMode === 'repayment'
+          ? 'Loan / Debt Repayment'
+          : 'Pay Monthly EMI',
+      desc:
+        debtSubMode === 'received'
+          ? 'Credits bank account with loan amount received and increases liability'
+          : debtSubMode === 'repayment'
+          ? 'Debits bank and makes principal prepayment or full loan payoff'
+          : 'Debits bank and fulfills scheduled monthly EMI installment',
       icon: <Landmark className="w-4 h-4 text-amber-600" />,
       activeTab: 'bg-amber-600 text-white shadow-sm shadow-amber-900/20',
       btnBg: 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/20',
-      btnText: debtSubMode === 'received' ? 'Record Loan Received' : 'Record Loan Payment',
+      btnText:
+        debtSubMode === 'received'
+          ? 'Record Loan Received'
+          : debtSubMode === 'repayment'
+          ? 'Record Debt Repayment'
+          : 'Pay Monthly EMI',
     },
     people: {
       title: 'People Ledger (Udhar / Holding)',
@@ -672,12 +774,13 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
         )}
 
         {/* 1. Mode Tabs */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 p-1 bg-moss rounded-2xl border border-line">
+        <div className="grid grid-cols-4 sm:grid-cols-7 gap-1 p-1 bg-moss rounded-2xl border border-line">
           {[
             { id: 'expense', label: 'Spend', icon: <ArrowUpRight className="w-3.5 h-3.5" /> },
             { id: 'income', label: 'Income', icon: <ArrowDownLeft className="w-3.5 h-3.5" /> },
             { id: 'transfer', label: 'Transfer', icon: <ArrowLeftRight className="w-3.5 h-3.5" /> },
             { id: 'invest', label: 'Invest', icon: <TrendingUp className="w-3.5 h-3.5" /> },
+            { id: 'redeem', label: 'Redeem', icon: <TrendingDown className="w-3.5 h-3.5" /> },
             { id: 'debt_payment', label: 'Debt', icon: <Landmark className="w-3.5 h-3.5" /> },
             { id: 'people', label: 'People', icon: <Users className="w-3.5 h-3.5" /> },
           ].map((tab) => {
@@ -833,35 +936,37 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
               </div>
             </div>
           </div>
-        ) : entryMode === 'invest' ? (
-          /* Invest Section: Buy/Sell Sub-mode Toggle */
-          <div className={`p-3.5 rounded-2xl border space-y-3 ${investSubMode === 'sell' ? 'bg-flare-50/40 dark:bg-flare-950/20 border-flare-200/60 dark:border-flare-800/50' : 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200/60 dark:border-emerald-800/50'}`}>
-            {/* Sub-mode toggle: Buy vs Sell */}
-            <div className="flex items-center gap-1.5 p-1 bg-card/70 rounded-xl border border-line">
-              {[
-                { id: 'buy', label: '📈 Buy / Invest', color: 'bg-emerald-600 text-white' },
-                { id: 'sell', label: '📤 Sell / Redeem', color: 'bg-flare-600 text-white' },
-              ].map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setInvestSubMode(m.id as 'buy' | 'sell')}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
-                    investSubMode === m.id
-                      ? `${m.color} ring-2 ring-emerald-400 ring-offset-1 ring-offset-card shadow-sm scale-[1.02]`
-                      : 'text-ink/60 hover:text-ink hover:bg-moss'
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
+        ) : (entryMode === 'invest' || entryMode === 'redeem') ? (
+          /* Invest / Redeem Section */
+          <div className={`p-3.5 rounded-2xl border space-y-3 ${entryMode === 'redeem' || investSubMode === 'sell' ? 'bg-flare-50/40 dark:bg-flare-950/20 border-flare-200/60 dark:border-flare-800/50' : 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200/60 dark:border-emerald-800/50'}`}>
+            {/* Sub-mode toggle: Buy vs Sell (only in invest mode) */}
+            {entryMode === 'invest' && (
+              <div className="flex items-center gap-1.5 p-1 bg-card/70 rounded-xl border border-line">
+                {[
+                  { id: 'buy', label: '📈 Buy / Invest', color: 'bg-emerald-600 text-white' },
+                  { id: 'sell', label: '📤 Sell / Redeem', color: 'bg-flare-600 text-white' },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setInvestSubMode(m.id as 'buy' | 'sell')}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                      investSubMode === m.id
+                        ? `${m.color} ring-2 ring-emerald-400 ring-offset-1 ring-offset-card shadow-sm scale-[1.02]`
+                        : 'text-ink/60 hover:text-ink hover:bg-moss'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Asset Selector */}
             <div>
               <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider mb-1">
-                <label className={investSubMode === 'sell' ? 'text-flare-700 dark:text-flare-300' : 'text-emerald-800 dark:text-emerald-300'}>
-                  {investSubMode === 'sell' ? 'Asset to Sell / Redeem' : 'Target Asset / Mutual Fund / Gold'}
+                <label className={entryMode === 'redeem' || investSubMode === 'sell' ? 'text-flare-700 dark:text-flare-300' : 'text-emerald-800 dark:text-emerald-300'}>
+                  {entryMode === 'redeem' || investSubMode === 'sell' ? 'Asset to Redeem / Sell' : 'Target Asset / Mutual Fund / Gold'}
                 </label>
                 <button
                   type="button"
@@ -913,53 +1018,54 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block text-[10.5px] font-bold uppercase text-ink/50 mb-1">
-                    {investSubMode === 'sell' ? 'Units Sold (Optional)' : 'Units / Shares (Optional)'}
+                    {entryMode === 'redeem' || investSubMode === 'sell' ? 'Units Sold / Redeemed (Optional)' : 'Units / Shares (Optional)'}
                   </label>
                   <input
                     type="number"
                     step="any"
                     placeholder="e.g. 35.2"
-                    value={investSubMode === 'sell' ? saleUnits : units}
-                    onChange={(e) => investSubMode === 'sell' ? setSaleUnits(e.target.value) : setUnits(e.target.value)}
+                    value={entryMode === 'redeem' || investSubMode === 'sell' ? saleUnits : units}
+                    onChange={(e) => entryMode === 'redeem' || investSubMode === 'sell' ? setSaleUnits(e.target.value) : setUnits(e.target.value)}
                     className="w-full rounded-xl border border-line bg-card px-3 py-1.5 text-xs font-mono text-ink outline-none focus:border-emerald-500"
                   />
                 </div>
                 <div>
                   <label className="block text-[10.5px] font-bold uppercase text-ink/50 mb-1">
-                    {investSubMode === 'sell' ? 'Sale Price / Unit (Optional)' : 'NAV / Unit Price (Optional)'}
+                    {entryMode === 'redeem' || investSubMode === 'sell' ? 'Sale Price / NAV (Optional)' : 'NAV / Unit Price (Optional)'}
                   </label>
                   <input
                     type="number"
                     step="any"
                     placeholder="e.g. 142.04"
-                    value={investSubMode === 'sell' ? salePricePerUnit : unitPrice}
-                    onChange={(e) => investSubMode === 'sell' ? setSalePricePerUnit(e.target.value) : setUnitPrice(e.target.value)}
+                    value={entryMode === 'redeem' || investSubMode === 'sell' ? salePricePerUnit : unitPrice}
+                    onChange={(e) => entryMode === 'redeem' || investSubMode === 'sell' ? setSalePricePerUnit(e.target.value) : setUnitPrice(e.target.value)}
                     className="w-full rounded-xl border border-line bg-card px-3 py-1.5 text-xs font-mono text-ink outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
             )}
 
-            {investSubMode === 'sell' && (
+            {(entryMode === 'redeem' || investSubMode === 'sell') && (
               <p className="text-[11px] text-flare-700 dark:text-flare-300 font-semibold">
-                ⚠️ The amount above is the total proceeds credited to your account. Realized gain/loss will be auto-calculated.
+                ⚠️ Total proceeds will be credited to your account. Asset holdings, valuation, and capital gains are auto-updated.
               </p>
             )}
           </div>
         ) : entryMode === 'debt_payment' ? (
-          /* Debt Payment Section: EMI / Loan Received Toggle */
+          /* Debt Payment Section: EMI / Repayment / Loan Received Toggle */
           <div className="p-3.5 rounded-2xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/50 space-y-3">
             {/* Sub-mode toggle */}
             <div className="flex items-center gap-1.5 p-1 bg-card/70 rounded-xl border border-line">
               {[
-                { id: 'emi', label: '💳 Pay EMI / Loan' },
+                { id: 'emi', label: '💳 Pay Monthly EMI' },
+                { id: 'repayment', label: '💸 Loan / Debt Repaid' },
                 { id: 'received', label: '🏦 Loan Received' },
               ].map((m) => (
                 <button
                   key={m.id}
                   type="button"
-                  onClick={() => setDebtSubMode(m.id as 'emi' | 'received')}
-                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                  onClick={() => setDebtSubMode(m.id as 'emi' | 'repayment' | 'received')}
+                  className={`flex-1 py-1.5 px-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
                     debtSubMode === m.id
                       ? 'bg-amber-600 text-white ring-2 ring-amber-400 ring-offset-1 ring-offset-card shadow-sm scale-[1.02]'
                       : 'text-ink/60 hover:text-ink hover:bg-moss'
@@ -972,7 +1078,11 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
 
             <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 mb-1">
               <label>
-                {debtSubMode === 'received' ? 'Loan / Liability Record' : 'Target Loan to Pay Down'}
+                {debtSubMode === 'received'
+                  ? 'Loan / Liability Record'
+                  : debtSubMode === 'repayment'
+                  ? 'Target Loan / Debt to Repay'
+                  : 'Target Loan for EMI'}
               </label>
               <button
                 type="button"
@@ -997,30 +1107,76 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                 </button>
               </div>
             ) : (
-              <select
-                value={selectedLiabilityId}
-                onChange={(e) => {
-                  if (e.target.value === '__new_liability__') {
-                    setIsLiabilityModalOpen(true);
-                  } else {
-                    setSelectedLiabilityId(e.target.value);
-                  }
-                }}
-                className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-amber-500 cursor-pointer"
-                required
-              >
-                {liabilities.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name} ({l.lender}) — Outstanding: ₹{l.outstandingBalance.toLocaleString('en-IN')}
-                  </option>
-                ))}
-                <option value="__new_liability__">+ Add New Loan…</option>
-              </select>
+              <div className="space-y-2">
+                <select
+                  value={selectedLiabilityId}
+                  onChange={(e) => {
+                    if (e.target.value === '__new_liability__') {
+                      setIsLiabilityModalOpen(true);
+                    } else {
+                      setSelectedLiabilityId(e.target.value);
+                    }
+                  }}
+                  className="w-full rounded-xl border border-line bg-card px-3 py-2 text-xs font-semibold text-ink outline-none focus:border-amber-500 cursor-pointer"
+                  required
+                >
+                  {liabilities.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} ({l.lender}) — Outstanding: ₹{l.outstandingBalance.toLocaleString('en-IN')}{l.emiAmount ? ` [EMI: ₹${l.emiAmount.toLocaleString('en-IN')}]` : ''}
+                    </option>
+                  ))}
+                  <option value="__new_liability__">+ Add New Loan…</option>
+                </select>
+
+                {selectedLiability && debtSubMode === 'repayment' && (
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-card border border-line text-xs">
+                    <div>
+                      <span className="text-ink/60">Outstanding: </span>
+                      <span className="font-bold text-ink num">₹{selectedLiability.outstandingBalance.toLocaleString('en-IN')}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAmount(String(selectedLiability.outstandingBalance))}
+                      className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold cursor-pointer transition active:scale-95"
+                    >
+                      Pay Full Balance
+                    </button>
+                  </div>
+                )}
+
+                {selectedLiability && debtSubMode === 'emi' && selectedLiability.emiAmount && selectedLiability.emiAmount > 0 && (
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-card border border-line text-xs">
+                    <div>
+                      <span className="text-ink/60">Monthly EMI Due: </span>
+                      <span className="font-bold text-ink num">₹{selectedLiability.emiAmount.toLocaleString('en-IN')}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAmount(String(selectedLiability.emiAmount))}
+                      className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold cursor-pointer transition active:scale-95"
+                    >
+                      Fill EMI Amount
+                    </button>
+                  </div>
+                )}
+
+                {selectedLiability && debtSubMode === 'repayment' && parseFloat(amount) > 0 && parseFloat(amount) >= selectedLiability.outstandingBalance && (
+                  <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>This repayment will fully settle and payoff this loan!</span>
+                  </div>
+                )}
+              </div>
             )}
 
             {debtSubMode === 'received' && (
               <p className="text-[11px] text-amber-700 dark:text-amber-300 font-semibold">
                 🏦 This will CREDIT your selected account and INCREASE the loan outstanding balance.
+              </p>
+            )}
+            {debtSubMode === 'repayment' && (
+              <p className="text-[11px] text-amber-700 dark:text-amber-300 font-semibold">
+                💸 This will DEBIT your selected account and REDUCE the outstanding loan principal immediately.
               </p>
             )}
           </div>
@@ -1494,7 +1650,7 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
                 <span>
                   {isPaidByContact
                     ? 'Reference Account (Untouched)'
-                    : entryMode === 'income' || (entryMode === 'people' && (peopleType === 'borrowed' || peopleType === 'holding' || peopleType === 'lent_repaid'))
+                    : entryMode === 'income' || entryMode === 'redeem' || (entryMode === 'invest' && investSubMode === 'sell') || (entryMode === 'people' && (peopleType === 'borrowed' || peopleType === 'holding' || peopleType === 'lent_repaid'))
                     ? 'Received / Deposited Into'
                     : 'Paid From Account'}
                 </span>
@@ -1594,6 +1750,15 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({
               className="w-full rounded-xl border border-line bg-card px-3.5 py-2 text-xs text-ink placeholder:text-ink/30 outline-none focus:border-pine-500 focus:ring-2 focus:ring-pine-500/20"
             />
           </div>
+        </div>
+
+        {/* Receipts & Document Attachments */}
+        <div className="pt-2 border-t border-line/60">
+          <AttachmentField
+            attachments={attachments}
+            onChange={setAttachments}
+            entityType="transaction"
+          />
         </div>
 
         {/* 6. Recurring Options */}

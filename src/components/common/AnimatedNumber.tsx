@@ -9,6 +9,7 @@ interface AnimatedNumberProps {
   isPrivacyMode?: boolean;
   isCompact?: boolean;
   isPercent?: boolean;
+  decimals?: number;
   className?: string;
   durationMs?: number;
 }
@@ -20,6 +21,7 @@ export const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
   isPrivacyMode = false,
   isCompact = false,
   isPercent = false,
+  decimals = 2,
   className = '',
   durationMs = 600,
 }) => {
@@ -37,7 +39,7 @@ export const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
     const endVal = value;
     const diff = endVal - startVal;
 
-    if (Math.abs(diff) < 0.01) {
+    if (Math.abs(diff) < 0.001) {
       setDisplayValue(endVal);
       prevValueRef.current = endVal;
       return;
@@ -79,7 +81,7 @@ export const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
   } else if (isCompact) {
     formatted = formatCompactCurrency(displayValue, currency, numberFormat, false);
   } else {
-    formatted = formatCurrency(displayValue, currency, numberFormat, false);
+    formatted = formatCurrency(displayValue, currency, numberFormat, false, decimals);
   }
 
   return (

@@ -10,6 +10,7 @@ import { Users2, ArrowUpRight, ArrowDownLeft, HandCoins, Landmark, Plus, ShieldC
 import { ContactSelect } from './ContactSelect';
 import { AccountModal } from '../accounts/AccountModal';
 import { AssetModal } from '../assets/AssetModal';
+import { AttachmentField, type AttachmentItem } from '../documents/AttachmentField';
 
 interface PeopleEntryModalProps {
   isOpen: boolean;
@@ -26,7 +27,17 @@ export const PeopleEntryModal: React.FC<PeopleEntryModalProps> = ({
   initialType = 'lent',
   initialContactName = '',
 }) => {
-  const { addPeopleEntry, updatePeopleEntry, accounts, assets, activeVault } = useVault();
+  const {
+    addPeopleEntry,
+    updatePeopleEntry,
+    accounts,
+    assets,
+    activeVault,
+    documents,
+    addDocument,
+    linkDocumentToEntity,
+    unlinkDocumentFromEntity,
+  } = useVault();
 
   const [type, setType] = useState<PeopleEntryType>(entryToEdit?.type || initialType);
   const [contactName, setContactName] = useState(entryToEdit?.contactName || initialContactName || '');
@@ -38,6 +49,7 @@ export const PeopleEntryModal: React.FC<PeopleEntryModalProps> = ({
   const [linkedAssetId, setLinkedAssetId] = useState(entryToEdit?.linkedAssetId || (assets.length > 0 ? assets[0].id : ''));
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
 
   const [amount, setAmount] = useState(entryToEdit?.amount ? String(entryToEdit.amount) : '');
   const [currency, setCurrency] = useState<CurrencyCode>(entryToEdit?.currency || activeVault?.currency || 'INR');
@@ -65,6 +77,20 @@ export const PeopleEntryModal: React.FC<PeopleEntryModalProps> = ({
         setHasInterest(entryToEdit.hasInterest || false);
         setInterestRate(entryToEdit.interestRate ? String(entryToEdit.interestRate) : '');
         setNotes(entryToEdit.notes || '');
+        setAttachments(
+          documents
+            .filter((d) => d.linkedId === entryToEdit.id || d.links?.some((l) => l.entityId === entryToEdit.id))
+            .map((d) => ({
+              id: d.id,
+              name: d.name,
+              dataUrl: d.dataUrl || '',
+              thumbnailUrl: d.thumbnailUrl,
+              fileSize: d.fileSize,
+              fileType: d.fileType,
+              isUncompressed: d.isUncompressed,
+              isExistingHubDoc: true,
+            }))
+        );
       } else {
         setType(initialType);
         setContactName(initialContactName || '');
@@ -79,10 +105,11 @@ export const PeopleEntryModal: React.FC<PeopleEntryModalProps> = ({
         setHasInterest(false);
         setInterestRate('');
         setNotes('');
+        setAttachments([]);
       }
       setError('');
     }
-  }, [isOpen, entryToEdit, initialType, initialContactName, accounts, assets, activeVault]);
+  }, [isOpen, entryToEdit, initialType, initialContactName, accounts, assets, activeVault, documents]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,6 +135,7 @@ export const PeopleEntryModal: React.FC<PeopleEntryModalProps> = ({
       const finalHeldInType = type === 'holding' ? heldInType : undefined;
       const finalLinkedAssetId = type === 'holding' && heldInType === 'asset' ? (linkedAssetId || undefined) : undefined;
 
+      let targetEntryId = entryToEdit ? entryToEdit.id : '';
       if (entryToEdit) {
         await updatePeopleEntry({
           ...entryToEdit,
@@ -126,7 +154,7 @@ export const PeopleEntryModal: React.FC<PeopleEntryModalProps> = ({
           notes: notes.trim() || undefined,
         });
       } else {
-        await addPeopleEntry({
+        const newEntry = await addPeopleEntry({
           contactName: contactName.trim(),
           contactPhone: contactPhone.trim() || undefined,
           accountId: finalAccountId,
@@ -141,7 +169,52 @@ export const PeopleEntryModal: React.FC<PeopleEntryModalProps> = ({
           interestRate: hasInterest && interestRate ? parseFloat(interestRate) : undefined,
           notes: notes.trim() || undefined,
         });
+        targetEntryId = newEntry.id;
       }
+
+      const targetEntryName = `${contactName.trim()} (${type})`;
+
+      // Sync attachments in Document Hub:
+      const existingAttachedDocs = documents.filter(
+        (d) => d.linkedId === targetEntryId || d.links?.some((l) => l.entityId === targetEntryId)
+      );
+      const currentAttachedIds = new Set(attachments.map((a) => a.id).filter(Boolean));
+
+      for (const oldDoc of existingAttachedDocs) {
+        if (!currentAttachedIds.has(oldDoc.id)) {
+          await unlinkDocumentFromEntity(oldDoc.id, 'people', targetEntryId);
+        }
+      }
+
+      for (const item of attachments) {
+        if (item.isExistingHubDoc && item.id) {
+          await linkDocumentToEntity(item.id, 'people', targetEntryId, targetEntryName);
+        } else if (!item.id && item.dataUrl) {
+          await addDocument(
+            {
+              name: item.name,
+              fileType: item.fileType,
+              fileSize: item.fileSize,
+              folderId: 'people',
+              thumbnailUrl: item.thumbnailUrl,
+              isUncompressed: item.isUncompressed,
+              linkedType: 'people',
+              linkedId: targetEntryId,
+              links: [
+                {
+                  entityType: 'people',
+                  entityId: targetEntryId,
+                  entityName: targetEntryName,
+                  linkedAt: new Date().toISOString(),
+                },
+              ],
+            },
+            item.dataUrl,
+            { isUncompressed: item.isUncompressed }
+          );
+        }
+      }
+
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to save entry');
@@ -450,6 +523,14 @@ export const PeopleEntryModal: React.FC<PeopleEntryModalProps> = ({
             placeholder="e.g. Holding family wedding funds, emergency advance"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
+          />
+
+          <AttachmentField
+            label="IOUs, Promissory Notes & Agreement Documents"
+            attachments={attachments}
+            onChange={setAttachments}
+            entityType="people"
+            defaultFolderId="people"
           />
 
           <div className="flex items-center justify-end gap-2 pt-2">

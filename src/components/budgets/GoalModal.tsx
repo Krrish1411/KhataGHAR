@@ -7,6 +7,7 @@ import { useVault } from '../../context/VaultContext';
 import { formatDateISO } from '../../utils/dates';
 import type { SavingsGoal, CurrencyCode } from '../../types';
 import { Target } from 'lucide-react';
+import { AttachmentField, type AttachmentItem } from '../documents/AttachmentField';
 
 interface GoalModalProps {
   isOpen: boolean;
@@ -19,7 +20,15 @@ export const GoalModal: React.FC<GoalModalProps> = ({
   onClose,
   goalToEdit,
 }) => {
-  const { addGoal, updateGoal, activeVault } = useVault();
+  const {
+    addGoal,
+    updateGoal,
+    activeVault,
+    documents,
+    addDocument,
+    linkDocumentToEntity,
+    unlinkDocumentFromEntity,
+  } = useVault();
 
   const [name, setName] = useState(goalToEdit?.name || '');
   const [targetAmount, setTargetAmount] = useState(goalToEdit ? String(goalToEdit.targetAmount) : '');
@@ -33,6 +42,21 @@ export const GoalModal: React.FC<GoalModalProps> = ({
   const [deductFromAvailableToSpend, setDeductFromAvailableToSpend] = useState<boolean>(
     goalToEdit?.deductFromAvailableToSpend ?? true
   );
+  const [attachments, setAttachments] = useState<AttachmentItem[]>(() => {
+    if (!goalToEdit) return [];
+    return documents
+      .filter((d) => d.linkedId === goalToEdit.id || d.links?.some((l) => l.entityId === goalToEdit.id))
+      .map((d) => ({
+        id: d.id,
+        name: d.name,
+        dataUrl: d.dataUrl || '',
+        thumbnailUrl: d.thumbnailUrl,
+        fileSize: d.fileSize,
+        fileType: d.fileType,
+        isUncompressed: d.isUncompressed,
+        isExistingHubDoc: true,
+      }));
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -55,6 +79,7 @@ export const GoalModal: React.FC<GoalModalProps> = ({
     setError('');
 
     try {
+      let targetGoalId = goalToEdit ? goalToEdit.id : '';
       if (goalToEdit) {
         await updateGoal({
           ...goalToEdit,
@@ -68,7 +93,7 @@ export const GoalModal: React.FC<GoalModalProps> = ({
           deductFromAvailableToSpend,
         });
       } else {
-        await addGoal({
+        const newGoal = await addGoal({
           name: name.trim(),
           targetAmount: numTarget,
           currentAmount: numCurrent,
@@ -78,7 +103,52 @@ export const GoalModal: React.FC<GoalModalProps> = ({
           isCompleted: numCurrent >= numTarget,
           deductFromAvailableToSpend,
         });
+        targetGoalId = newGoal.id;
       }
+
+      const targetGoalName = name.trim();
+
+      // Sync attachments in Document Hub:
+      const existingAttachedDocs = documents.filter(
+        (d) => d.linkedId === targetGoalId || d.links?.some((l) => l.entityId === targetGoalId)
+      );
+      const currentAttachedIds = new Set(attachments.map((a) => a.id).filter(Boolean));
+
+      for (const oldDoc of existingAttachedDocs) {
+        if (!currentAttachedIds.has(oldDoc.id)) {
+          await unlinkDocumentFromEntity(oldDoc.id, 'goal', targetGoalId);
+        }
+      }
+
+      for (const item of attachments) {
+        if (item.isExistingHubDoc && item.id) {
+          await linkDocumentToEntity(item.id, 'goal', targetGoalId, targetGoalName);
+        } else if (!item.id && item.dataUrl) {
+          await addDocument(
+            {
+              name: item.name,
+              fileType: item.fileType,
+              fileSize: item.fileSize,
+              folderId: 'unfiled',
+              thumbnailUrl: item.thumbnailUrl,
+              isUncompressed: item.isUncompressed,
+              linkedType: 'goal',
+              linkedId: targetGoalId,
+              links: [
+                {
+                  entityType: 'goal',
+                  entityId: targetGoalId,
+                  entityName: targetGoalName,
+                  linkedAt: new Date().toISOString(),
+                },
+              ],
+            },
+            item.dataUrl,
+            { isUncompressed: item.isUncompressed }
+          );
+        }
+      }
+
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to save savings goal');
@@ -186,6 +256,14 @@ export const GoalModal: React.FC<GoalModalProps> = ({
             </div>
           </label>
         </div>
+
+        <AttachmentField
+          label="Goal Brochures, Quotations & Documents"
+          attachments={attachments}
+          onChange={setAttachments}
+          entityType="goal"
+          defaultFolderId="unfiled"
+        />
 
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>
