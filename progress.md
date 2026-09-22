@@ -730,6 +730,27 @@ Phase 13 delivered a complete rebuild and modernization of KhataGHAR's Document 
    - Updated `AndroidFileManagerView.tsx` with `InternxtFileIcon`, unlinked filtering, and responsive touch cards.
    - Updated `DriveDesktopWidget.tsx`, `DriveToolsModal.tsx`, and `DocumentDetailModal.tsx` to use the vector icon engine.
 
+---
 
+### 11.6 Phase 13 UI Refinements & Viewport Containment (Completed)
 
+In response to user feedback on desktop density and ergonomics, refined the Document Vault UX:
 
+1. **Fit-in-One Viewport Containment**:
+   - Added `/documents` to `isFitScreenView` in `AppLayout.tsx`: sets `overflow-hidden pb-0` on the main container and `<main>`, eliminating outer browser scrolling and permanently pinning the app header.
+   - Bounded `GoogleDriveView` to `flex-1 min-h-0 flex flex-col overflow-hidden`.
+   - The left sidebar and main canvas scroll independently within their frames using `overflow-y-auto custom-scrollbar`.
+2. **Main Screen Folders Grid**:
+   - Fixed `displayedSubfolders` query so all folders render in "My Files" (`activeFolderId === 'all'`).
+   - Rendered high-density folder cards with folder icon badge, custom color, file counts, hover 3-dot context menu, and click-to-open navigation.
+   - Added a dashed "+ New Folder" action card directly in the folders grid for instant category creation.
+3. **Left Sidebar Streamlining**:
+   - Removed the redundant vertical list of folders from the left sidebar.
+   - Sidebar cleanly houses: Navigation (`My Files`, `Recent`, `Starred`), Financial Links (`All Documents`, `Receipts`, `Deeds`, `Loans`, `Bank KYC`, `Unlinked Files`), and the live SQLite Database Footprint Meter (`DriveDatabaseUsageMeter`).
+4. **Header Streamlining**:
+   - Removed the PC "Drive View / Files View" toggle buttons.
+   - Removed the "Vault Tools" (integrity scan) button from the top bar.
+5. **Custom Styled Sort Dropdown**:
+   - Replaced the browser-native `<select>` with a custom theme-compliant floating dropdown menu featuring an `ArrowUpDown` icon, checkmarks, and click-outside dismissal.
+6. **Comprehensive Folder Icon & Color Pack**:
+   - Upgraded `DocumentFolderModal` with 16 aesthetic colors, 45+ categorized icons across Finance, Assets, Legal/KYC, Tax/Work, and Family/Life, plus a real-time live preview badge.
