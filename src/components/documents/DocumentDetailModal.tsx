@@ -5,6 +5,7 @@ import { useConfirm } from '../../context/DialogContext';
 import { formatFileSize } from '../../utils/formatters';
 import { formatReadableDate } from '../../utils/dates';
 import type { LinkedEntityType, DocumentRecord } from '../../types';
+import { InternxtFileIcon } from './InternxtFileIcon';
 import {
   FileText,
   Download,
@@ -226,8 +227,10 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
               />
             </div>
           ) : (
-            <div className="text-center py-12 space-y-2">
-              <FileText className="w-12 h-12 text-pine-600 mx-auto opacity-75" />
+            <div className="text-center py-12 space-y-3">
+              <div className="flex justify-center">
+                <InternxtFileIcon name={doc.name} mimeType={doc.fileType} size="xl" />
+              </div>
               <p className="text-xs font-semibold text-ink">{doc.name}</p>
               <p className="text-[11px] text-ink/40">Preview not supported directly in-browser.</p>
               {dataUrl && (

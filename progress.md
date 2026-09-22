@@ -66,7 +66,8 @@ KhataGHAR is an institutional-grade, zero-cloud, 100% offline and encrypted pers
 | **Mobile Typography Polish & Branded Icons** | `[MOD]` [`src/views/ReportsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/ReportsView.tsx)<br>`[MOD]` [`src/views/DashboardView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/DashboardView.tsx)<br>`[MOD]` [`src/views/TransactionsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/TransactionsView.tsx)<br>`[MOD]` [`public/favicon.svg`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/public/favicon.svg)<br>`[MOD]` [`android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml) | Executive KPI responsive typography (`text-lg sm:text-[24px] truncate`), responsive Hero Available to Spend (`text-2xl sm:text-[38px] lg:text-[42px]`), hidden desktop shortcut hints on mobile (`hidden md:inline-flex`), and branded pine green rounded badge with white Indian Rupee `₹` vector emblem for PWA favicon and Android launcher. |
 | **Universal Multi-Attachment Engine** | `[NEW]` [`src/components/documents/AttachmentField.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/AttachmentField.tsx)<br>`[NEW]` [`src/components/documents/DocumentHubPickerModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DocumentHubPickerModal.tsx)<br>`[MOD]` [`src/components/transactions/QuickAddModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/transactions/QuickAddModal.tsx)<br>`[MOD]` [`src/components/assets/AssetModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/assets/AssetModal.tsx)<br>`[MOD]` [`src/components/liabilities/LiabilityModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/liabilities/LiabilityModal.tsx)<br>`[MOD]` [`src/components/goals/SavingsGoalModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/goals/SavingsGoalModal.tsx)<br>`[MOD]` [`src/components/people/PeopleEntryModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/people/PeopleEntryModal.tsx)<br>`[MOD]` [`src/components/accounts/AccountModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/accounts/AccountModal.tsx) | Attached invoices, deeds, agreements, IOUs, passbooks, and KYC cards to any financial record with live chip counters and 1-click Document Hub link picker. |
 | **Sovereign Document Hub (Split-Tier Storage)** | `[MOD]` [`src/types/index.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/types/index.ts)<br>`[MOD]` [`src/context/VaultContext.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/context/VaultContext.tsx)<br>`[MOD]` [`src/services/storage.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/services/storage.ts)<br>`[NEW]` [`src/components/documents/DocumentDetailModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DocumentDetailModal.tsx)<br>`[NEW]` [`src/components/documents/DocumentUploadModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DocumentUploadModal.tsx)<br>`[NEW]` [`src/components/documents/DocumentFolderModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DocumentFolderModal.tsx) | Two-tier split-payload SQLite storage: metadata in `documents` table (< 50ms unlock, < 30MB RAM for 1,000+ files), binary blobs lazy-loaded on demand from `doc_payload`. Sub-5ms search, custom folders with color/emojis, interactive pan/zoom lightbox viewer. |
-| **Internxt Desktop Vault Overhaul & Tools** | `[NEW]` [`src/components/documents/DriveDesktopWidget.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DriveDesktopWidget.tsx)<br>`[NEW]` [`src/components/documents/DriveToolsModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DriveToolsModal.tsx)<br>`[MOD]` [`src/components/documents/GoogleDriveView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/GoogleDriveView.tsx)<br>`[MOD]` [`src/components/documents/AndroidFileManagerView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/AndroidFileManagerView.tsx)<br>`[MOD]` [`src/hooks/useDriveShortcuts.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/hooks/useDriveShortcuts.ts)<br>`[MOD]` [`src/components/documents/DriveShortcutsModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DriveShortcutsModal.tsx)<br>`[MOD]` [`src/views/DocumentsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/DocumentsView.tsx) | Overhauled Document Vault inspired by Internxt Desktop (`drive-desktop-main` in `/home/krish/Downloads/Entry/drive-desktop-main`): Tray Status Widget (`W`), Drive Tools Modal (`T`) with Cryptographic Integrity Scanner & Storage Cleaner, segmented category storage meter, expandable folder tree in sidebar, colored `<FolderIconBadge>`, native Drive document previews (PDF, Sheets, ZIP, Images), and full keyboard navigation. |
+| **Internxt Desktop Vault Overhaul & Tools** | `[NEW]` [`src/components/documents/DriveDesktopWidget.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DriveDesktopWidget.tsx)<br>`[NEW]` [`src/components/documents/DriveToolsModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DriveToolsModal.tsx)<br>`[MOD]` [`src/components/documents/GoogleDriveView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/GoogleDriveView.tsx)<br>`[MOD]` [`src/components/documents/AndroidFileManagerView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/AndroidFileManagerView.tsx)<br>`[MOD]` [`src/hooks/useDriveShortcuts.ts`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/hooks/useDriveShortcuts.ts)<br>`[MOD]` [`src/components/documents/DriveShortcutsModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DriveShortcutsModal.tsx)<br>`[MOD]` [`src/views/DocumentsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/DocumentsView.tsx) | Overhauled Document Vault inspired by Internxt Desktop: Tray Status Widget (`W`), Drive Tools Modal (`T`) with Cryptographic Integrity Scanner & Storage Cleaner, segmented category storage meter, expandable folder tree in sidebar, colored `<FolderIconBadge>`, and keyboard navigation. |
+| **Sovereign Drive Rebuild & Financial Linkage Hub (Phase 13)** | `[NEW]` [`src/components/documents/InternxtFileIcon.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/InternxtFileIcon.tsx)<br>`[NEW]` [`src/components/documents/DriveDatabaseUsageMeter.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DriveDatabaseUsageMeter.tsx)<br>`[NEW]` `src/assets/icons/drive/*` (19 SVGs)<br>`[NEW]` `public/icons/drive/*`<br>`[MOD]` [`src/components/documents/GoogleDriveView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/GoogleDriveView.tsx)<br>`[MOD]` [`src/components/documents/AndroidFileManagerView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/AndroidFileManagerView.tsx)<br>`[MOD]` [`src/components/documents/DriveDesktopWidget.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DriveDesktopWidget.tsx)<br>`[MOD]` [`src/components/documents/DriveToolsModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DriveToolsModal.tsx)<br>`[MOD]` [`src/components/documents/DocumentDetailModal.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/components/documents/DocumentDetailModal.tsx)<br>`[MOD]` [`src/views/DocumentsView.tsx`](file:///home/krish/Downloads/Coding/gemini/Coding/KhataGHAR/src/views/DocumentsView.tsx) | Complete rebuild of the Document Vault hub into a sovereign 1:1 Internxt Drive look-alike: 19 official vector SVGs (`pdf.svg`, `excel.svg`, `word.svg`, `zip.svg`, `image.svg`, etc.), 1:1 square grid cards with 4/6th preview canvas, floating 3-dot hover triggers, high-density list table, right-click cursor-bounded context menu, inline renaming (`R`/`Enter`/`Esc`), live Database Footprint & Size Meter (`db.getStats()` showing total SQLite disk bytes + full app data breakdown), and deep financial entity linkages with an Unlinked/Orphaned file filter. Cloud-sharing bloat strictly omitted. |
 
 ---
 
@@ -687,30 +688,48 @@ Based on user feedback (*"still not convinced that it is same as that internex v
 
 ---
 
-### 11.5 Prioritized Execution Plan for Next Work Phase (Phase 13)
+### 11.5 Phase 13 Execution & Architectural Deliverables (Completed)
 
-When proceeding to code execution in the next work sprint:
+Phase 13 delivered a complete rebuild and modernization of KhataGHAR's Document Vault into an institutional-grade, zero-cloud sovereign Drive:
 
-1. **Step 1: Build Dedicated Vector Icon Engine (`InternxtFileIcon.tsx`)**:
-   - Port the 19 vector SVGs from `/home/krish/Downloads/Entry/drive-desktop-main/src/apps/renderer/assets/icons/`.
-   - Implement the `fileIcon(extension)` resolver matching Internxt's extension lookup table.
-2. **Step 2: Upgrade Grid Cards to 1:1 `DriveExplorerGridItem` Spec**:
-   - Square aspect ratio container with dynamic height.
-   - 4/6th height canvas with full-bleed thumbnail or centered vector SVG.
-   - Top-right circular 3-dot hover button.
-   - Truncated single-line title with hover underline.
-   - Distinct folder cards with folder vector SVG and item count.
-3. **Step 3: Upgrade List Table to 1:1 `DriveExplorerList` Spec**:
-   - Dense, professional table view with Name (SVG + title), Modified Date, Size, and Actions.
-   - Shift-click and Ctrl-click multi-selection.
-4. **Step 4: Right-Click Context Menu & Selection Toolbar**:
-   - Screen-bounded context menu at cursor coordinates.
-   - Dynamic top toolbar that switches into bulk-selection mode when items are selected.
-   - Hotkeys: `R` for rename, `Backspace` for trash.
-5. **Step 5: Maintain Absolute Sovereign Invariants**:
-   - **Zero Cloud**: 100% on-device SQLite AES-256-GCM encryption.
-   - **Instant Unencrypted Export**: 1-click export of unencrypted files to local disk.
-   - **No Release Tags**: Only push to `main` for GitHub Pages deployment.
+1. **19 Official Vector SVGs Engine (`InternxtFileIcon.tsx`)**:
+   - Ported 19 vector SVGs from Internxt (`drive-desktop-main`): `pdf.svg`, `excel.svg`, `word.svg`, `zip.svg`, `image.svg`, `video.svg`, `audio.svg`, `code.svg`, `csv.svg`, `ppt.svg`, `powerpoint.svg`, `figma.svg`, `sketch.svg`, `photoshop.svg`, `illustrator.svg`, `indesign.svg`, `txt.svg`, `folder.svg`, `default.svg` into both `src/assets/icons/drive/` and `public/icons/drive/`.
+   - Resolves 60+ extensions (`.pdf`, `.xlsx`, `.csv`, `.docx`, `.png`, `.mp4`, `.zip`, `.py`, `.ts`, `.json`, etc.) with fallback heuristics.
+   - Zero external runtime dependencies; bundled and hashed via Vite.
+2. **1:1 Square Grid Cards (`DriveExplorerGridItem`)**:
+   - Cards dynamically locked to `aspect-square`.
+   - Upper ~66% (`h-2/3`) dedicated canvas: renders decrypted image thumbnail or centered large vector SVG icon (`size="xl"`).
+   - Top-right corner: floating circular 3-dot button (`w-6 h-6 rounded-full bg-surface shadow-md`) revealed on card hover.
+   - Top-left corner: floating checkbox trigger revealed on hover or when selected.
+   - Top-right: star toggle indicator.
+   - Bottom ~34%: single-line truncated title with hover underline, size & relative date, and clickable financial link badge.
+   - Selection state: `border-brand-500 bg-brand-500/5 ring-2 ring-brand-500/40`.
+3. **High-Density List Table (`DriveExplorerList`)**:
+   - Fixed columns: Checkbox, Name (`InternxtFileIcon` + title), Modified Date, File Size, Linked Financial Record badge, and Actions (Star, Download, 3-dot trigger).
+   - Clean row dividers, alternating hover tints, Shift-click range selection, and Ctrl/Cmd-click multi-selection.
+4. **Inline Renaming Engine**:
+   - Pressing `R` key or choosing "Rename" from the context menu turns the document filename directly into an auto-focused inline `<input>`.
+   - `Enter` commits changes via `updateDocument(id, { name })`; `Escape` cancels without saving.
+5. **Right-Click Context Menu**:
+   - Bound to cursor `(x, y)` coordinates with screen boundary detection (`window.innerWidth - 220`, `window.innerHeight - 260`).
+   - Actions: Open Lightbox (`Enter`), Download Unencrypted, Rename (`R`), Star (`S`), View Details (`I`), Delete File (`Backspace`).
+   - Strictly NO cloud sharing links ("Copy Link" omitted).
+6. **Live Database Footprint & Size Meter (`DriveDatabaseUsageMeter.tsx`)**:
+   - Queries `db.getStats()` for total on-disk physical SQLite bytes (`fileSizeBytes`).
+   - Aggregates live data from `useVault()`: total document bytes, transaction counts & estimated footprint, accounts & portfolios, encrypted notes & attachments, assets, debts, budgets, and goals.
+   - Multi-color segmented usage bar: Sky blue (Documents), Pine green (Ledger), Amber (Notes), Indigo (WAL Index).
+7. **Deep Financial Entity Linkage**:
+   - Every file displays where and what it is linked to:
+     - Transaction Receipt: `₹amount • description (date)`
+     - Asset Deed: `name • ₹currentValue`
+     - Loan Agreement: `name • ₹outstandingBalance`
+     - Bank KYC: `accountName (type)`
+     - Contact IOU: `contactName`
+   - Dedicated **"Unlinked Files"** filter in the sidebar to rapidly identify documents not yet attached to financial records.
+8. **Android Mobile Parity**:
+   - Updated `AndroidFileManagerView.tsx` with `InternxtFileIcon`, unlinked filtering, and responsive touch cards.
+   - Updated `DriveDesktopWidget.tsx`, `DriveToolsModal.tsx`, and `DocumentDetailModal.tsx` to use the vector icon engine.
+
 
 
 

@@ -4,6 +4,7 @@ import type { DocumentRecord } from '../../types';
 import { useVault } from '../../context/VaultContext';
 import { formatFileSize } from '../../utils/formatters';
 import { formatReadableDate } from '../../utils/dates';
+import { InternxtFileIcon } from './InternxtFileIcon';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -243,21 +244,7 @@ export const DriveToolsModal: React.FC<DriveToolsModalProps> = ({
   };
 
   const getDocTypeIcon = (doc: DocumentRecord) => {
-    const mime = (doc.fileType || '').toLowerCase();
-    const name = (doc.name || '').toLowerCase();
-    if (mime === 'application/pdf' || name.endsWith('.pdf')) {
-      return <FileText className="w-4 h-4 text-rose-500" />;
-    }
-    if (mime.startsWith('image/') || /\.(png|jpe?g|webp|svg)$/i.test(name)) {
-      return <ImageIcon className="w-4 h-4 text-sky-500" />;
-    }
-    if (mime.includes('sheet') || mime.includes('csv') || /\.(xlsx?|csv)$/i.test(name)) {
-      return <FileSpreadsheet className="w-4 h-4 text-emerald-500" />;
-    }
-    if (/\.(zip|tar|gz|rar|7z)$/i.test(name)) {
-      return <Archive className="w-4 h-4 text-amber-500" />;
-    }
-    return <FileCode className="w-4 h-4 text-violet-500" />;
+    return <InternxtFileIcon name={doc.name} mimeType={doc.fileType} size="sm" />;
   };
 
   return (

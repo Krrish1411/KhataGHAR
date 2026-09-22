@@ -28,8 +28,7 @@ export const AppLayout: React.FC = () => {
   const { transactions, accounts } = useVault();
   const { togglePrivacy } = usePrivacy();
   const navigate = useNavigate();
-  const location = useLocation();
-  const isNotesView = location.pathname === '/notes';
+  const isFitScreenView = location.pathname === '/notes' || location.pathname === '/documents';
   const isDemoMode = Boolean(activeVault?.isDemo || activeVault?.name.toLowerCase().includes('demo'));
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -281,7 +280,7 @@ export const AppLayout: React.FC = () => {
       />
 
       {/* Main Content Column (Scrolls independently while Sidebar remains permanently fixed) */}
-      <div className={`flex-1 flex flex-col min-w-0 h-screen h-[100dvh] overflow-y-auto overflow-x-hidden custom-scrollbar ${isNotesView ? 'overflow-hidden pb-0' : 'pb-24 md:pb-8'}`}>
+      <div className={`flex-1 flex flex-col min-w-0 h-screen h-[100dvh] overflow-y-auto overflow-x-hidden custom-scrollbar ${isFitScreenView ? 'overflow-hidden pb-0' : 'pb-24 md:pb-8'}`}>
         {/* Demo Mode Top Banner */}
         {isDemoMode && (
           <div className="shrink-0 bg-gradient-to-r from-pine-900 via-pine-800 to-pine-950 text-white px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 border-b border-pine-700/60 shadow-xs">
@@ -318,7 +317,7 @@ export const AppLayout: React.FC = () => {
           onOpenSync={() => setIsSyncModalOpen(true)}
         />
 
-        <main className={`flex-1 w-full min-h-0 ${isNotesView ? 'px-3 sm:px-6 lg:px-8 py-3.5 flex flex-col overflow-hidden' : 'px-3 sm:px-6 lg:px-8 py-5'}`}>
+        <main className={`flex-1 w-full min-h-0 ${isFitScreenView ? 'px-2 sm:px-4 lg:px-6 py-2 sm:py-3 flex flex-col overflow-hidden' : 'px-3 sm:px-6 lg:px-8 py-5'}`}>
           <Outlet />
         </main>
       </div>

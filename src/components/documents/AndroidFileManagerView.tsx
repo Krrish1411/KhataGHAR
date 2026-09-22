@@ -31,14 +31,15 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { FolderIconBadge } from './GoogleDriveView';
+import { InternxtFileIcon } from './InternxtFileIcon';
 
 interface AndroidFileManagerViewProps {
   documents: DocumentRecord[];
   folders: DocumentFolder[];
   activeFolderId: string;
   onSelectFolder: (folderId: string) => void;
-  selectedEntityFilter: LinkedEntityType | 'all';
-  onSelectEntityFilter: (entity: LinkedEntityType | 'all') => void;
+  selectedEntityFilter: LinkedEntityType | 'all' | 'unlinked';
+  onSelectEntityFilter: (entity: LinkedEntityType | 'all' | 'unlinked') => void;
   fileTypeFilter: 'all' | 'image' | 'pdf' | 'other';
   onSelectFileTypeFilter: (type: 'all' | 'image' | 'pdf' | 'other') => void;
   searchQuery: string;
@@ -148,7 +149,9 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
       list = list.filter((d) => (d.folderId || 'unfiled') === activeFolderId);
     }
 
-    if (selectedEntityFilter !== 'all') {
+    if (selectedEntityFilter === 'unlinked') {
+      list = list.filter((d) => !d.linkedType || d.linkedType === 'none');
+    } else if (selectedEntityFilter !== 'all') {
       list = list.filter(
         (d) =>
           d.linkedType === selectedEntityFilter ||
@@ -213,45 +216,14 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
     setActiveBottomSheetDoc(null);
   };
 
-  // Render file icon
+  // Render file icon using Internxt vector SVGs
   const renderFileIcon = (fileType: string, name: string, className = 'w-5 h-5') => {
-    const lowerName = name.toLowerCase();
-    if (fileType.startsWith('image/')) {
-      return <ImageIcon className={`${className} text-sky-500`} />;
-    }
-    if (fileType.includes('pdf') || lowerName.endsWith('.pdf')) {
-      return <FileText className={`${className} text-rose-500`} />;
-    }
-    if (
-      fileType.includes('sheet') ||
-      fileType.includes('excel') ||
-      lowerName.endsWith('.csv') ||
-      lowerName.endsWith('.xlsx')
-    ) {
-      return <FileSpreadsheet className={`${className} text-emerald-500`} />;
-    }
-    if (lowerName.endsWith('.zip') || lowerName.endsWith('.tar') || lowerName.endsWith('.gz')) {
-      return <Archive className={`${className} text-amber-500`} />;
-    }
-    if (lowerName.endsWith('.json') || lowerName.endsWith('.js') || lowerName.endsWith('.ts')) {
-      return <FileCode className={`${className} text-indigo-500`} />;
-    }
-    return <FileText className={`${className} text-slate-400 dark:text-slate-500`} />;
+    return <InternxtFileIcon name={name} mimeType={fileType} className={className} size="sm" />;
   };
 
   // Native drive file preview box for Grid view cards
   const renderFilePreviewBox = (doc: DocumentRecord) => {
     const isImage = doc.fileType.startsWith('image/');
-    const lowerName = doc.name.toLowerCase();
-    const isPdf = doc.fileType.includes('pdf') || lowerName.endsWith('.pdf');
-    const isSheet =
-      doc.fileType.includes('sheet') ||
-      doc.fileType.includes('excel') ||
-      lowerName.endsWith('.csv') ||
-      lowerName.endsWith('.xlsx') ||
-      lowerName.endsWith('.xls');
-    const isArchive =
-      lowerName.endsWith('.zip') || lowerName.endsWith('.tar') || lowerName.endsWith('.gz');
 
     if (isImage && doc.thumbnailUrl) {
       return (
@@ -266,83 +238,9 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
       );
     }
 
-    if (isPdf) {
-      return (
-        <div className="w-full h-full bg-rose-50/40 dark:bg-rose-950/20 p-2.5 flex flex-col justify-between relative overflow-hidden border-b border-rose-100 dark:border-rose-900/40">
-          <div className="flex items-center justify-between">
-            <span className="px-1.5 py-0.5 rounded bg-rose-500 text-white font-mono text-[9px] font-extrabold tracking-wider">
-              PDF
-            </span>
-            <FileText className="w-4 h-4 text-rose-500/70" />
-          </div>
-          <div className="space-y-1 opacity-40">
-            <div className="h-1 bg-rose-400 rounded-full w-4/5" />
-            <div className="h-1 bg-rose-300 rounded-full w-full" />
-            <div className="h-1 bg-rose-300 rounded-full w-2/3" />
-          </div>
-          <div className="text-[9px] font-mono text-rose-600/70 font-semibold truncate">
-            Encrypted Document
-          </div>
-        </div>
-      );
-    }
-
-    if (isSheet) {
-      return (
-        <div className="w-full h-full bg-emerald-50/40 dark:bg-emerald-950/20 p-2.5 flex flex-col justify-between relative overflow-hidden border-b border-emerald-100 dark:border-emerald-900/40">
-          <div className="flex items-center justify-between">
-            <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-white font-mono text-[9px] font-extrabold tracking-wider">
-              XLS
-            </span>
-            <FileSpreadsheet className="w-4 h-4 text-emerald-500/70" />
-          </div>
-          <div className="grid grid-cols-3 gap-1 opacity-40">
-            <div className="h-1.5 bg-emerald-300 rounded-xs" />
-            <div className="h-1.5 bg-emerald-300 rounded-xs" />
-            <div className="h-1.5 bg-emerald-300 rounded-xs" />
-          </div>
-          <div className="text-[9px] font-mono text-emerald-600/70 font-semibold truncate">
-            Spreadsheet
-          </div>
-        </div>
-      );
-    }
-
-    if (isArchive) {
-      return (
-        <div className="w-full h-full bg-amber-50/40 dark:bg-amber-950/20 p-2.5 flex flex-col justify-between relative overflow-hidden border-b border-amber-100 dark:border-amber-900/40">
-          <div className="flex items-center justify-between">
-            <span className="px-1.5 py-0.5 rounded bg-amber-500 text-white font-mono text-[9px] font-extrabold tracking-wider">
-              ZIP
-            </span>
-            <Archive className="w-4 h-4 text-amber-500/70" />
-          </div>
-          <div className="space-y-1 opacity-40">
-            <div className="h-1 bg-amber-400 rounded-full w-2/3" />
-            <div className="h-1 bg-amber-300 rounded-full w-4/5" />
-          </div>
-          <div className="text-[9px] font-mono text-amber-600/70 font-semibold truncate">
-            Archive
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <div className="w-full h-full bg-surface-2/60 p-2.5 flex flex-col justify-between relative overflow-hidden border-b border-line/40">
-        <div className="flex items-center justify-between">
-          <span className="px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-600 font-mono text-[9px] font-extrabold tracking-wider uppercase">
-            {doc.fileType.split('/')[1] || 'DOC'}
-          </span>
-          <FileText className="w-4 h-4 text-ink/30" />
-        </div>
-        <div className="space-y-1 opacity-30">
-          <div className="h-1 bg-ink/40 rounded-full w-3/4" />
-          <div className="h-1 bg-ink/30 rounded-full w-full" />
-        </div>
-        <div className="text-[9px] font-mono text-ink/40 font-semibold truncate">
-          Vault File
-        </div>
+      <div className="w-full h-full bg-surface-2/30 grid place-items-center p-3 relative overflow-hidden">
+        <InternxtFileIcon name={doc.name} mimeType={doc.fileType} size="xl" />
       </div>
     );
   };
