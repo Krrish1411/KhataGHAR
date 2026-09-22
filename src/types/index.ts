@@ -316,6 +316,7 @@ export type LinkedEntityType =
   | 'goal'
   | 'people'
   | 'account'
+  | 'note'
   | 'none';
 
 export interface DocumentLink {

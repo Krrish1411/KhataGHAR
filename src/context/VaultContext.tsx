@@ -37,7 +37,7 @@ import { generateThumbnail } from '../utils/imageCompressor';
 import { decryptData, encryptData, verifyKey } from '../services/crypto';
 import { syncEngine, mergeFullState } from '../services/sync/syncEngine';
 import { generateDemoDataset } from '../services/demoData';
-import { isTxAfterBaseline, formatDateISO } from '../utils/dates';
+import { isTxAfterBaseline, formatDateISO, parseSafeDate } from '../utils/dates';
 import { generateStarterCategories } from '../utils/categories';
 import { suggestCategoryIcon } from '../components/common/IconRenderer';
 import { checkAndNotifyUpcomingReminders } from '../utils/nativeNotification';
@@ -173,6 +173,10 @@ interface VaultContextType {
   ) => Promise<void>;
   addDocumentFolder: (
     folder: Omit<DocumentFolder, 'id' | 'vaultId' | 'createdAt' | 'updatedAt'>
+  ) => Promise<DocumentFolder>;
+  updateDocumentFolder: (
+    id: string,
+    updates: Partial<Omit<DocumentFolder, 'id' | 'vaultId' | 'createdAt'>>
   ) => Promise<DocumentFolder>;
   deleteDocumentFolder: (id: string) => Promise<void>;
 
@@ -613,11 +617,21 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setCategories(migratedCats);
       setPeopleLedger(rebalancedPeople);
       setBudgets(bdgs);
-      setGoals(gls);
-      setAssets(healedAssets);
-      setLiabilities(liabs);
-      setDocuments(docs);
-      documentsRef.current = docs;
+      const sanitizedDocs = docs.map((d) => {
+        let createdAt = d.createdAt;
+        if (!createdAt || createdAt === 'Invalid Date' || createdAt === 'undefined' || !parseSafeDate(createdAt)) {
+          createdAt = d.updatedAt && d.updatedAt !== 'Invalid Date' && parseSafeDate(d.updatedAt)
+            ? d.updatedAt
+            : new Date().toISOString();
+        }
+        return {
+          ...d,
+          createdAt,
+          updatedAt: d.updatedAt || createdAt,
+        };
+      });
+      setDocuments(sanitizedDocs);
+      documentsRef.current = sanitizedDocs;
       const mergedDocFolders: DocumentFolder[] = [
         ...DEFAULT_DOCUMENT_FOLDERS.map((df) => ({
           id: df.id,
@@ -3177,6 +3191,25 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newFolder;
   };
 
+  const updateDocumentFolder = async (
+    id: string,
+    updates: Partial<Omit<DocumentFolder, 'id' | 'vaultId' | 'createdAt'>>
+  ): Promise<DocumentFolder> => {
+    if (!activeVault || !sessionKey) throw new Error('Vault is locked');
+    const existing = documentFoldersRef.current.find((f) => f.id === id);
+    if (!existing) throw new Error('Folder not found');
+    const updated: DocumentFolder = {
+      ...existing,
+      ...updates,
+      vaultId: existing.vaultId || activeVault.id,
+      updatedAt: new Date().toISOString(),
+    };
+    documentFoldersRef.current = documentFoldersRef.current.map((f) => (f.id === id ? updated : f));
+    setDocumentFolders(documentFoldersRef.current);
+    await saveEncryptedRecord('doc_folder' as any, { ...updated, vaultId: updated.vaultId || activeVault.id }, sessionKey);
+    return updated;
+  };
+
   const deleteDocumentFolder = async (id: string): Promise<void> => {
     documentFoldersRef.current = documentFoldersRef.current.filter((f) => f.id !== id);
     setDocumentFolders(documentFoldersRef.current);
@@ -3346,6 +3379,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         linkDocumentToEntity,
         unlinkDocumentFromEntity,
         addDocumentFolder,
+        updateDocumentFolder,
         deleteDocumentFolder,
         addNote,
         updateNote,

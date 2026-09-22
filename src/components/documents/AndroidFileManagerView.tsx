@@ -608,7 +608,7 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
                   </span>
                   <div className="flex items-center justify-between text-[10px] text-ink/40 font-mono mt-1">
                     <span>{formatFileSize(doc.fileSize || 0)}</span>
-                    <span>{formatReadableDate(doc.createdAt)}</span>
+                    <span>{formatReadableDate(doc.createdAt) || 'Recent'}</span>
                   </div>
                 </div>
               </div>
@@ -632,7 +632,7 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
                     <div className="flex items-center gap-2 text-[10px] text-ink/40 font-mono mt-0.5">
                       <span>{formatFileSize(doc.fileSize || 0)}</span>
                       <span>•</span>
-                      <span>{formatReadableDate(doc.createdAt)}</span>
+                      <span>{formatReadableDate(doc.createdAt) || 'Recent'}</span>
                       {doc.linkedType && doc.linkedType !== 'none' && (
                         <>
                           <span>•</span>
@@ -724,7 +724,7 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
                   {activeBottomSheetDoc.name}
                 </h3>
                 <p className="text-[11px] text-ink/50 font-mono mt-0.5">
-                  {formatFileSize(activeBottomSheetDoc.fileSize || 0)} • {formatReadableDate(activeBottomSheetDoc.createdAt)}
+                  {formatFileSize(activeBottomSheetDoc.fileSize || 0)} • {formatReadableDate(activeBottomSheetDoc.createdAt) || 'Recent'}
                 </p>
               </div>
             </div>

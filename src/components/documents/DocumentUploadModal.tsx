@@ -6,7 +6,7 @@ import { Button } from '../common/Button';
 import { useVault } from '../../context/VaultContext';
 import { formatFileSize } from '../../utils/formatters';
 import { processFileForVault } from '../../utils/imageCompressor';
-import type { LinkedEntityType } from '../../types';
+import type { LinkedEntityType, DocumentRecord } from '../../types';
 import {
   FolderLock,
   Upload,
@@ -24,6 +24,7 @@ interface DocumentUploadModalProps {
   defaultLinkedType?: LinkedEntityType;
   defaultLinkedId?: string;
   defaultFolderId?: string;
+  onUploaded?: (doc: DocumentRecord) => void;
 }
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
@@ -34,6 +35,7 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({
   defaultLinkedType = 'none',
   defaultLinkedId,
   defaultFolderId,
+  onUploaded,
 }) => {
   const {
     addDocument,
@@ -107,7 +109,7 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({
     setError('');
 
     try {
-      await addDocument(
+      const created = await addDocument(
         {
           name: name.trim(),
           fileType,
@@ -123,6 +125,7 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({
         fileDataUrl,
         { isUncompressed }
       );
+      if (onUploaded) onUploaded(created);
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Failed to encrypt and store document');

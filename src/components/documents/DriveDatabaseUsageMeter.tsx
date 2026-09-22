@@ -228,68 +228,58 @@ export const DriveDatabaseUsageMeter: React.FC<DriveDatabaseUsageMeterProps> = (
 
       {/* Expandable Detailed Table Breakdown */}
       {isExpanded && (
-        <div className="pt-2 border-t border-line/60 space-y-2 anim-fade">
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
+        <div className="pt-2 border-t border-line/60 space-y-1.5 anim-fade">
+          <div className="space-y-1.5 text-[11px]">
             {/* Documents */}
-            <div className="p-2 rounded-xl bg-surface-2/50 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-sky-500" />
-                <span className="font-semibold text-ink">Vault Documents</span>
+            <div className="p-2 rounded-xl bg-surface-2/60 flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                <span className="font-semibold text-ink truncate">Vault Documents</span>
               </div>
-              <span className="font-mono text-ink/70">
-                {documents.length} ({formatFileSize(totalDocBytes)})
+              <span className="font-mono text-[11px] font-bold text-ink/70 shrink-0 ml-2">
+                {documents.length} <span className="text-[10px] font-normal text-ink/40">({formatFileSize(totalDocBytes)})</span>
               </span>
             </div>
 
             {/* Transactions */}
-            <div className="p-2 rounded-xl bg-surface-2/50 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Receipt className="w-3.5 h-3.5 text-pine-600" />
-                <span className="font-semibold text-ink">Transactions</span>
+            <div className="p-2 rounded-xl bg-surface-2/60 flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <Receipt className="w-3.5 h-3.5 text-pine-600 shrink-0" />
+                <span className="font-semibold text-ink truncate">Transactions</span>
               </div>
-              <span className="font-mono text-ink/70">
-                {transactions.length} ({formatFileSize(estimatedTxBytes)})
+              <span className="font-mono text-[11px] font-bold text-ink/70 shrink-0 ml-2">
+                {transactions.length} <span className="text-[10px] font-normal text-ink/40">({formatFileSize(estimatedTxBytes)})</span>
               </span>
             </div>
 
             {/* Accounts & Assets */}
-            <div className="p-2 rounded-xl bg-surface-2/50 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Landmark className="w-3.5 h-3.5 text-blue-500" />
-                <span className="font-semibold text-ink">Accounts & Assets</span>
+            <div className="p-2 rounded-xl bg-surface-2/60 flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <Landmark className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                <span className="font-semibold text-ink truncate">Accounts & Assets</span>
               </div>
-              <span className="font-mono text-ink/70">
-                {accounts.length + assets.length + liabilities.length}
+              <span className="font-mono text-[11px] font-bold text-ink/70 shrink-0 ml-2">
+                {accounts.length + assets.length + liabilities.length} <span className="text-[10px] font-normal text-ink/40">items</span>
               </span>
             </div>
 
             {/* Encrypted Notes */}
-            <div className="p-2 rounded-xl bg-surface-2/50 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <StickyNote className="w-3.5 h-3.5 text-amber-500" />
-                <span className="font-semibold text-ink">Encrypted Notes</span>
+            <div className="p-2 rounded-xl bg-surface-2/60 flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <StickyNote className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="font-semibold text-ink truncate">Encrypted Notes</span>
               </div>
-              <span className="font-mono text-ink/70">
-                {notes.length} ({formatFileSize(estimatedNotesBytes)})
+              <span className="font-mono text-[11px] font-bold text-ink/70 shrink-0 ml-2">
+                {notes.length} <span className="text-[10px] font-normal text-ink/40">({formatFileSize(estimatedNotesBytes)})</span>
               </span>
             </div>
           </div>
 
-          {onOpenTools && (
-            <div className="pt-1 flex items-center justify-between">
-              <span className="text-[10px] text-ink/40">
-                Encrypted with device-bound AES-256-GCM
-              </span>
-              <button
-                type="button"
-                onClick={() => onOpenTools('cleaner')}
-                className="text-[11px] font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1"
-              >
-                <Wrench className="w-3 h-3" />
-                <span>Optimize & Clean</span>
-              </button>
-            </div>
-          )}
+          <div className="pt-1.5 flex items-center justify-between">
+            <span className="text-[10px] text-ink/40">
+              Encrypted with device-bound AES-256-GCM
+            </span>
+          </div>
         </div>
       )}
     </div>

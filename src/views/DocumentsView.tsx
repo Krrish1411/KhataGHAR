@@ -158,6 +158,11 @@ export const DocumentsView: React.FC = () => {
           isOpen={isUploadModalOpen}
           onClose={() => setIsUploadModalOpen(false)}
           defaultFolderId={activeFolderId !== 'all' ? activeFolderId : undefined}
+          onUploaded={(doc) => {
+            if (doc.folderId && doc.folderId !== 'unfiled' && activeFolderId !== 'all' && activeFolderId !== doc.folderId) {
+              setActiveFolderId(doc.folderId);
+            }
+          }}
         />
       )}
 

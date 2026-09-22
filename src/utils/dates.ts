@@ -14,10 +14,44 @@ export function formatDateISO(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+// Helper to parse dateStr safely whether it's 'YYYY-MM-DD', ISO string, timestamp number, or timestamp string
+export function parseSafeDate(dateStr: string | number | Date | null | undefined): Date | null {
+  if (dateStr === null || dateStr === undefined || dateStr === '') return null;
+  if (dateStr instanceof Date) {
+    return isNaN(dateStr.getTime()) ? null : dateStr;
+  }
+  if (typeof dateStr === 'number') {
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const str = String(dateStr).trim();
+  if (str === 'Invalid Date' || str === 'undefined' || str === 'null' || !str) return null;
+
+  // If numeric string timestamp (e.g. "1726000000000" or 10-digit unix "1726000000")
+  if (/^\d+$/.test(str)) {
+    const num = Number(str);
+    const d = new Date(str.length === 10 ? num * 1000 : num);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // If it already has time or timezone indicator ('T', 'Z', space), parse directly
+  if (str.includes('T') || str.includes('Z') || str.includes(' ')) {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) return d;
+  }
+  // Otherwise append T00:00:00 to avoid timezone rollover on plain YYYY-MM-DD
+  const d = new Date(str + 'T00:00:00');
+  if (!isNaN(d.getTime())) return d;
+  // Fallback direct parse
+  const fallback = new Date(str);
+  return isNaN(fallback.getTime()) ? null : fallback;
+}
+
 // Format readable date e.g. "02 Sep 2026"
-export function formatReadableDate(dateStr: string): string {
+export function formatReadableDate(dateStr: string | number | Date | null | undefined): string {
   if (!dateStr) return '';
-  const date = new Date(dateStr + 'T00:00:00');
+  const date = parseSafeDate(dateStr);
+  if (!date) return '';
   return date.toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
@@ -25,10 +59,41 @@ export function formatReadableDate(dateStr: string): string {
   });
 }
 
-// Format short date e.g. "02 Sep"
-export function formatShortDate(dateStr: string): string {
+// Format readable date and time e.g. "02 Sep 2026 • 04:30 PM"
+export function formatReadableDateTime(dateStr: string | number | Date | null | undefined): string {
   if (!dateStr) return '';
-  const date = new Date(dateStr + 'T00:00:00');
+  const date = parseSafeDate(dateStr);
+  if (!date) return '';
+  const datePart = date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+  const timePart = date.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+  return `${datePart} • ${timePart}`;
+}
+
+// Format readable time e.g. "04:30 PM"
+export function formatReadableTime(dateStr: string | number | Date | null | undefined): string {
+  if (!dateStr) return '';
+  const date = parseSafeDate(dateStr);
+  if (!date) return '';
+  return date.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+// Format short date e.g. "02 Sep"
+export function formatShortDate(dateStr: string | number | Date | null | undefined): string {
+  if (!dateStr) return '';
+  const date = parseSafeDate(dateStr);
+  if (!date) return '';
   return date.toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
@@ -36,9 +101,10 @@ export function formatShortDate(dateStr: string): string {
 }
 
 // Format month name e.g. "September 2026"
-export function formatMonthYear(dateStr: string): string {
+export function formatMonthYear(dateStr: string | number | Date | null | undefined): string {
   if (!dateStr) return '';
-  const date = new Date(dateStr + 'T00:00:00');
+  const date = parseSafeDate(dateStr);
+  if (!date) return '';
   return date.toLocaleDateString('en-IN', {
     month: 'short',
     year: 'numeric',

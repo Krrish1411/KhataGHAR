@@ -13,6 +13,8 @@ export default {
         moss: 'var(--color-moss)',
         ground: 'var(--color-moss)',
         card: 'var(--color-card)',
+        surface: 'var(--color-card)',
+        'surface-2': 'var(--color-moss)',
         line: 'var(--color-line)',
 
         // Emerald / Pine (Money In / Assets / Positive)

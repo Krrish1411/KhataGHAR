@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { formatFileSize, formatCurrency, formatCompactCurrency } from '../../utils/formatters';
-import { formatReadableDate } from '../../utils/dates';
+import { formatReadableDate, formatReadableDateTime } from '../../utils/dates';
 import { useVault } from '../../context/VaultContext';
 import { useConfirm } from '../../context/DialogContext';
 import { processFileForVault } from '../../utils/imageCompressor';
@@ -46,6 +46,11 @@ import {
   Database,
   Unlink,
   ArrowUpDown,
+  Copy,
+  Scissors,
+  Clipboard,
+  StickyNote,
+  Target,
 } from 'lucide-react';
 import { InternxtFileIcon, extractExtension } from './InternxtFileIcon';
 import { DriveDatabaseUsageMeter } from './DriveDatabaseUsageMeter';
@@ -53,6 +58,7 @@ import { useDriveShortcuts } from '../../hooks/useDriveShortcuts';
 import { DriveShortcutsModal } from './DriveShortcutsModal';
 import { DriveDesktopWidget } from './DriveDesktopWidget';
 import { DriveToolsModal } from './DriveToolsModal';
+import { DocumentFolderModal } from './DocumentFolderModal';
 
 // Helper to render beautiful native Drive folder icons with custom color or Internxt folder SVG
 export const FolderIconBadge: React.FC<{
@@ -160,6 +166,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     liabilities,
     peopleLedger,
     goals,
+    notes,
   } = useVault();
 
   const confirm = useConfirm();
@@ -170,6 +177,15 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   // Multi-selection state
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
   const [lastSelectedDocId, setLastSelectedDocId] = useState<string | null>(null);
+
+  // Explorer Clipboard State (Copy, Cut, Paste)
+  const [clipboard, setClipboard] = useState<{
+    action: 'copy' | 'cut';
+    docIds: string[];
+  } | null>(null);
+
+  // Folder to Edit / Customize Modal State
+  const [folderToEdit, setFolderToEdit] = useState<DocumentFolder | null>(null);
 
   // Inspector drawer toggle
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
@@ -366,9 +382,16 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
 
     // 2. Financial Entity Filter
     if (selectedEntityFilter === 'unlinked') {
-      result = result.filter((d) => !d.linkedType || d.linkedType === 'none');
+      result = result.filter((d) => {
+        const hasLegacy = d.linkedType && d.linkedType !== 'none';
+        const hasLinks = d.links && d.links.length > 0;
+        return !hasLegacy && !hasLinks;
+      });
     } else if (selectedEntityFilter !== 'all') {
-      result = result.filter((d) => d.linkedType === selectedEntityFilter);
+      result = result.filter((d) => {
+        if (d.linkedType === selectedEntityFilter) return true;
+        return d.links?.some((l) => l.entityType === selectedEntityFilter) ?? false;
+      });
     }
 
     // 3. File type filter
@@ -518,6 +541,66 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     setLastSelectedDocId(null);
   };
 
+  // ─────────────────────────────────────────────────────────────────
+  // EXPLORER CLIPBOARD OPERATIONS (Copy, Cut, Paste)
+  // ─────────────────────────────────────────────────────────────────
+  const handleCopySelected = (specificIds?: string[]) => {
+    const ids = specificIds || Array.from(selectedDocIds);
+    if (ids.length === 0) return;
+    setClipboard({ action: 'copy', docIds: ids });
+    setContextMenu(null);
+  };
+
+  const handleCutSelected = (specificIds?: string[]) => {
+    const ids = specificIds || Array.from(selectedDocIds);
+    if (ids.length === 0) return;
+    setClipboard({ action: 'cut', docIds: ids });
+    setContextMenu(null);
+  };
+
+  const handlePaste = async (targetFolderId?: string) => {
+    if (!clipboard || clipboard.docIds.length === 0) return;
+    const destination = targetFolderId || (activeFolderId !== 'all' ? activeFolderId : 'unfiled');
+
+    try {
+      if (clipboard.action === 'cut') {
+        for (const id of clipboard.docIds) {
+          await updateDocument(id, { folderId: destination });
+        }
+        setClipboard(null);
+      } else if (clipboard.action === 'copy') {
+        for (const id of clipboard.docIds) {
+          const originalDoc = documents.find((d) => d.id === id);
+          if (originalDoc) {
+            const dataUrl = originalDoc.dataUrl || (await loadDocumentDataUrl(originalDoc.id));
+            await addDocument(
+              {
+                name: `Copy of ${originalDoc.name}`,
+                fileType: originalDoc.fileType,
+                fileSize: originalDoc.fileSize,
+                folderId: destination,
+                thumbnailUrl: originalDoc.thumbnailUrl,
+                notes: originalDoc.notes,
+                linkedType: originalDoc.linkedType,
+                linkedId: originalDoc.linkedId,
+                links: originalDoc.links,
+                expiryDate: originalDoc.expiryDate,
+                isUncompressed: originalDoc.isUncompressed,
+              },
+              dataUrl,
+              { isUncompressed: originalDoc.isUncompressed }
+            );
+          }
+        }
+        setClipboard(null);
+      }
+    } catch (err) {
+      console.error('Paste failed:', err);
+    } finally {
+      setContextMenu(null);
+    }
+  };
+
   // Download a single document to local disk
   const handleDownloadDoc = async (doc: DocumentRecord, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -642,6 +725,41 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     onDeleteSelected: handleDeleteSelected,
     onClearSelection: handleClearSelection,
   });
+
+  // Explorer keyboard listener for Copy, Cut, Paste, F2
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+        if (selectedDocIds.size > 0) {
+          e.preventDefault();
+          handleCopySelected();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x') {
+        if (selectedDocIds.size > 0) {
+          e.preventDefault();
+          handleCutSelected();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+        if (clipboard && clipboard.docIds.length > 0) {
+          e.preventDefault();
+          handlePaste();
+        }
+      } else if (e.key === 'F2') {
+        if (selectedDocIds.size === 1 && primarySelectedDoc) {
+          e.preventDefault();
+          handleStartRename(primarySelectedDoc);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedDocIds, clipboard, activeFolderId, primarySelectedDoc, documents]);
 
   // Close context menu & popovers on outside click
   useEffect(() => {
@@ -811,21 +929,21 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsMoveMenuOpen((prev) => !prev)}
-                  className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors"
+                  className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer"
                   title="Move to folder"
                 >
                   <Folder className="w-3.5 h-3.5" />
                 </button>
 
                 {isMoveMenuOpen && (
-                  <div className="absolute right-0 top-full mt-1.5 w-52 py-1.5 bg-surface border border-line rounded-2xl shadow-xl z-50 text-xs text-ink space-y-0.5 anim-scale">
+                  <div className="absolute right-0 top-full mt-1.5 w-52 py-1.5 bg-card border border-line rounded-2xl shadow-2xl z-50 text-xs text-ink space-y-0.5 anim-scale">
                     <span className="px-3 py-1 text-[10px] font-bold text-ink/40 uppercase block">
                       Move to Folder:
                     </span>
                     <button
                       type="button"
                       onClick={() => handleMoveSelected('unfiled')}
-                      className="w-full text-left px-3 py-1.5 hover:bg-surface-2 flex items-center gap-2"
+                      className="w-full text-left px-3 py-1.5 hover:bg-surface-2 flex items-center gap-2 cursor-pointer"
                     >
                       <Folder className="w-3.5 h-3.5 text-ink/40" /> Unfiled
                     </button>
@@ -834,7 +952,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                         key={f.id}
                         type="button"
                         onClick={() => handleMoveSelected(f.id)}
-                        className="w-full text-left px-3 py-1.5 hover:bg-surface-2 flex items-center gap-2 truncate"
+                        className="w-full text-left px-3 py-1.5 hover:bg-surface-2 flex items-center gap-2 truncate cursor-pointer"
                       >
                         <FolderIconBadge folder={f} size="sm" />
                         <span className="truncate">{f.name}</span>
@@ -844,10 +962,30 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 )}
               </div>
 
+              {/* Copy Selected */}
+              <button
+                type="button"
+                onClick={() => handleCopySelected()}
+                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer"
+                title="Copy selected (Ctrl+C)"
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Cut Selected */}
+              <button
+                type="button"
+                onClick={() => handleCutSelected()}
+                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer"
+                title="Cut / Move selected (Ctrl+X)"
+              >
+                <Scissors className="w-3.5 h-3.5" />
+              </button>
+
               <button
                 type="button"
                 onClick={handleDeleteSelected}
-                className="p-1.5 rounded-xl hover:bg-rose-500/20 text-rose-600 transition-colors"
+                className="p-1.5 rounded-xl hover:bg-rose-500/20 text-rose-600 transition-colors cursor-pointer"
                 title="Delete selected (Backspace)"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -856,7 +994,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={handleClearSelection}
-                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-ink/50 hover:text-ink transition-colors ml-1"
+                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-ink/50 hover:text-ink transition-colors ml-1 cursor-pointer"
                 title="Clear selection (Esc)"
               >
                 <X className="w-3.5 h-3.5" />
@@ -865,6 +1003,28 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
           ) : (
             /* Standard Action Bar when nothing selected */
             <>
+              {/* Explorer Clipboard Paste Button when items copied/cut */}
+              {clipboard && clipboard.docIds.length > 0 && (
+                <div className="flex items-center gap-1 bg-brand-500/10 border border-brand-500/20 px-2.5 py-1 rounded-2xl anim-fade">
+                  <button
+                    type="button"
+                    onClick={() => handlePaste()}
+                    className="flex items-center gap-1.5 text-xs font-bold text-brand-700 dark:text-brand-300 hover:text-brand-800 cursor-pointer"
+                    title="Paste into current folder (Ctrl+V)"
+                  >
+                    <Clipboard className="w-3.5 h-3.5" />
+                    <span>Paste ({clipboard.docIds.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClipboard(null)}
+                    className="p-0.5 rounded text-brand-700/60 hover:text-brand-800 cursor-pointer"
+                    title="Clear clipboard"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
               {/* Database usage mini indicator */}
               <DriveDatabaseUsageMeter
                 compact={true}
@@ -1124,7 +1284,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   <span>Receipts (Txs)</span>
                 </div>
                 <span className="text-[10px] font-mono text-ink/40">
-                  {documents.filter((d) => d.linkedType === 'transaction').length}
+                  {documents.filter((d) => d.linkedType === 'transaction' || d.links?.some((l) => l.entityType === 'transaction')).length}
                 </span>
               </button>
 
@@ -1142,7 +1302,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   <span>Deeds (Assets)</span>
                 </div>
                 <span className="text-[10px] font-mono text-ink/40">
-                  {documents.filter((d) => d.linkedType === 'asset').length}
+                  {documents.filter((d) => d.linkedType === 'asset' || d.links?.some((l) => l.entityType === 'asset')).length}
                 </span>
               </button>
 
@@ -1160,7 +1320,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   <span>Loans (Debts)</span>
                 </div>
                 <span className="text-[10px] font-mono text-ink/40">
-                  {documents.filter((d) => d.linkedType === 'liability').length}
+                  {documents.filter((d) => d.linkedType === 'liability' || d.links?.some((l) => l.entityType === 'liability')).length}
                 </span>
               </button>
 
@@ -1178,7 +1338,61 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   <span>Bank KYC</span>
                 </div>
                 <span className="text-[10px] font-mono text-ink/40">
-                  {documents.filter((d) => d.linkedType === 'account').length}
+                  {documents.filter((d) => d.linkedType === 'account' || d.links?.some((l) => l.entityType === 'account')).length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSelectEntityFilter('note')}
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all ${
+                  selectedEntityFilter === 'note'
+                    ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 font-bold'
+                    : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <StickyNote className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Vault Notes</span>
+                </div>
+                <span className="text-[10px] font-mono text-ink/40">
+                  {documents.filter((d) => d.linkedType === 'note' || d.links?.some((l) => l.entityType === 'note')).length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSelectEntityFilter('people')}
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all ${
+                  selectedEntityFilter === 'people'
+                    ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400 font-bold'
+                    : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Users className="w-3.5 h-3.5 text-purple-500" />
+                  <span>Khatabook</span>
+                </div>
+                <span className="text-[10px] font-mono text-ink/40">
+                  {documents.filter((d) => d.linkedType === 'people' || d.links?.some((l) => l.entityType === 'people')).length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSelectEntityFilter('goal')}
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all ${
+                  selectedEntityFilter === 'goal'
+                    ? 'bg-teal-500/10 text-teal-700 dark:text-teal-400 font-bold'
+                    : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Target className="w-3.5 h-3.5 text-teal-500" />
+                  <span>Savings Goals</span>
+                </div>
+                <span className="text-[10px] font-mono text-ink/40">
+                  {documents.filter((d) => d.linkedType === 'goal' || d.links?.some((l) => l.entityType === 'goal')).length}
                 </span>
               </button>
 
@@ -1198,7 +1412,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   <span>Unlinked Files</span>
                 </div>
                 <span className="text-[10px] font-mono text-ink/40">
-                  {documents.filter((d) => !d.linkedType || d.linkedType === 'none').length}
+                  {documents.filter((d) => (!d.linkedType || d.linkedType === 'none') && (!d.links || d.links.length === 0)).length}
                 </span>
               </button>
             </div>
@@ -1219,7 +1433,16 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
         {/* ───────────────────────────────────────────────────────────
             MAIN FILE CANVAS (1:1 Square Grid or High-Density List)
         ─────────────────────────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col min-w-0 bg-surface-2/20 overflow-y-auto custom-scrollbar p-4">
+        <div
+          className="flex-1 flex flex-col min-w-0 bg-surface-2/20 overflow-y-auto custom-scrollbar p-4"
+          onContextMenu={(e) => {
+            const target = e.target as HTMLElement;
+            if (target === e.currentTarget || target.classList.contains('canvas-empty-area')) {
+              e.preventDefault();
+              setContextMenu({ x: e.clientX, y: e.clientY });
+            }
+          }}
+        >
           {/* Main Screen Folders Section */}
           {(displayedSubfolders.length > 0 || activeFolderId === 'all') && searchQuery === '' && (
             <div className="mb-6 shrink-0">
@@ -1242,26 +1465,31 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                 {displayedSubfolders.map((folder) => {
                   const count = documents.filter((d) => d.folderId === folder.id).length;
                   return (
                     <div
                       key={folder.id}
-                      onClick={() => onSelectFolder(folder.id)}
+                      onClick={() => {
+                        setNavSection('files');
+                        onSelectFolder(folder.id);
+                      }}
                       onContextMenu={(e) => {
                         e.preventDefault();
+                        e.stopPropagation();
                         setContextMenu({ x: e.clientX, y: e.clientY, folder });
                       }}
-                      className="group p-3 rounded-2xl border border-line bg-surface hover:border-brand-500/50 hover:shadow-xs transition-all cursor-pointer flex items-center justify-between min-h-[56px]"
+                      className="group p-3.5 rounded-2xl border border-line bg-card hover:border-brand-500/50 hover:shadow-xs transition-all cursor-pointer flex items-center justify-between min-h-[64px]"
+                      title={`Click to open folder: ${folder.name}`}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <FolderIconBadge folder={folder} size="sm" />
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <FolderIconBadge folder={folder} size="md" />
                         <div className="min-w-0 flex-1">
-                          <span className="text-xs font-bold text-ink truncate block group-hover:text-brand-600">
+                          <span className="text-xs font-bold text-ink group-hover:text-brand-600 line-clamp-2 break-words leading-tight" title={folder.name}>
                             {folder.name}
                           </span>
-                          <span className="text-[10px] font-mono text-ink/40">{count} {count === 1 ? 'file' : 'files'}</span>
+                          <span className="text-[10px] font-mono text-ink/40 block mt-0.5">{count} {count === 1 ? 'file' : 'files'}</span>
                         </div>
                       </div>
 
@@ -1271,7 +1499,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                           e.stopPropagation();
                           setContextMenu({ x: e.clientX, y: e.clientY, folder });
                         }}
-                        className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-surface-2 opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0"
+                        className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-surface-2 opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0 cursor-pointer"
                         title="Folder options"
                       >
                         <MoreVertical className="w-3.5 h-3.5" />
@@ -1284,10 +1512,10 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 <button
                   type="button"
                   onClick={onNewFolderClick}
-                  className="p-3 rounded-2xl border border-dashed border-line hover:border-brand-500/60 bg-surface/40 hover:bg-brand-500/5 transition-all cursor-pointer flex items-center gap-2.5 text-ink/60 hover:text-brand-600 group text-left min-h-[56px]"
+                  className="p-3.5 rounded-2xl border border-dashed border-line hover:border-brand-500/60 bg-card/50 hover:bg-brand-500/5 transition-all cursor-pointer flex items-center gap-3 text-ink/60 hover:text-brand-600 group text-left min-h-[64px]"
                   title="Create a new folder"
                 >
-                  <div className="w-8 h-8 rounded-xl bg-surface-2 group-hover:bg-brand-500/10 grid place-items-center text-ink/50 group-hover:text-brand-600 transition-colors shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-surface-2 group-hover:bg-brand-500/10 grid place-items-center text-ink/50 group-hover:text-brand-600 transition-colors shrink-0">
                     <Plus className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
@@ -1474,7 +1702,9 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                       {/* Subtitle: Size & Date */}
                       <div className="flex items-center justify-between text-[10px] text-ink/40 font-mono mt-0.5">
                         <span>{formatFileSize(doc.fileSize || 0)}</span>
-                        <span>{formatReadableDate(doc.createdAt)}</span>
+                        <span title={doc.createdAt ? formatReadableDateTime(doc.createdAt) : ''}>
+                          {formatReadableDate(doc.createdAt) || 'Recent'}
+                        </span>
                       </div>
 
                       {/* Financial Link Badge */}
@@ -1522,7 +1752,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                       </button>
                     </th>
                     <th className="py-2.5 px-3">Name</th>
-                    <th className="py-2.5 px-3 hidden sm:table-cell">Modified</th>
+                    <th className="py-2.5 px-3 hidden sm:table-cell">Uploaded Date</th>
                     <th className="py-2.5 px-3 hidden md:table-cell">Size</th>
                     <th className="py-2.5 px-3 hidden lg:table-cell">Linked Financial Record</th>
                     <th className="py-2.5 pr-4 pl-2 text-right">Actions</th>
@@ -1597,9 +1827,11 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                           </div>
                         </td>
 
-                        {/* Modified Date */}
+                        {/* Uploaded Date */}
                         <td className="py-2.5 px-3 text-ink/50 text-[11px] font-mono hidden sm:table-cell whitespace-nowrap">
-                          {formatReadableDate(doc.createdAt)}
+                          <span title={doc.createdAt ? formatReadableDateTime(doc.createdAt) : ''}>
+                            {formatReadableDate(doc.createdAt) || 'Recent'}
+                          </span>
                         </td>
 
                         {/* Size */}
@@ -1752,11 +1984,22 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                     </div>
                   </div>
 
-                  <div>
-                    <span className="text-[10px] font-bold text-ink/40 uppercase">Uploaded</span>
-                    <p className="text-ink/70 font-mono mt-0.5">
-                      {formatReadableDate(primarySelectedDoc.createdAt)}
-                    </p>
+                  <div className="p-2.5 rounded-xl bg-surface-2/40 border border-line/60 space-y-1.5">
+                    <div>
+                      <span className="text-[10px] font-bold text-ink/40 uppercase block">Uploaded Date & Time</span>
+                      <p className="font-semibold text-ink text-xs font-mono mt-0.5">
+                        {formatReadableDateTime(primarySelectedDoc.createdAt) || formatReadableDate(primarySelectedDoc.createdAt) || 'Recently uploaded'}
+                      </p>
+                    </div>
+
+                    {primarySelectedDoc.updatedAt && primarySelectedDoc.updatedAt !== primarySelectedDoc.createdAt && (
+                      <div className="pt-1.5 border-t border-line/40">
+                        <span className="text-[10px] font-bold text-ink/40 uppercase block">Last Modified</span>
+                        <p className="text-ink/70 text-[11px] font-mono mt-0.5">
+                          {formatReadableDateTime(primarySelectedDoc.updatedAt)}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Deep Financial Link Card */}
@@ -1850,10 +2093,10 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
       {contextMenu && (
         <div
           style={{
-            top: Math.min(contextMenu.y, window.innerHeight - 260),
-            left: Math.min(contextMenu.x, window.innerWidth - 220),
+            top: Math.min(contextMenu.y, window.innerHeight - 300),
+            left: Math.min(contextMenu.x, window.innerWidth - 240),
           }}
-          className="fixed z-50 w-52 py-1.5 bg-surface border border-line rounded-2xl shadow-xl text-xs text-ink space-y-0.5 anim-scale"
+          className="fixed z-50 w-56 py-1.5 bg-card border border-line rounded-2xl shadow-2xl text-xs text-ink space-y-0.5 anim-scale"
           onClick={(e) => e.stopPropagation()}
         >
           {contextMenu.doc ? (
@@ -1864,37 +2107,49 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   onOpenDoc(contextMenu.doc!.id);
                   setContextMenu(null);
                 }}
-                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center justify-between font-semibold"
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center justify-between font-semibold cursor-pointer"
               >
                 <div className="flex items-center gap-2.5">
                   <Eye className="w-3.5 h-3.5 text-brand-500" />
-                  <span>Open Viewer</span>
+                  <span>Open Preview & Details</span>
                 </div>
                 <kbd className="text-[10px] text-ink/40">Enter</kbd>
               </button>
 
               <button
                 type="button"
-                onClick={() => {
-                  handleDownloadDoc(contextMenu.doc!);
-                  setContextMenu(null);
-                }}
-                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center gap-2.5 font-semibold"
+                onClick={() => handleCopySelected([contextMenu.doc!.id])}
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center justify-between font-semibold cursor-pointer"
               >
-                <Download className="w-3.5 h-3.5 text-blue-500" />
-                <span>Download Unencrypted</span>
+                <div className="flex items-center gap-2.5">
+                  <Copy className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Copy</span>
+                </div>
+                <kbd className="text-[10px] text-ink/40">Ctrl+C</kbd>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleCutSelected([contextMenu.doc!.id])}
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center justify-between font-semibold cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Scissors className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Cut / Move</span>
+                </div>
+                <kbd className="text-[10px] text-ink/40">Ctrl+X</kbd>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleStartRename(contextMenu.doc!)}
-                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center justify-between font-semibold"
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center justify-between font-semibold cursor-pointer"
               >
                 <div className="flex items-center gap-2.5">
                   <Edit2 className="w-3.5 h-3.5 text-amber-500" />
                   <span>Rename</span>
                 </div>
-                <kbd className="text-[10px] text-ink/40">R</kbd>
+                <kbd className="text-[10px] text-ink/40">F2</kbd>
               </button>
 
               <button
@@ -1903,7 +2158,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   toggleStar(contextMenu.doc!.id);
                   setContextMenu(null);
                 }}
-                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center justify-between font-semibold"
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center justify-between font-semibold cursor-pointer"
               >
                 <div className="flex items-center gap-2.5">
                   <Star className="w-3.5 h-3.5 text-amber-500" />
@@ -1919,13 +2174,25 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   setIsInspectorOpen(true);
                   setContextMenu(null);
                 }}
-                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center justify-between font-semibold"
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center justify-between font-semibold cursor-pointer"
               >
                 <div className="flex items-center gap-2.5">
                   <Info className="w-3.5 h-3.5 text-indigo-500" />
                   <span>View Details</span>
                 </div>
                 <kbd className="text-[10px] text-ink/40">I</kbd>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleDownloadDoc(contextMenu.doc!);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center gap-2.5 font-semibold cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-blue-500" />
+                <span>Download Unencrypted</span>
               </button>
 
               <hr className="border-line my-1" />
@@ -1936,7 +2203,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   onDeleteDoc(contextMenu.doc!);
                   setContextMenu(null);
                 }}
-                className="w-full text-left px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 flex items-center justify-between font-semibold"
+                className="w-full text-left px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 flex items-center justify-between font-semibold cursor-pointer"
               >
                 <div className="flex items-center gap-2.5">
                   <Trash2 className="w-3.5 h-3.5" />
@@ -1950,31 +2217,107 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
+                  setNavSection('files');
                   onSelectFolder(contextMenu.folder!.id);
                   setContextMenu(null);
                 }}
-                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center gap-2.5 font-semibold"
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center gap-2.5 font-semibold cursor-pointer"
               >
                 <FolderOpen className="w-3.5 h-3.5 text-amber-500" />
                 <span>Open Folder</span>
               </button>
 
-              {onDeleteFolder && (
+              {clipboard && clipboard.docIds.length > 0 && (
                 <button
                   type="button"
                   onClick={() => {
-                    onDeleteFolder(contextMenu.folder!.id);
-                    setContextMenu(null);
+                    handlePaste(contextMenu.folder!.id);
                   }}
-                  className="w-full text-left px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 flex items-center gap-2.5 font-semibold"
+                  className="w-full text-left px-3.5 py-2 hover:bg-surface-2 text-brand-600 flex items-center gap-2.5 font-bold cursor-pointer"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete Folder</span>
+                  <Clipboard className="w-3.5 h-3.5 text-brand-500" />
+                  <span>Paste {clipboard.docIds.length} {clipboard.docIds.length === 1 ? 'file' : 'files'} here</span>
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFolderToEdit(contextMenu.folder!);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center gap-2.5 font-semibold cursor-pointer"
+              >
+                <Edit2 className="w-3.5 h-3.5 text-blue-500" />
+                <span>Rename & Customize Folder</span>
+              </button>
+
+              {onDeleteFolder && (
+                <>
+                  <hr className="border-line my-1" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onDeleteFolder(contextMenu.folder!.id);
+                      setContextMenu(null);
+                    }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 flex items-center gap-2.5 font-semibold cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Folder</span>
+                  </button>
+                </>
+              )}
             </>
-          ) : null}
+          ) : (
+            /* Background Canvas Right-Click */
+            <>
+              {clipboard && clipboard.docIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handlePaste()}
+                  className="w-full text-left px-3.5 py-2 hover:bg-surface-2 text-brand-600 flex items-center gap-2.5 font-bold cursor-pointer"
+                >
+                  <Clipboard className="w-3.5 h-3.5 text-brand-500" />
+                  <span>Paste {clipboard.docIds.length} {clipboard.docIds.length === 1 ? 'file' : 'files'} here</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  onNewFolderClick();
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center gap-2.5 font-semibold cursor-pointer"
+              >
+                <FolderPlus className="w-3.5 h-3.5 text-amber-500" />
+                <span>New Folder</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onUploadClick();
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center gap-2.5 font-semibold cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5 text-brand-500" />
+                <span>Upload Document</span>
+              </button>
+            </>
+          )}
         </div>
+      )}
+
+      {/* Edit / Customize Folder Modal */}
+      {folderToEdit && (
+        <DocumentFolderModal
+          isOpen={Boolean(folderToEdit)}
+          onClose={() => setFolderToEdit(null)}
+          folderToEdit={folderToEdit}
+        />
       )}
 
       {/* ─────────────────────────────────────────────────────────────

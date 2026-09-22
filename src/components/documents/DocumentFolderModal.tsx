@@ -3,11 +3,13 @@ import { Modal } from '../common/Modal';
 import { Input } from '../common/Input';
 import { useVault } from '../../context/VaultContext';
 import { FolderPlus } from 'lucide-react';
+import type { DocumentFolder } from '../../types';
 
 interface DocumentFolderModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreated?: (folderId: string) => void;
+  folderToEdit?: DocumentFolder | null;
 }
 
 const FOLDER_COLORS = [
@@ -61,14 +63,28 @@ export const DocumentFolderModal: React.FC<DocumentFolderModalProps> = ({
   isOpen,
   onClose,
   onCreated,
+  folderToEdit,
 }) => {
-  const { addDocumentFolder } = useVault();
-  const [name, setName] = useState('');
-  const [icon, setIcon] = useState('📁');
-  const [color, setColor] = useState(FOLDER_COLORS[0].hex);
+  const { addDocumentFolder, updateDocumentFolder } = useVault();
+  const [name, setName] = useState(folderToEdit?.name || '');
+  const [icon, setIcon] = useState(folderToEdit?.icon || '📁');
+  const [color, setColor] = useState(folderToEdit?.color || FOLDER_COLORS[0].hex);
   const [activeCategory, setActiveCategory] = useState('financial');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Sync state when folderToEdit changes
+  React.useEffect(() => {
+    if (folderToEdit) {
+      setName(folderToEdit.name);
+      setIcon(folderToEdit.icon || '📁');
+      setColor(folderToEdit.color || FOLDER_COLORS[0].hex);
+    } else {
+      setName('');
+      setIcon('📁');
+      setColor(FOLDER_COLORS[0].hex);
+    }
+  }, [folderToEdit, isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,15 +97,23 @@ export const DocumentFolderModal: React.FC<DocumentFolderModalProps> = ({
     setError('');
 
     try {
-      const created = await addDocumentFolder({
-        name: name.trim(),
-        icon,
-        color,
-      });
-      if (onCreated) onCreated(created.id);
+      if (folderToEdit) {
+        await updateDocumentFolder(folderToEdit.id, {
+          name: name.trim(),
+          icon,
+          color,
+        });
+      } else {
+        const created = await addDocumentFolder({
+          name: name.trim(),
+          icon,
+          color,
+        });
+        if (onCreated) onCreated(created.id);
+      }
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'Failed to create document folder');
+      setError(err?.message || 'Failed to save document folder');
     } finally {
       setIsSubmitting(false);
     }
@@ -105,10 +129,14 @@ export const DocumentFolderModal: React.FC<DocumentFolderModalProps> = ({
       title={
         <div className="flex items-center gap-2 text-ink">
           <FolderPlus className="w-5 h-5 text-brand-600" />
-          <span>New Document Folder</span>
+          <span>{folderToEdit ? 'Edit & Customize Folder' : 'New Document Folder'}</span>
         </div>
       }
-      description="Create a categorized vault folder with custom theme color and iconography"
+      description={
+        folderToEdit
+          ? 'Rename folder, update accent color and iconography'
+          : 'Create a categorized vault folder with custom theme color and iconography'
+      }
       maxWidth="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -241,7 +269,7 @@ export const DocumentFolderModal: React.FC<DocumentFolderModalProps> = ({
             disabled={isSubmitting || !name.trim()}
             className="px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-xs font-bold cursor-pointer transition-all shadow-xs active:scale-[0.98]"
           >
-            {isSubmitting ? 'Creating...' : 'Create Folder'}
+            {isSubmitting ? 'Saving...' : folderToEdit ? 'Save Changes' : 'Create Folder'}
           </button>
         </div>
       </form>

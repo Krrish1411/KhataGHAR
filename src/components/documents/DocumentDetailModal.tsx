@@ -2,10 +2,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../common/Modal';
 import { useVault } from '../../context/VaultContext';
 import { useConfirm } from '../../context/DialogContext';
-import { formatFileSize } from '../../utils/formatters';
-import { formatReadableDate } from '../../utils/dates';
+import { formatFileSize, formatCurrency } from '../../utils/formatters';
+import { formatReadableDate, formatReadableDateTime } from '../../utils/dates';
 import type { LinkedEntityType, DocumentRecord } from '../../types';
 import { InternxtFileIcon } from './InternxtFileIcon';
+import { FolderIconBadge } from './GoogleDriveView';
 import {
   FileText,
   Download,
@@ -20,6 +21,18 @@ import {
   CalendarClock,
   Loader2,
   Folder,
+  Eye,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  Search,
+  Receipt,
+  Landmark,
+  TrendingUp,
+  Users,
+  Target,
+  Edit2,
+  Check,
 } from 'lucide-react';
 
 interface DocumentDetailModalProps {
@@ -42,6 +55,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
     liabilities,
     goals,
     peopleLedger,
+    notes,
     loadDocumentDataUrl,
     updateDocument,
     deleteDocument,
@@ -52,12 +66,24 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
 
   const confirm = useConfirm();
 
+  const [activeTab, setActiveTab] = useState<'preview' | 'details' | 'links'>('preview');
   const [dataUrl, setDataUrl] = useState<string>('');
   const [isLoadingPayload, setIsLoadingPayload] = useState(false);
-  const [isLinking, setIsLinking] = useState(false);
-  const [targetType, setTargetType] = useState<LinkedEntityType>('transaction');
-  const [targetId, setTargetId] = useState('');
+
+  // Preview canvas tools
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [rotation, setRotation] = useState(0);
+
+  // Renaming doc
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+
+  // Renewal scheduling
   const [schedulingRenewal, setSchedulingRenewal] = useState(false);
+
+  // Entity linker state
+  const [linkerCategory, setLinkerCategory] = useState<LinkedEntityType>('transaction');
+  const [linkerSearch, setLinkerSearch] = useState('');
 
   const doc = useMemo(() => {
     return documents.find((d) => d.id === documentId) || null;
@@ -68,6 +94,9 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
       setDataUrl('');
       return;
     }
+    setRenameValue(doc.name);
+    setZoomLevel(1);
+    setRotation(0);
 
     if (doc.dataUrl) {
       setDataUrl(doc.dataUrl);
@@ -87,6 +116,8 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
 
   const isImage = doc.fileType.startsWith('image/');
   const isPdf = doc.fileType.includes('pdf') || doc.name.toLowerCase().endsWith('.pdf');
+  const isAudio = doc.fileType.startsWith('audio/');
+  const isVideo = doc.fileType.startsWith('video/');
 
   const handleDownload = () => {
     if (!dataUrl) return;
@@ -96,6 +127,20 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  };
+
+  const handleOpenInNewTab = () => {
+    if (!dataUrl) return;
+    const newWindow = window.open();
+    if (newWindow) {
+      newWindow.document.write(
+        `<html><head><title>${doc.name}</title></head><body style="margin:0;display:grid;place-items:center;background:#111;">` +
+          (isImage
+            ? `<img src="${dataUrl}" style="max-width:100%;max-height:100vh;object-contain:fit;" />`
+            : `<iframe src="${dataUrl}" style="width:100vw;height:100vh;border:none;"></iframe>`) +
+          `</body></html>`
+      );
+    }
   };
 
   const handleShare = async () => {
@@ -132,6 +177,15 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
     }
   };
 
+  const handleSaveRename = async () => {
+    if (!renameValue.trim() || renameValue.trim() === doc.name) {
+      setIsRenaming(false);
+      return;
+    }
+    await updateDocument(doc.id, { name: renameValue.trim() });
+    setIsRenaming(false);
+  };
+
   const handleFolderChange = async (folderId: string) => {
     await updateDocument(doc.id, { folderId });
   };
@@ -156,28 +210,8 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
     }
   };
 
-  const handleAddLink = async () => {
-    if (!targetId) return;
-
-    let targetName = '';
-    if (targetType === 'transaction') {
-      const tx = transactions.find((t) => t.id === targetId);
-      targetName = tx ? `${tx.currency} ${tx.amount} (${tx.date})` : 'Transaction';
-    } else if (targetType === 'asset') {
-      targetName = assets.find((a) => a.id === targetId)?.name || 'Asset';
-    } else if (targetType === 'liability') {
-      targetName = liabilities.find((l) => l.id === targetId)?.name || 'Loan';
-    } else if (targetType === 'goal') {
-      targetName = goals.find((g) => g.id === targetId)?.name || 'Goal';
-    } else if (targetType === 'people') {
-      targetName = peopleLedger.find((p) => p.id === targetId)?.contactName || 'Person';
-    } else if (targetType === 'account') {
-      targetName = accounts.find((acc) => acc.id === targetId)?.name || 'Account';
-    }
-
-    await linkDocumentToEntity(doc.id, targetType, targetId, targetName);
-    setTargetId('');
-    setIsLinking(false);
+  const handleAddLink = async (type: LinkedEntityType, id: string, name: string) => {
+    await linkDocumentToEntity(doc.id, type, id, name);
   };
 
   const handleUnlink = async (linkType: LinkedEntityType, linkId: string) => {
@@ -185,11 +219,147 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   };
 
   // Compile active links
-  const activeLinks = doc.links && doc.links.length > 0
-    ? doc.links
-    : doc.linkedType && doc.linkedType !== 'none' && doc.linkedId
-    ? [{ entityType: doc.linkedType, entityId: doc.linkedId, linkedAt: doc.createdAt }]
-    : [];
+  const activeLinks =
+    doc.links && doc.links.length > 0
+      ? doc.links
+      : doc.linkedType && doc.linkedType !== 'none' && doc.linkedId
+      ? [{ entityType: doc.linkedType, entityId: doc.linkedId, linkedAt: doc.createdAt }]
+      : [];
+
+  const isEntityLinked = (type: LinkedEntityType, id: string) => {
+    return activeLinks.some((l) => l.entityType === type && l.entityId === id);
+  };
+
+  // Safe display for Upload Date
+  const safeUploadDate = useMemo(() => {
+    return formatReadableDateTime(doc.createdAt) || formatReadableDate(doc.createdAt) || 'Recently uploaded';
+  }, [doc.createdAt]);
+
+  // Safe display for Last Modified
+  const safeModifiedDate = useMemo(() => {
+    const d = doc.updatedAt || doc.createdAt;
+    return formatReadableDateTime(d) || formatReadableDate(d) || 'Recently';
+  }, [doc.updatedAt, doc.createdAt]);
+
+  // Available linkable items filtered by search
+  const linkableItems = useMemo(() => {
+    const q = linkerSearch.toLowerCase().trim();
+    if (linkerCategory === 'transaction') {
+      return transactions
+        .filter(
+          (t) =>
+            !q ||
+            t.type.toLowerCase().includes(q) ||
+            t.amount.toString().includes(q) ||
+            (t.note && t.note.toLowerCase().includes(q)) ||
+            (t.date && t.date.includes(q))
+        )
+        .slice(0, 40)
+        .map((t) => ({
+          id: t.id,
+          title: `${t.type.toUpperCase()}: ${t.currency} ${t.amount}`,
+          subtitle: `${t.date}${t.note ? ` • ${t.note}` : ''}`,
+          isLinked: isEntityLinked('transaction', t.id),
+        }));
+    }
+    if (linkerCategory === 'asset') {
+      return assets
+        .filter(
+          (a) =>
+            !q ||
+            a.name.toLowerCase().includes(q) ||
+            (a.type && a.type.toLowerCase().includes(q))
+        )
+        .map((a) => ({
+          id: a.id,
+          title: a.name,
+          subtitle: `${formatCurrency(a.currentValue, a.currency)} • ${a.type.toUpperCase()}`,
+          isLinked: isEntityLinked('asset', a.id),
+        }));
+    }
+    if (linkerCategory === 'liability') {
+      return liabilities
+        .filter(
+          (l) =>
+            !q ||
+            l.name.toLowerCase().includes(q) ||
+            (l.lender && l.lender.toLowerCase().includes(q))
+        )
+        .map((l) => ({
+          id: l.id,
+          title: l.name,
+          subtitle: `Balance: ${formatCurrency(l.outstandingBalance, l.currency)}${l.lender ? ` • ${l.lender}` : ''}`,
+          isLinked: isEntityLinked('liability', l.id),
+        }));
+    }
+    if (linkerCategory === 'account') {
+      return accounts
+        .filter(
+          (acc) =>
+            !q ||
+            acc.name.toLowerCase().includes(q) ||
+            (acc.accountNumberLast4 && acc.accountNumberLast4.includes(q))
+        )
+        .map((acc) => ({
+          id: acc.id,
+          title: acc.name,
+          subtitle: `${formatCurrency(acc.balance, acc.currency)} • ${acc.type.toUpperCase()}`,
+          isLinked: isEntityLinked('account', acc.id),
+        }));
+    }
+    if (linkerCategory === 'note') {
+      return notes
+        .filter(
+          (n) =>
+            !q ||
+            n.title.toLowerCase().includes(q) ||
+            (n.content && n.content.toLowerCase().includes(q))
+        )
+        .map((n) => ({
+          id: n.id,
+          title: n.title,
+          subtitle: `Vault Note • ${formatReadableDate(n.updatedAt || n.createdAt)}`,
+          isLinked: isEntityLinked('note', n.id),
+        }));
+    }
+    if (linkerCategory === 'people') {
+      return peopleLedger
+        .filter(
+          (p) =>
+            !q ||
+            p.contactName.toLowerCase().includes(q) ||
+            (p.contactPhone && p.contactPhone.includes(q))
+        )
+        .map((p) => ({
+          id: p.id,
+          title: p.contactName,
+          subtitle: `${p.type.toUpperCase()}: ${p.currency} ${p.amount}`,
+          isLinked: isEntityLinked('people', p.id),
+        }));
+    }
+    if (linkerCategory === 'goal') {
+      return goals
+        .filter((g) => !q || g.name.toLowerCase().includes(q))
+        .map((g) => ({
+          id: g.id,
+          title: g.name,
+          subtitle: `Target: ${formatCurrency(g.targetAmount, g.currency)}`,
+          isLinked: isEntityLinked('goal', g.id),
+        }));
+    }
+    return [];
+  }, [
+    linkerCategory,
+    linkerSearch,
+    transactions,
+    assets,
+    liabilities,
+    accounts,
+    notes,
+    peopleLedger,
+    goals,
+    activeLinks,
+  ]);
 
   return (
     <Modal
@@ -198,243 +368,602 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
       title={
         <div className="flex items-center gap-2 text-ink min-w-0">
           <FolderLock className="w-5 h-5 text-pine-600 shrink-0" />
-          <span className="truncate">{doc.name}</span>
-        </div>
-      }
-      description={`${formatFileSize(doc.fileSize)} • ${doc.fileType.split('/')[1]?.toUpperCase() || 'FILE'} • Stored encrypted`}
-      maxWidth="xl"
-    >
-      <div className="space-y-4">
-        {/* Preview Area */}
-        <div className="rounded-2xl border border-line bg-moss/30 overflow-hidden min-h-[220px] max-h-[460px] flex items-center justify-center relative">
-          {isLoadingPayload ? (
-            <div className="flex flex-col items-center gap-2 py-12 text-xs text-ink/50">
-              <Loader2 className="w-6 h-6 text-pine-600 animate-spin" />
-              <span>Decrypting document payload from SQLite vault...</span>
-            </div>
-          ) : isImage && dataUrl ? (
-            <img
-              src={dataUrl}
-              alt={doc.name}
-              className="max-h-[440px] w-auto max-w-full object-contain mx-auto rounded-xl"
-            />
-          ) : isPdf && dataUrl ? (
-            <div className="w-full h-[400px] p-2">
-              <iframe
-                src={dataUrl}
-                title={doc.name}
-                className="w-full h-full rounded-xl border border-line bg-card"
+          {isRenaming ? (
+            <div className="flex items-center gap-1 min-w-0 flex-1">
+              <input
+                type="text"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveRename();
+                  if (e.key === 'Escape') setIsRenaming(false);
+                }}
+                autoFocus
+                className="px-2 py-0.5 rounded-lg border border-brand-500 bg-surface text-ink text-sm font-bold outline-none flex-1 min-w-0"
               />
+              <button
+                type="button"
+                onClick={handleSaveRename}
+                className="p-1 rounded-md bg-brand-500 text-white hover:bg-brand-600"
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
             </div>
           ) : (
-            <div className="text-center py-12 space-y-3">
-              <div className="flex justify-center">
-                <InternxtFileIcon name={doc.name} mimeType={doc.fileType} size="xl" />
-              </div>
-              <p className="text-xs font-semibold text-ink">{doc.name}</p>
-              <p className="text-[11px] text-ink/40">Preview not supported directly in-browser.</p>
-              {dataUrl && (
-                <button
-                  type="button"
-                  onClick={handleDownload}
-                  className="px-3 py-1.5 rounded-xl bg-card border border-line hover:bg-moss text-xs font-bold text-pine-700 dark:text-pine-300 inline-flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download to View</span>
-                </button>
-              )}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="truncate font-bold text-sm sm:text-base">{doc.name}</span>
+              <button
+                type="button"
+                onClick={() => setIsRenaming(true)}
+                className="p-1 rounded-md text-ink/40 hover:text-ink hover:bg-surface-2 transition-colors shrink-0"
+                title="Rename file"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
         </div>
+      }
+      description={`${formatFileSize(doc.fileSize)} • ${doc.fileType.split('/')[1]?.toUpperCase() || 'FILE'} • Uploaded: ${safeUploadDate} • AES-256 Encrypted Sovereign Storage`}
+      maxWidth="3xl"
+    >
+      <div className="space-y-4">
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-1 p-1 rounded-2xl bg-surface-2/80 border border-line">
+          <button
+            type="button"
+            onClick={() => setActiveTab('preview')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'preview'
+                ? 'bg-card text-pine-700 dark:text-pine-300 shadow-xs border border-line/60'
+                : 'text-ink/60 hover:text-ink hover:bg-card/50'
+            }`}
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span>Document Preview</span>
+          </button>
 
-        {/* Metadata Controls & Folder Mover */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-2xl bg-card border border-line">
-          <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-ink/50 flex items-center gap-1 mb-1">
-              <Folder className="w-3 h-3 text-pine-600" />
-              <span>Assigned Folder</span>
-            </label>
-            <select
-              value={doc.folderId || 'unfiled'}
-              onChange={(e) => handleFolderChange(e.target.value)}
-              className="w-full rounded-xl border border-line bg-card px-3 py-1.5 text-xs font-semibold text-ink outline-none focus:border-pine-500 cursor-pointer"
-            >
-              {documentFolders.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('details')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'details'
+                ? 'bg-card text-pine-700 dark:text-pine-300 shadow-xs border border-line/60'
+                : 'text-ink/60 hover:text-ink hover:bg-card/50'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Details & Expiry</span>
+          </button>
 
-          <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-ink/50 flex items-center gap-1 mb-1">
-              <Calendar className="w-3 h-3 text-pine-600" />
-              <span>Expiry / Renewal Date</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-ink font-semibold">
-                {doc.expiryDate ? formatReadableDate(doc.expiryDate) : 'Permanent Document'}
-              </span>
-              {doc.expiryDate && (
-                <button
-                  type="button"
-                  onClick={handleScheduleRenewal}
-                  disabled={schedulingRenewal}
-                  className="text-[11px] font-bold text-pine-600 hover:underline cursor-pointer flex items-center gap-1"
-                >
-                  <CalendarClock className="w-3 h-3" />
-                  <span>Schedule</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Multi-Entity Links Manager */}
-        <div className="space-y-2 p-3 rounded-2xl bg-card border border-line">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-ink flex items-center gap-1.5">
-              <Link2 className="w-3.5 h-3.5 text-pine-600" />
-              <span>Linked App Entities ({activeLinks.length})</span>
+          <button
+            type="button"
+            onClick={() => setActiveTab('links')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'links'
+                ? 'bg-card text-pine-700 dark:text-pine-300 shadow-xs border border-line/60'
+                : 'text-ink/60 hover:text-ink hover:bg-card/50'
+            }`}
+          >
+            <Link2 className="w-3.5 h-3.5" />
+            <span>Linked App Entries</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-brand-500/10 text-brand-600 text-[10px] font-mono">
+              {activeLinks.length}
             </span>
+          </button>
+        </div>
 
-            <button
-              type="button"
-              onClick={() => setIsLinking(!isLinking)}
-              className="px-2.5 py-1 rounded-lg bg-moss hover:bg-pine-50 dark:hover:bg-pine-950/50 text-pine-700 dark:text-pine-300 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-            >
-              <Plus className="w-3 h-3 text-pine-600" />
-              <span>{isLinking ? 'Close' : '+ Link to Entry'}</span>
-            </button>
-          </div>
-
-          {/* Add Link Section */}
-          {isLinking && (
-            <div className="p-3 rounded-xl bg-moss/60 border border-line space-y-2.5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-ink/50 block mb-1">
-                    Entity Type
-                  </label>
-                  <select
-                    value={targetType}
-                    onChange={(e) => {
-                      setTargetType(e.target.value as LinkedEntityType);
-                      setTargetId('');
-                    }}
-                    className="w-full rounded-xl border border-line bg-card px-2.5 py-1.5 text-xs text-ink outline-none focus:border-pine-500 cursor-pointer"
-                  >
-                    <option value="transaction">Transaction (Receipt/Expense)</option>
-                    <option value="asset">Asset / Investment (Deed/Gold/MF)</option>
-                    <option value="liability">Liability / Loan (Agreement/NOC)</option>
-                    <option value="goal">Savings Goal</option>
-                    <option value="people">Person / Khatabook</option>
-                    <option value="account">Bank / Cash Account</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-ink/50 block mb-1">
-                    Select Target
-                  </label>
-                  <select
-                    value={targetId}
-                    onChange={(e) => setTargetId(e.target.value)}
-                    className="w-full rounded-xl border border-line bg-card px-2.5 py-1.5 text-xs text-ink outline-none focus:border-pine-500 cursor-pointer"
-                  >
-                    <option value="">Choose item...</option>
-                    {targetType === 'transaction' &&
-                      transactions.slice(0, 30).map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.date} — {t.type.toUpperCase()}: {t.currency} {t.amount}{' '}
-                          {t.note ? `(${t.note})` : ''}
-                        </option>
-                      ))}
-                    {targetType === 'asset' &&
-                      assets.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name} ({a.currency} {a.currentValue.toLocaleString()})
-                        </option>
-                      ))}
-                    {targetType === 'liability' &&
-                      liabilities.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {l.name} (Bal: {l.currency} {l.outstandingBalance.toLocaleString()})
-                        </option>
-                      ))}
-                    {targetType === 'goal' &&
-                      goals.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name}
-                        </option>
-                      ))}
-                    {targetType === 'people' &&
-                      peopleLedger.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.contactName} ({p.type} {p.currency} {p.amount})
-                        </option>
-                      ))}
-                    {targetType === 'account' &&
-                      accounts.map((acc) => (
-                        <option key={acc.id} value={acc.id}>
-                          {acc.name} ({acc.currency} {acc.balance.toLocaleString()})
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  disabled={!targetId}
-                  onClick={handleAddLink}
-                  className="px-3 py-1.5 rounded-xl bg-pine-700 hover:bg-pine-600 disabled:opacity-50 text-white text-xs font-bold cursor-pointer transition-all shadow-2xs"
-                >
-                  Confirm Link
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Active Links Badges */}
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {activeLinks.length === 0 ? (
-              <span className="text-xs text-ink/40">Not linked to any entry yet.</span>
-            ) : (
-              activeLinks.map((link) => (
-                <div
-                  key={`${link.entityType}-${link.entityId}`}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-moss border border-line text-xs font-semibold text-ink"
-                >
-                  <span className="font-bold capitalize text-pine-700 dark:text-pine-300">
-                    {link.entityType}:
+        {/* ─────────────────────────────────────────────────────────────
+            TAB 1: EXPANSIVE DOCUMENT PREVIEW CANVAS
+        ───────────────────────────────────────────────────────────── */}
+        {activeTab === 'preview' && (
+          <div className="space-y-2">
+            {/* Toolbar for Canvas */}
+            <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-card border border-line text-xs text-ink/70">
+              <div className="flex items-center gap-1.5">
+                {isImage && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setZoomLevel((z) => Math.min(z + 0.25, 3))}
+                      className="p-1 rounded-lg hover:bg-surface-2 text-ink/70 hover:text-ink cursor-pointer"
+                      title="Zoom in"
+                    >
+                      <ZoomIn className="w-4 h-4" />
+                    </button>
+                    <span className="text-[11px] font-mono font-bold w-12 text-center text-ink">
+                      {Math.round(zoomLevel * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setZoomLevel((z) => Math.max(z - 0.25, 0.5))}
+                      className="p-1 rounded-lg hover:bg-surface-2 text-ink/70 hover:text-ink cursor-pointer"
+                      title="Zoom out"
+                    >
+                      <ZoomOut className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setZoomLevel(1);
+                        setRotation(0);
+                      }}
+                      className="px-2 py-0.5 rounded-lg hover:bg-surface-2 text-[11px] font-semibold text-ink/60 cursor-pointer ml-1"
+                    >
+                      Reset
+                    </button>
+                    <div className="h-4 w-px bg-line mx-1" />
+                    <button
+                      type="button"
+                      onClick={() => setRotation((r) => (r + 90) % 360)}
+                      className="p-1 rounded-lg hover:bg-surface-2 text-ink/70 hover:text-ink cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
+                      title="Rotate clockwise"
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                      <span>{rotation}°</span>
+                    </button>
+                  </>
+                )}
+                {isPdf && (
+                  <span className="text-[11px] font-semibold text-ink/50">
+                    Encrypted PDF Document Viewer
                   </span>
-                  <span className="truncate max-w-[200px]">{link.entityName || link.entityId}</span>
+                )}
+                <div className="flex items-center gap-1.5 text-[11px] text-ink/60 font-mono px-1">
+                  <Calendar className="w-3.5 h-3.5 text-pine-600 shrink-0" />
+                  <span>Uploaded: {safeUploadDate}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {dataUrl && (
                   <button
                     type="button"
-                    onClick={() => handleUnlink(link.entityType, link.entityId)}
-                    className="p-0.5 hover:text-flare-600 rounded-md cursor-pointer transition-colors"
-                    title="Remove link"
+                    onClick={handleOpenInNewTab}
+                    className="p-1 rounded-lg hover:bg-surface-2 text-ink/70 hover:text-ink cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
+                    title="Open document in browser tab"
                   >
-                    <X className="w-3 h-3" />
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">New Tab</span>
                   </button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+                )}
+                {dataUrl && (
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    className="p-1 rounded-lg hover:bg-surface-2 text-ink/70 hover:text-ink cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
+                    title="Download document"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Download</span>
+                  </button>
+                )}
+              </div>
+            </div>
 
-        {/* Footer Actions */}
-        <div className="flex items-center justify-between pt-2 border-t border-line">
+            {/* Expansive Canvas */}
+            <div className="rounded-2xl border border-line bg-surface-2/40 overflow-hidden h-[500px] sm:h-[540px] flex items-center justify-center relative">
+              {isLoadingPayload ? (
+                <div className="flex flex-col items-center gap-2 py-12 text-xs text-ink/50">
+                  <Loader2 className="w-8 h-8 text-pine-600 animate-spin" />
+                  <span className="font-semibold">Decrypting document payload from SQLite vault...</span>
+                </div>
+              ) : isImage && dataUrl ? (
+                <div className="w-full h-full overflow-auto flex items-center justify-center p-4">
+                  <img
+                    src={dataUrl}
+                    alt={doc.name}
+                    style={{
+                      transform: `scale(${zoomLevel}) rotate(${rotation}deg)`,
+                      transition: 'transform 0.2s ease-out',
+                    }}
+                    className="max-h-[480px] w-auto max-w-full object-contain rounded-xl shadow-md select-none"
+                  />
+                </div>
+              ) : isPdf && dataUrl ? (
+                <div className="w-full h-full p-1">
+                  <iframe
+                    src={dataUrl}
+                    title={doc.name}
+                    className="w-full h-full rounded-xl border border-line bg-card shadow-inner"
+                  />
+                </div>
+              ) : isVideo && dataUrl ? (
+                <div className="w-full h-full p-4 flex items-center justify-center">
+                  <video
+                    src={dataUrl}
+                    controls
+                    className="max-h-[460px] max-w-full rounded-xl border border-line bg-black"
+                  />
+                </div>
+              ) : isAudio && dataUrl ? (
+                <div className="p-8 text-center space-y-4">
+                  <div className="w-16 h-16 rounded-3xl bg-brand-500/10 text-brand-600 grid place-items-center mx-auto shadow-xs">
+                    <InternxtFileIcon name={doc.name} mimeType={doc.fileType} size="xl" />
+                  </div>
+                  <audio src={dataUrl} controls className="w-full max-w-md mx-auto" />
+                </div>
+              ) : (
+                <div className="text-center py-12 space-y-3 p-6">
+                  <div className="flex justify-center">
+                    <InternxtFileIcon name={doc.name} mimeType={doc.fileType} size="xl" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-ink">{doc.name}</p>
+                    <p className="text-xs text-ink/50 max-w-xs mx-auto">
+                      Direct in-browser preview is not available for this format ({doc.fileType || 'Unknown'}).
+                    </p>
+                  </div>
+                  {dataUrl && (
+                    <button
+                      type="button"
+                      onClick={handleDownload}
+                      className="px-4 py-2 rounded-xl bg-card border border-line hover:bg-moss text-xs font-bold text-pine-700 dark:text-pine-300 inline-flex items-center gap-2 shadow-xs cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Download File to View</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────────
+            TAB 2: DETAILS, METADATA & EXPIRY RENEWAL
+        ───────────────────────────────────────────────────────────── */}
+        {activeTab === 'details' && (
+          <div className="space-y-4 max-h-[540px] overflow-y-auto custom-scrollbar pr-1">
+            {/* Metadata Card */}
+            <div className="p-4 rounded-2xl bg-card border border-line space-y-3 shadow-2xs">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-ink/50 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-pine-600" />
+                <span>File Metadata & Storage Information</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="p-2.5 rounded-xl bg-surface-2/50 border border-line/60">
+                  <span className="text-[10px] font-bold text-ink/40 uppercase block mb-0.5">
+                    File Name
+                  </span>
+                  <span className="font-semibold text-ink break-all">{doc.name}</span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-surface-2/50 border border-line/60">
+                  <span className="text-[10px] font-bold text-ink/40 uppercase block mb-0.5">
+                    File Size & MIME
+                  </span>
+                  <span className="font-semibold text-ink">
+                    {formatFileSize(doc.fileSize)} ({doc.fileSize.toLocaleString()} bytes) • {doc.fileType}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-surface-2/50 border border-line/60">
+                  <span className="text-[10px] font-bold text-ink/40 uppercase block mb-0.5">
+                    Uploaded On (Created At)
+                  </span>
+                  <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                    {safeUploadDate}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-surface-2/50 border border-line/60">
+                  <span className="text-[10px] font-bold text-ink/40 uppercase block mb-0.5">
+                    Last Modified
+                  </span>
+                  <span className="font-semibold text-ink">{safeModifiedDate}</span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-surface-2/50 border border-line/60 sm:col-span-2">
+                  <span className="text-[10px] font-bold text-ink/40 uppercase block mb-0.5">
+                    Storage & Security
+                  </span>
+                  <span className="font-mono text-[11px] text-ink/70">
+                    Encrypted SQLite Document Payload • AES-256-GCM Sovereign Vault Key ID: {doc.id}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Folder Assignment Selector */}
+            <div className="p-4 rounded-2xl bg-card border border-line space-y-3 shadow-2xs">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-ink/50 flex items-center gap-1.5">
+                <Folder className="w-3.5 h-3.5 text-amber-500" />
+                <span>Assigned Vault Folder</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleFolderChange('unfiled')}
+                  className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
+                    !doc.folderId || doc.folderId === 'unfiled'
+                      ? 'border-brand-500 bg-brand-500/10 text-brand-700 dark:text-brand-300 font-bold shadow-2xs'
+                      : 'border-line bg-surface-2/50 hover:bg-surface-2 text-ink/70'
+                  }`}
+                >
+                  <Folder className="w-4 h-4 text-ink/40 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <span className="text-xs block truncate">Unfiled (Root)</span>
+                    <span className="text-[10px] text-ink/40">General storage</span>
+                  </div>
+                </button>
+
+                {documentFolders.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => handleFolderChange(f.id)}
+                    className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
+                      doc.folderId === f.id
+                        ? 'border-brand-500 bg-brand-500/10 text-brand-700 dark:text-brand-300 font-bold shadow-2xs'
+                        : 'border-line bg-surface-2/50 hover:bg-surface-2 text-ink/70'
+                    }`}
+                  >
+                    <FolderIconBadge folder={f} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs block truncate">{f.name}</span>
+                      <span className="text-[10px] text-ink/40">Custom folder</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Expiry & 1-Click Renewal Scheduler */}
+            <div className="p-4 rounded-2xl bg-card border border-line space-y-3 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-ink/50 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-pine-600" />
+                  <span>Document Expiry & Renewal Reminder</span>
+                </h4>
+
+                {doc.expiryDate && (
+                  <button
+                    type="button"
+                    onClick={handleScheduleRenewal}
+                    disabled={schedulingRenewal}
+                    className="px-3 py-1 rounded-xl bg-pine-700 hover:bg-pine-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
+                  >
+                    <CalendarClock className="w-3.5 h-3.5" />
+                    <span>{schedulingRenewal ? 'Scheduling...' : '1-Click Renewal Reminder'}</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <input
+                  type="date"
+                  value={doc.expiryDate || ''}
+                  onChange={(e) => updateDocument(doc.id, { expiryDate: e.target.value || undefined })}
+                  className="px-3 py-2 rounded-xl border border-line bg-surface-2 text-xs font-semibold text-ink outline-none focus:border-pine-500 cursor-pointer"
+                />
+
+                <div className="text-xs text-ink/60">
+                  {doc.expiryDate ? (
+                    <span>
+                      Expires on <strong className="text-ink">{formatReadableDate(doc.expiryDate)}</strong>.
+                      Click &quot;1-Click Renewal Reminder&quot; to push this due date directly to your Planned Expenses scheduler.
+                    </span>
+                  ) : (
+                    <span>No expiration date set. Set a date for passport, insurance, PUC, or domain renewals.</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────────
+            TAB 3: COMPREHENSIVE LINKED FINANCIAL ENTRIES MANAGER
+        ───────────────────────────────────────────────────────────── */}
+        {activeTab === 'links' && (
+          <div className="space-y-4 max-h-[540px] overflow-y-auto custom-scrollbar pr-1">
+            {/* Active Links Pill Display */}
+            <div className="p-3.5 rounded-2xl bg-card border border-line space-y-2 shadow-2xs">
+              <span className="text-xs font-bold text-ink flex items-center gap-1.5">
+                <Link2 className="w-3.5 h-3.5 text-pine-600" />
+                <span>Currently Attached To ({activeLinks.length} items)</span>
+              </span>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {activeLinks.length === 0 ? (
+                  <span className="text-xs text-ink/40 py-1">
+                    This document is currently unlinked. Search and link to any transaction, asset, loan, bank account, or note below.
+                  </span>
+                ) : (
+                  activeLinks.map((link) => (
+                    <div
+                      key={`${link.entityType}-${link.entityId}`}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-2 border border-line text-xs font-semibold text-ink shadow-2xs"
+                    >
+                      <span className="font-bold uppercase text-[10px] px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-600">
+                        {link.entityType}
+                      </span>
+                      <span className="truncate max-w-[220px] font-bold">
+                        {link.entityName || link.entityId}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleUnlink(link.entityType, link.entityId)}
+                        className="p-1 hover:text-rose-600 rounded-md cursor-pointer transition-colors"
+                        title="Remove link"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Category Selector for Linking */}
+            <div className="space-y-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-ink/50 block">
+                Link to KhataGHAR Financial Record:
+              </span>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setLinkerCategory('transaction')}
+                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                    linkerCategory === 'transaction'
+                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold shadow-2xs'
+                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                  }`}
+                >
+                  <Receipt className="w-4 h-4 text-emerald-500" />
+                  <span className="text-[11px] truncate">Receipts</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLinkerCategory('asset')}
+                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                    linkerCategory === 'asset'
+                      ? 'border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-400 font-bold shadow-2xs'
+                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                  }`}
+                >
+                  <Landmark className="w-4 h-4 text-blue-500" />
+                  <span className="text-[11px] truncate">Assets</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLinkerCategory('liability')}
+                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                    linkerCategory === 'liability'
+                      ? 'border-rose-500 bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold shadow-2xs'
+                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                  }`}
+                >
+                  <TrendingUp className="w-4 h-4 text-rose-500" />
+                  <span className="text-[11px] truncate">Loans</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLinkerCategory('account')}
+                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                    linkerCategory === 'account'
+                      ? 'border-indigo-500 bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 font-bold shadow-2xs'
+                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                  }`}
+                >
+                  <Landmark className="w-4 h-4 text-indigo-500" />
+                  <span className="text-[11px] truncate">Bank KYC</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLinkerCategory('note')}
+                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                    linkerCategory === 'note'
+                      ? 'border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-bold shadow-2xs'
+                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                  }`}
+                >
+                  <FileText className="w-4 h-4 text-amber-500" />
+                  <span className="text-[11px] truncate">Notes</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLinkerCategory('people')}
+                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                    linkerCategory === 'people'
+                      ? 'border-purple-500 bg-purple-500/10 text-purple-700 dark:text-purple-400 font-bold shadow-2xs'
+                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                  }`}
+                >
+                  <Users className="w-4 h-4 text-purple-500" />
+                  <span className="text-[11px] truncate">Khatabook</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLinkerCategory('goal')}
+                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                    linkerCategory === 'goal'
+                      ? 'border-teal-500 bg-teal-500/10 text-teal-700 dark:text-teal-400 font-bold shadow-2xs'
+                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                  }`}
+                >
+                  <Target className="w-4 h-4 text-teal-500" />
+                  <span className="text-[11px] truncate">Goals</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Search items inside category */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 pointer-events-none" />
+              <input
+                type="text"
+                placeholder={`Search ${linkerCategory}s by title, note, or amount...`}
+                value={linkerSearch}
+                onChange={(e) => setLinkerSearch(e.target.value)}
+                className="w-full pl-8 pr-4 py-2 bg-surface-2/60 border border-line rounded-xl text-xs text-ink placeholder:text-ink/40 focus:outline-none focus:border-brand-500"
+              />
+            </div>
+
+            {/* List of items */}
+            <div className="border border-line rounded-2xl bg-card overflow-hidden divide-y divide-line/60 max-h-[260px] overflow-y-auto custom-scrollbar">
+              {linkableItems.length === 0 ? (
+                <div className="p-8 text-center text-xs text-ink/40">
+                  No {linkerCategory} items found matching &quot;{linkerSearch}&quot;.
+                </div>
+              ) : (
+                linkableItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-3 flex items-center justify-between gap-3 hover:bg-surface-2/50 transition-colors"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-bold text-ink block truncate">{item.title}</span>
+                      <span className="text-[10px] text-ink/50 block truncate">{item.subtitle}</span>
+                    </div>
+
+                    {item.isLinked ? (
+                      <button
+                        type="button"
+                        onClick={() => handleUnlink(linkerCategory, item.id)}
+                        className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                      >
+                        <X className="w-3 h-3" />
+                        <span>Unlink</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleAddLink(linkerCategory, item.id, item.title)}
+                        className="px-2.5 py-1 rounded-lg bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-400 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Link</span>
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ─────────────────────────────────────────────────────────────
+            MODAL FOOTER: DELETE, SHARE, DOWNLOAD
+        ───────────────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between pt-3 border-t border-line">
           <button
             type="button"
             onClick={handleDelete}
-            className="px-3 py-1.5 rounded-xl text-flare-600 hover:bg-flare-50 dark:hover:bg-flare-950/40 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+            className="px-3.5 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span>Delete</span>
+            <span>Delete Permanently</span>
           </button>
 
           <div className="flex items-center gap-2">
@@ -442,7 +971,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
               type="button"
               onClick={handleShare}
               disabled={!dataUrl}
-              className="px-3.5 py-1.5 rounded-xl border border-line bg-card hover:bg-moss text-ink text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+              className="px-3.5 py-1.5 rounded-xl border border-line bg-card hover:bg-surface-2 text-ink text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
             >
               <Share2 className="w-3.5 h-3.5 text-pine-600" />
               <span>Share</span>
@@ -463,3 +992,4 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
     </Modal>
   );
 };
+
