@@ -203,21 +203,17 @@ export function useDriveShortcuts(config: DriveShortcutsConfig) {
         return;
       }
 
-      // Delete -> Delete Selected
-      if (e.key === 'Delete') {
+      // Delete -> Delete Selected (or Cmd/Ctrl + Backspace)
+      if (e.key === 'Delete' || (isMetaOrCtrl && e.key === 'Backspace')) {
         e.preventDefault();
         onDeleteSelected?.();
         return;
       }
 
-      // Backspace -> If selection active, delete; otherwise navigate back / up
+      // Backspace -> Navigate back / up into parent directory or root
       if (e.key === 'Backspace') {
         e.preventDefault();
-        if (hasSelection) {
-          onDeleteSelected?.();
-        } else {
-          onNavigateUp?.();
-        }
+        onNavigateUp?.();
         return;
       }
     };

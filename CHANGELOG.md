@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.0.0-beta.7] - 2026-09-22
+
+### 🗂️ Drive UX Overhaul — Google Drive / Native Explorer Parity
+
+#### Multi-Select & Keyboard Navigation
+- **Rubber-band Marquee Selection**: Click-drag anywhere on the canvas to draw a selection rectangle — all items inside are instantly selected, exactly like Google Drive Desktop or Windows Explorer.
+- **Ctrl+A — Select All**: Selects every visible file and folder in the current directory simultaneously.
+- **Keyboard Arrow Navigation**: `↑ ↓ ← →` move the keyboard focus cursor through items; `Enter` opens/previews; `Backspace` navigates up one folder level — matching native OS file manager behavior.
+- **Single-click Highlight, Double-click Open**: Items highlight (select) on first click; folders open only on double-click or `Enter` — no accidental navigation.
+
+#### Clipboard Engine & Copy / Paste
+- **Multi-item Cut / Copy / Paste**: Select any mix of files and folders, then `Ctrl+C` (copy), `Ctrl+X` (cut), or `Ctrl+V` (paste) — same as any native file manager.
+- **Cut Visual Indicator**: Cut items render with `opacity-50` and a dashed brand-colored border so users always know what is staged for move.
+- **Drag-and-drop Move to Folder**: Drag selected items and drop them onto a target folder card to move them instantly.
+
+#### Persistent Clipboard / Action Bar
+- **Fixed Full-Width Selection Bar**: When items are selected the entire top toolbar becomes the contextual action bar — `[✕ clear] [N items selected] [action buttons scrollable strip]` — never clips or overflows on any screen size.
+- **Floating Clipboard Paste Bar**: When items are Cut or Copied a floating pill appears centered at the bottom of the canvas (Google Drive style) showing the clipboard action, item count, target folder hint, and a "Paste here" button. Stays visible until clipboard is cleared or pasted.
+- **Canvas Bottom Padding**: Canvas automatically adds `pb-24` when the floating bar is active to prevent content being hidden behind it.
+
+#### Mobile & Touch Fixes
+- **Mobile Sidebar Slide-over Drawer**: Full-screen overlay drawer on mobile with smooth slide-in/out — no more sidebar-only view blocking the content.
+- **Touch-accessible ⋮ Menus**: Options (`⋮`) buttons on folder and file cards are always visible on mobile (where hover doesn't exist) and hidden-until-hover on desktop.
+- **Mobile Selection Bar**: Selection action strip uses `overflow-x-auto` + `no-scrollbar` — action buttons scroll horizontally without clipping on any phone screen.
+
+#### Context Menu & UX Polish
+- **Context Menu Edge Clamping**: Right-click context menu is now bounded with `Math.max(12, ...)` on all four edges — never appears off-screen or clipped on mobile.
+- **List View — Full Folder Name Display**: Folder names in List View are no longer truncated — long names wrap properly in a flex column layout.
+- **File Preview Restoration**: PDF and image previews now load via isolated Blob URLs — "File data payload is not available" error eliminated.
+
+### 🔗 Attachment & Linking Engine
+- **Attach from Drive to Entries**: Any file inside the Drive can be linked to any Transaction, Asset, Liability, Savings Goal, or People entry directly from the Document Hub — no need to re-upload.
+- **Unlink Button in Inspector**: Right-side detail inspector panel shows all linked entries with an `Unlink` button and entry navigation arrow for each linked entity.
+- **Conditional Linked Entries Section**: The "Linked Entries" section in the inspector only renders when at least one entry is actually linked — no phantom empty sections.
+
+### 📊 Storage Meter Fix
+- **Accurate Storage Calculation**: `DriveDatabaseUsageMeter` now correctly aggregates all payload blob sizes — previously under-reported due to missed payload key enumeration.
+
+### 🐛 Bug Fixes
+- **`liabilitys` → `liabilities` typo fixed** in `DocumentDetailModal`.
+- **VaultContext Payload Isolation**: File binary data is now stored under `payload_<docId>` key, preventing payload cross-contamination between documents.
+
+---
+
 ## [1.0.0-beta.6] - 2026-09-22
 
 ### 📁 Universal Multi-Attachment Engine Everywhere

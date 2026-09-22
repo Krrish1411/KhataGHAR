@@ -41,17 +41,31 @@ jobs:
           body: |
             ## KhataGHAR ${{ github.ref_name }} — Sovereign Wealth Operating System
 
-            ### 🚀 What's New in ${{ github.ref_name }}
-            - 📁 **Universal Multi-Attachment Engine Everywhere**: Attach multiple receipts, deeds, agreements, IOUs, bank passbooks, and goal brochures directly to any Transaction, Asset, Liability / Loan, Savings Goal, People Ledger Entry, or Account.
-            - 🗄️ **Central Document & Attachment Hub**: Sovereign encrypted file manager with pre-built system folders (Receipts, Deeds, Loans, People, Bank, Tax, Unfiled) and custom folders with custom colors and emoji icons.
-            - ⚡ **Two-Tier Split-Payload Storage Architecture**: Sub-second vault unlock (< 50ms) and ultra-low RAM footprint (< 30MB) across 1,000+ attachments by separating searchable metadata from heavy binary blobs (lazy-loaded on demand).
-            - 🔗 **Dual-Directional Entity Linking**: Attach files inside any modal or link/unlink existing files across multiple entries directly from the Document Hub.
-            - 🎛️ **Smart Optimized vs. Original RAW**: Toggle between smart client-side 1080p compression and bit-exact uncompressed raw file storage.
-            - 🔍 **Sub-5ms Instant Search & Filter**: High-speed full-text search across attachment names, notes, and tags with entity filters and dual view modes (Visual Gallery Grid & Dense List Table).
-            - 🖼️ **Interactive Lightbox Document Viewer**: Preview images and PDFs with smooth pan/zoom, 90-degree rotation, folder mover, and sovereign export.
-            - 🎯 **Hero Card Real-Time Reactivity**: Instant live balance calculations down to the single paisa for every entry without freezing.
-            - 💎 **First-Class Asset Redemption & Debt Payoff**: Dedicated redemption tab with NAV calculations and one-click loan payoffs.
-            - 📱 **Android In-Place Update Fix**: Continuous release signatures (v1, v2, v3) with persistent keystore ensuring seamless updates over existing installations.
+            ### 🗂️ Drive UX Overhaul — Google Drive / Native Explorer Parity
+            - 🖱️ **Rubber-band Marquee Selection**: Click-drag anywhere on the canvas to select multiple items exactly like Google Drive Desktop.
+            - ⌨️ **Ctrl+A / Arrow Keys / Enter / Backspace**: Full keyboard navigation parity with native OS file managers.
+            - ✂️ **Multi-item Cut / Copy / Paste** (`Ctrl+X`, `Ctrl+C`, `Ctrl+V`): Move and duplicate files and folders across the Drive.
+            - 🎯 **Cut Visual Indicator**: Cut items appear semi-transparent with a dashed border — native OS behavior.
+            - 🖱️ **Drag-and-drop Move to Folder**: Drag a selection and drop onto a target folder card to move instantly.
+            - 📌 **Fixed Full-Width Selection Action Bar**: Selection mode replaces the entire toolbar row — action buttons scroll horizontally and never clip on mobile.
+            - 📋 **Floating Clipboard Paste Bar**: Google Drive–style floating pill at the bottom of the canvas showing clipboard state, item count, and a one-click "Paste here" button.
+            - 📱 **Mobile Sidebar Slide-over Drawer**: Full-screen overlay slide-in/out on mobile — no more sidebar-only view.
+            - 👆 **Touch-accessible ⋮ Menus**: Options buttons always visible on mobile (hidden-until-hover on desktop).
+            - 🔒 **Context Menu Edge Clamping**: Right-click menu never appears off-screen on any device.
+            - 📄 **Full Folder Names in List View**: Long folder names no longer truncate in List View.
+            - 🖼️ **PDF & Image Preview Fix**: "File data payload is not available" error permanently eliminated.
+
+            ### 🔗 Attachment & Linking Engine
+            - Attach any existing Drive file to Transactions, Assets, Liabilities, Goals, People, and Accounts directly from the Hub.
+            - Inspector panel shows all linked entries with Unlink buttons and navigation arrows.
+            - Linked Entries section only appears when entries are actually linked — no phantom empty UI.
+
+            ### 📊 Storage Meter Fix
+            - Storage calculation now correctly sums all payload blob sizes — previously under-reported.
+
+            ### 🐛 Bug Fixes
+            - `liabilitys` → `liabilities` typo fixed.
+            - VaultContext payload isolation: binary blobs stored under `payload_<docId>` key, no cross-contamination.
 
             ### 📦 Direct Downloads
             - **Android APK**: Attached below as `KhataGHAR-Android-${{ github.ref_name }}.apk`

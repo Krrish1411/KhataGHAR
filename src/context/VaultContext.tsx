@@ -2987,14 +2987,23 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     try {
-      const row = await db.records.get(docId);
+      // 1. Try payload_${docId} first
+      let row = await db.records.get(`payload_${docId}`);
+      // 2. Fallback to docId if saved under legacy key
+      if (!row) {
+        row = await db.records.get(docId);
+      }
       if (row) {
         if ((row.type as any) === 'doc_payload') {
           const payload = await decryptData<DocumentPayload>(row.iv, row.ciphertext, sessionKey);
+          if (memDoc) memDoc.dataUrl = payload.dataUrl;
           return payload.dataUrl;
         } else if ((row.type as any) === 'document') {
           const fullDoc = await decryptData<DocumentRecord>(row.iv, row.ciphertext, sessionKey);
-          return fullDoc.dataUrl || '';
+          if (fullDoc.dataUrl) {
+            if (memDoc) memDoc.dataUrl = fullDoc.dataUrl;
+            return fullDoc.dataUrl;
+          }
         }
       }
     } catch (err) {
@@ -3044,10 +3053,10 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
     }
 
-    // 1. Save doc_payload (the heavy dataUrl)
+    // 1. Save doc_payload (the heavy dataUrl) with isolated payload_ prefix
     if (actualDataUrl) {
       const payload: DocumentPayload = {
-        id: docId,
+        id: `payload_${docId}`,
         vaultId: activeVault.id,
         dataUrl: actualDataUrl,
         updatedAt: now,
@@ -3090,8 +3099,19 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const updatedDoc: DocumentRecord = {
       ...existing,
       ...updates,
+      dataUrl: updates.dataUrl || existing.dataUrl,
       updatedAt: new Date().toISOString(),
     };
+
+    if (updates.dataUrl) {
+      const payload: DocumentPayload = {
+        id: `payload_${id}`,
+        vaultId: activeVault.id,
+        dataUrl: updates.dataUrl,
+        updatedAt: new Date().toISOString(),
+      };
+      await saveEncryptedRecord('doc_payload' as any, payload, sessionKey);
+    }
 
     documentsRef.current = documentsRef.current.map((d) => (d.id === id ? updatedDoc : d));
     setDocuments(documentsRef.current);
@@ -3109,7 +3129,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setDocuments(documentsRef.current);
     await deleteRecord(id);
     try {
-      await deleteRecord(id);
+      await deleteRecord(`payload_${id}`);
     } catch {}
   };
 

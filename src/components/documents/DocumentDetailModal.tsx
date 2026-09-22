@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Modal } from '../common/Modal';
 import { useVault } from '../../context/VaultContext';
 import { useConfirm } from '../../context/DialogContext';
 import { formatFileSize, formatCurrency } from '../../utils/formatters';
 import { formatReadableDate, formatReadableDateTime } from '../../utils/dates';
-import type { LinkedEntityType, DocumentRecord } from '../../types';
+import { processFileForVault } from '../../utils/imageCompressor';
+import type { LinkedEntityType, DocumentRecord, DocumentLink } from '../../types';
 import { InternxtFileIcon } from './InternxtFileIcon';
 import { FolderIconBadge } from './GoogleDriveView';
 import {
@@ -33,6 +35,8 @@ import {
   Target,
   Edit2,
   Check,
+  ArrowUpRight,
+  Upload,
 } from 'lucide-react';
 
 interface DocumentDetailModalProps {
@@ -74,6 +78,8 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   const [zoomLevel, setZoomLevel] = useState(1);
   const [rotation, setRotation] = useState(0);
 
+  const navigate = useNavigate();
+
   // Renaming doc
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
@@ -84,6 +90,10 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   // Entity linker state
   const [linkerCategory, setLinkerCategory] = useState<LinkedEntityType>('transaction');
   const [linkerSearch, setLinkerSearch] = useState('');
+  const [isPickingNewLink, setIsPickingNewLink] = useState(false);
+
+  // PDF Blob URL for native Brave / Chrome viewing without CSP data URI block
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
 
   const doc = useMemo(() => {
     return documents.find((d) => d.id === documentId) || null;
@@ -97,6 +107,7 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
     setRenameValue(doc.name);
     setZoomLevel(1);
     setRotation(0);
+    setIsPickingNewLink(false);
 
     if (doc.dataUrl) {
       setDataUrl(doc.dataUrl);
@@ -112,12 +123,42 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
     }
   }, [doc, loadDocumentDataUrl]);
 
-  if (!doc) return null;
+  const isImage = doc?.fileType.startsWith('image/');
+  const isPdf = doc ? doc.fileType.includes('pdf') || doc.name.toLowerCase().endsWith('.pdf') : false;
+  const isAudio = doc?.fileType.startsWith('audio/');
+  const isVideo = doc?.fileType.startsWith('video/');
 
-  const isImage = doc.fileType.startsWith('image/');
-  const isPdf = doc.fileType.includes('pdf') || doc.name.toLowerCase().endsWith('.pdf');
-  const isAudio = doc.fileType.startsWith('audio/');
-  const isVideo = doc.fileType.startsWith('video/');
+  // Convert PDF base64 to Blob URL for native browser rendering
+  useEffect(() => {
+    if (!dataUrl || !isPdf) {
+      setPdfBlobUrl(null);
+      return;
+    }
+    try {
+      if (dataUrl.startsWith('blob:')) {
+        setPdfBlobUrl(dataUrl);
+        return;
+      }
+      const parts = dataUrl.split(',');
+      const byteString = atob(parts[1] || parts[0]);
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      const blob = new Blob([ab], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      setPdfBlobUrl(url);
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    } catch (err) {
+      console.error('Error creating PDF blob URL:', err);
+      setPdfBlobUrl(dataUrl);
+    }
+  }, [dataUrl, isPdf]);
+
+  if (!doc) return null;
 
   const handleDownload = () => {
     if (!dataUrl) return;
@@ -130,6 +171,10 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   };
 
   const handleOpenInNewTab = () => {
+    if (pdfBlobUrl && isPdf) {
+      window.open(pdfBlobUrl, '_blank');
+      return;
+    }
     if (!dataUrl) return;
     const newWindow = window.open();
     if (newWindow) {
@@ -228,6 +273,126 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
 
   const isEntityLinked = (type: LinkedEntityType, id: string) => {
     return activeLinks.some((l) => l.entityType === type && l.entityId === id);
+  };
+
+  const getEnrichedLinkInfo = (link: DocumentLink) => {
+    switch (link.entityType) {
+      case 'transaction': {
+        const tx = transactions.find((t) => t.id === link.entityId);
+        return {
+          title: tx ? `${tx.note || 'Expense / Income'} • ${formatCurrency(tx.amount)}` : link.entityName || 'Transaction',
+          subtitle: tx ? `${tx.date} • ${tx.type.toUpperCase()}` : 'Financial Transaction',
+          typeLabel: 'Receipt / Expense',
+          icon: Receipt,
+          color: 'text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/30',
+          route: '/transactions',
+        };
+      }
+      case 'asset': {
+        const ast = assets.find((a) => a.id === link.entityId);
+        return {
+          title: ast ? `${ast.name} • ${formatCurrency(ast.currentValue)}` : link.entityName || 'Asset',
+          subtitle: ast ? `${ast.type.toUpperCase()} • Purchased ${ast.purchaseDate}` : 'Physical/Financial Asset',
+          typeLabel: 'Asset Deed / Valuation',
+          icon: Landmark,
+          color: 'text-blue-700 dark:text-blue-300 bg-blue-500/10 border-blue-500/30',
+          route: '/assets',
+        };
+      }
+      case 'liability': {
+        const liab = liabilities.find((l) => l.id === link.entityId);
+        return {
+          title: liab ? `${liab.name} • ₹${formatCurrency(liab.outstandingBalance)}` : link.entityName || 'Loan',
+          subtitle: liab ? `Principal: ₹${formatCurrency(liab.principalAmount)}` : 'Debt / Liability',
+          typeLabel: 'Loan Agreement / NOC',
+          icon: TrendingUp,
+          color: 'text-rose-700 dark:text-rose-300 bg-rose-500/10 border-rose-500/30',
+          route: '/assets',
+        };
+      }
+      case 'account': {
+        const acc = accounts.find((a) => a.id === link.entityId);
+        return {
+          title: acc ? `${acc.name} (${acc.accountNumberLast4 ? '••' + acc.accountNumberLast4 : acc.type})` : link.entityName || 'Account',
+          subtitle: acc ? `Balance: ₹${formatCurrency(acc.balance)}` : 'Bank / Wallet Account',
+          typeLabel: 'Bank KYC / Passbook',
+          icon: Landmark,
+          color: 'text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 border-indigo-500/30',
+          route: '/accounts',
+        };
+      }
+      case 'note': {
+        const n = notes.find((nt) => nt.id === link.entityId);
+        return {
+          title: n ? n.title : link.entityName || 'Vault Note',
+          subtitle: n ? `Modified: ${formatReadableDate(n.updatedAt)}` : 'Encrypted Financial Note',
+          typeLabel: 'Vault Note',
+          icon: FileText,
+          color: 'text-amber-700 dark:text-amber-300 bg-amber-500/10 border-amber-500/30',
+          route: '/notes',
+        };
+      }
+      case 'people': {
+        const p = peopleLedger.find((pl) => pl.id === link.entityId);
+        return {
+          title: p ? `${p.contactName} • ₹${formatCurrency(p.amount)}` : link.entityName || 'Person',
+          subtitle: p ? (p.type === 'lent' ? 'You gave (You will get)' : 'You took (You owe)') : 'Khatabook Ledger',
+          typeLabel: 'Khatabook IOU',
+          icon: Users,
+          color: 'text-purple-700 dark:text-purple-300 bg-purple-500/10 border-purple-500/30',
+          route: '/people',
+        };
+      }
+      case 'goal': {
+        const g = goals.find((gl) => gl.id === link.entityId);
+        return {
+          title: g ? `${g.name} • Target ${formatCurrency(g.targetAmount)}` : link.entityName || 'Goal',
+          subtitle: g ? `Saved: ${formatCurrency(g.currentAmount)}` : 'Savings Goal',
+          typeLabel: 'Savings Goal',
+          icon: Target,
+          color: 'text-teal-700 dark:text-teal-300 bg-teal-500/10 border-teal-500/30',
+          route: '/budgets',
+        };
+      }
+      default: {
+        return {
+          title: link.entityName || link.entityId,
+          subtitle: 'Linked Financial Record',
+          typeLabel: 'Financial Link',
+          icon: Link2,
+          color: 'text-brand-700 dark:text-brand-300 bg-brand-500/10 border-brand-500/30',
+          route: '/transactions',
+        };
+      }
+    }
+  };
+
+  const handleNavigateToEntity = (type: LinkedEntityType, id: string) => {
+    onClose();
+    switch (type) {
+      case 'transaction':
+        navigate('/transactions', { state: { highlightId: id } });
+        break;
+      case 'asset':
+      case 'liability':
+        navigate('/assets', { state: { highlightId: id } });
+        break;
+      case 'account':
+        navigate('/accounts', { state: { highlightId: id } });
+        break;
+      case 'note':
+        navigate('/notes', { state: { highlightId: id } });
+        break;
+      case 'people':
+        navigate('/people', { state: { highlightId: id } });
+        break;
+      case 'goal':
+        navigate('/budgets', { state: { highlightId: id } });
+        break;
+      default:
+        navigate('/transactions');
+        break;
+    }
   };
 
   // Safe display for Upload Date
@@ -560,13 +725,33 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                     className="max-h-[480px] w-auto max-w-full object-contain rounded-xl shadow-md select-none"
                   />
                 </div>
-              ) : isPdf && dataUrl ? (
-                <div className="w-full h-full p-1">
-                  <iframe
-                    src={dataUrl}
-                    title={doc.name}
-                    className="w-full h-full rounded-xl border border-line bg-card shadow-inner"
-                  />
+              ) : isPdf && (pdfBlobUrl || dataUrl) ? (
+                <div className="w-full h-full p-1 flex flex-col">
+                  <object
+                    data={`${pdfBlobUrl || dataUrl}#toolbar=1&navpanes=0`}
+                    type="application/pdf"
+                    className="w-full flex-1 rounded-xl border border-line bg-card shadow-inner min-h-[480px]"
+                  >
+                    <div className="p-8 text-center space-y-3 flex flex-col items-center justify-center h-full">
+                      <div className="w-12 h-12 rounded-2xl bg-brand-500/10 text-brand-600 grid place-items-center mx-auto">
+                        <FileText className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-ink">{doc.name}</p>
+                        <p className="text-xs text-ink/50 mt-0.5">
+                          PDF viewer ready. Click below to view with full controls in a browser tab.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleOpenInNewTab}
+                        className="px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-xs cursor-pointer transition-colors"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        <span>Open PDF in New Window</span>
+                      </button>
+                    </div>
+                  </object>
                 </div>
               ) : isVideo && dataUrl ? (
                 <div className="w-full h-full p-4 flex items-center justify-center">
@@ -582,6 +767,43 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                     <InternxtFileIcon name={doc.name} mimeType={doc.fileType} size="xl" />
                   </div>
                   <audio src={dataUrl} controls className="w-full max-w-md mx-auto" />
+                </div>
+              ) : !dataUrl && !isLoadingPayload ? (
+                <div className="text-center py-10 space-y-4 p-6 max-w-md mx-auto">
+                  <div className="w-16 h-16 rounded-3xl bg-brand-500/10 text-brand-600 grid place-items-center mx-auto shadow-xs">
+                    <InternxtFileIcon name={doc.name} mimeType={doc.fileType} size="xl" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-bold text-ink">{doc.name}</h4>
+                    <p className="text-xs text-ink/60 max-w-sm mx-auto">
+                      File data payload is not currently cached in local vault storage. Attach or replace the file below to enable full encrypted preview and downloads.
+                    </p>
+                  </div>
+                  <label className="px-4 py-2.5 rounded-2xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold inline-flex items-center gap-2 shadow-sm cursor-pointer transition-all active:scale-[0.98]">
+                    <Upload className="w-4 h-4" />
+                    <span>Attach / Replace File Content</span>
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          try {
+                            const processed = await processFileForVault(file, false);
+                            await updateDocument(doc.id, {
+                              dataUrl: processed.dataUrl,
+                              fileSize: processed.fileSize,
+                              thumbnailUrl: processed.thumbnailUrl,
+                              fileType: file.type || doc.fileType,
+                            });
+                            setDataUrl(processed.dataUrl);
+                          } catch (err) {
+                            console.error('Re-upload failed:', err);
+                          }
+                        }
+                      }}
+                    />
+                  </label>
                 </div>
               ) : (
                 <div className="text-center py-12 space-y-3 p-6">
@@ -605,6 +827,66 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
                     </button>
                   )}
                 </div>
+              )}
+            </div>
+
+            {/* Attached Record & Quick Action Pill in Preview Tab */}
+            <div className="flex items-center justify-between p-3 rounded-2xl bg-card border border-line text-xs shadow-2xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <Link2 className="w-4 h-4 text-ink/40 shrink-0" />
+                {activeLinks.length > 0 ? (
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-ink/60">Attached to:</span>
+                    {(() => {
+                      const firstLink = activeLinks[0];
+                      const info = getEnrichedLinkInfo(firstLink);
+                      return (
+                        <span className="font-bold text-ink truncate max-w-[200px] sm:max-w-xs">
+                          {info.title}
+                        </span>
+                      );
+                    })()}
+                    {activeLinks.length > 1 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-2 text-ink/60 font-mono">
+                        +{activeLinks.length - 1} more
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-ink/50">Not attached to any financial record</span>
+                )}
+              </div>
+
+              {activeLinks.length > 0 ? (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleNavigateToEntity(activeLinks[0].entityType, activeLinks[0].entityId)}
+                    className="px-2.5 py-1 rounded-xl bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-400 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <span>View Entry</span>
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('links')}
+                    className="text-ink/50 hover:text-ink font-semibold text-[11px] underline cursor-pointer"
+                  >
+                    Manage
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('links');
+                    setIsPickingNewLink(true);
+                  }}
+                  className="px-3 py-1 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Attach to Record</span>
+                </button>
               )}
             </div>
           </div>
@@ -760,196 +1042,309 @@ export const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
         ───────────────────────────────────────────────────────────── */}
         {activeTab === 'links' && (
           <div className="space-y-4 max-h-[540px] overflow-y-auto custom-scrollbar pr-1">
-            {/* Active Links Pill Display */}
-            <div className="p-3.5 rounded-2xl bg-card border border-line space-y-2 shadow-2xs">
-              <span className="text-xs font-bold text-ink flex items-center gap-1.5">
-                <Link2 className="w-3.5 h-3.5 text-pine-600" />
-                <span>Currently Attached To ({activeLinks.length} items)</span>
-              </span>
-
-              <div className="flex flex-wrap gap-2 pt-1">
-                {activeLinks.length === 0 ? (
-                  <span className="text-xs text-ink/40 py-1">
-                    This document is currently unlinked. Search and link to any transaction, asset, loan, bank account, or note below.
-                  </span>
-                ) : (
-                  activeLinks.map((link) => (
-                    <div
-                      key={`${link.entityType}-${link.entityId}`}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-2 border border-line text-xs font-semibold text-ink shadow-2xs"
-                    >
-                      <span className="font-bold uppercase text-[10px] px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-600">
-                        {link.entityType}
-                      </span>
-                      <span className="truncate max-w-[220px] font-bold">
-                        {link.entityName || link.entityId}
+            {/* If NOT in picking mode, show ONLY attached records, or clean empty state */}
+            {!isPickingNewLink ? (
+              <div className="space-y-4">
+                {activeLinks.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-ink/60 flex items-center gap-1.5">
+                        <Link2 className="w-3.5 h-3.5 text-pine-600" />
+                        <span>Attached Financial Records ({activeLinks.length})</span>
                       </span>
                       <button
                         type="button"
-                        onClick={() => handleUnlink(link.entityType, link.entityId)}
-                        className="p-1 hover:text-rose-600 rounded-md cursor-pointer transition-colors"
-                        title="Remove link"
+                        onClick={() => setIsPickingNewLink(true)}
+                        className="px-3 py-1 rounded-xl bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-400 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Attach Another Record</span>
                       </button>
                     </div>
-                  ))
+
+                    <div className="space-y-2.5">
+                      {activeLinks.map((link) => {
+                        const info = getEnrichedLinkInfo(link);
+                        const IconComponent = info.icon;
+                        return (
+                          <div
+                            key={`${link.entityType}-${link.entityId}`}
+                            className="p-4 rounded-2xl bg-card border border-line flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs hover:border-line/80 transition-all"
+                          >
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div className={`p-2.5 rounded-xl border shrink-0 ${info.color}`}>
+                                <IconComponent className="w-5 h-5" />
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-surface-2 text-ink/60">
+                                    {info.typeLabel}
+                                  </span>
+                                </div>
+                                <h4 className="font-bold text-ink text-sm truncate">{info.title}</h4>
+                                <p className="text-xs text-ink/50 font-mono">{info.subtitle}</p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                              <button
+                                type="button"
+                                onClick={() => handleNavigateToEntity(link.entityType, link.entityId)}
+                                className="px-3 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition-all active:scale-95"
+                              >
+                                <span>View Entry</span>
+                                <ArrowUpRight className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleUnlink(link.entityType, link.entityId)}
+                                className="px-3 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/50 dark:bg-rose-950/30 hover:bg-rose-100 text-rose-600 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>Unlink</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center space-y-3 rounded-2xl bg-surface-2/30 border border-line">
+                    <div className="w-12 h-12 rounded-2xl bg-surface-2 border border-line grid place-items-center mx-auto text-ink/40">
+                      <Link2 className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="font-bold text-sm text-ink">Not Attached to Any Financial Record</h4>
+                      <p className="text-xs text-ink/50 max-w-sm mx-auto">
+                        This file is currently unattached. You can attach it to an expense receipt, property deed, loan document, bank KYC, or note.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsPickingNewLink(true)}
+                      className="px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold inline-flex items-center gap-2 shadow-xs cursor-pointer transition-all"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Attach to Financial Record</span>
+                    </button>
+                  </div>
                 )}
               </div>
-            </div>
-
-            {/* Category Selector for Linking */}
-            <div className="space-y-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-ink/50 block">
-                Link to KhataGHAR Financial Record:
-              </span>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setLinkerCategory('transaction')}
-                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
-                    linkerCategory === 'transaction'
-                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold shadow-2xs'
-                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
-                  }`}
-                >
-                  <Receipt className="w-4 h-4 text-emerald-500" />
-                  <span className="text-[11px] truncate">Receipts</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setLinkerCategory('asset')}
-                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
-                    linkerCategory === 'asset'
-                      ? 'border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-400 font-bold shadow-2xs'
-                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
-                  }`}
-                >
-                  <Landmark className="w-4 h-4 text-blue-500" />
-                  <span className="text-[11px] truncate">Assets</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setLinkerCategory('liability')}
-                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
-                    linkerCategory === 'liability'
-                      ? 'border-rose-500 bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold shadow-2xs'
-                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
-                  }`}
-                >
-                  <TrendingUp className="w-4 h-4 text-rose-500" />
-                  <span className="text-[11px] truncate">Loans</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setLinkerCategory('account')}
-                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
-                    linkerCategory === 'account'
-                      ? 'border-indigo-500 bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 font-bold shadow-2xs'
-                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
-                  }`}
-                >
-                  <Landmark className="w-4 h-4 text-indigo-500" />
-                  <span className="text-[11px] truncate">Bank KYC</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setLinkerCategory('note')}
-                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
-                    linkerCategory === 'note'
-                      ? 'border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-bold shadow-2xs'
-                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
-                  }`}
-                >
-                  <FileText className="w-4 h-4 text-amber-500" />
-                  <span className="text-[11px] truncate">Notes</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setLinkerCategory('people')}
-                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
-                    linkerCategory === 'people'
-                      ? 'border-purple-500 bg-purple-500/10 text-purple-700 dark:text-purple-400 font-bold shadow-2xs'
-                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
-                  }`}
-                >
-                  <Users className="w-4 h-4 text-purple-500" />
-                  <span className="text-[11px] truncate">Khatabook</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setLinkerCategory('goal')}
-                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
-                    linkerCategory === 'goal'
-                      ? 'border-teal-500 bg-teal-500/10 text-teal-700 dark:text-teal-400 font-bold shadow-2xs'
-                      : 'border-line bg-card hover:bg-surface-2 text-ink/70'
-                  }`}
-                >
-                  <Target className="w-4 h-4 text-teal-500" />
-                  <span className="text-[11px] truncate">Goals</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Search items inside category */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 pointer-events-none" />
-              <input
-                type="text"
-                placeholder={`Search ${linkerCategory}s by title, note, or amount...`}
-                value={linkerSearch}
-                onChange={(e) => setLinkerSearch(e.target.value)}
-                className="w-full pl-8 pr-4 py-2 bg-surface-2/60 border border-line rounded-xl text-xs text-ink placeholder:text-ink/40 focus:outline-none focus:border-brand-500"
-              />
-            </div>
-
-            {/* List of items */}
-            <div className="border border-line rounded-2xl bg-card overflow-hidden divide-y divide-line/60 max-h-[260px] overflow-y-auto custom-scrollbar">
-              {linkableItems.length === 0 ? (
-                <div className="p-8 text-center text-xs text-ink/40">
-                  No {linkerCategory} items found matching &quot;{linkerSearch}&quot;.
-                </div>
-              ) : (
-                linkableItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-3 flex items-center justify-between gap-3 hover:bg-surface-2/50 transition-colors"
+            ) : (
+              /* PICKER MODE: Category tabs + live search + linkable items */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-ink/60">
+                    Select Record to Attach:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsPickingNewLink(false)}
+                    className="text-xs font-bold text-ink/50 hover:text-ink cursor-pointer px-2 py-1 rounded-lg hover:bg-surface-2"
                   >
-                    <div className="min-w-0 flex-1">
-                      <span className="text-xs font-bold text-ink block truncate">{item.title}</span>
-                      <span className="text-[10px] text-ink/50 block truncate">{item.subtitle}</span>
-                    </div>
+                    Done / Close
+                  </button>
+                </div>
 
-                    {item.isLinked ? (
-                      <button
-                        type="button"
-                        onClick={() => handleUnlink(linkerCategory, item.id)}
-                        className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                {/* Category Selector for Linking */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setLinkerCategory('transaction')}
+                    className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                      linkerCategory === 'transaction'
+                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold shadow-2xs'
+                        : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                    }`}
+                  >
+                    <Receipt className="w-4 h-4 text-emerald-500" />
+                    <span className="text-[11px] truncate">Receipts</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLinkerCategory('asset')}
+                    className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                      linkerCategory === 'asset'
+                        ? 'border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-400 font-bold shadow-2xs'
+                        : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                    }`}
+                  >
+                    <Landmark className="w-4 h-4 text-blue-500" />
+                    <span className="text-[11px] truncate">Assets</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLinkerCategory('liability')}
+                    className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                      linkerCategory === 'liability'
+                        ? 'border-rose-500 bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold shadow-2xs'
+                        : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                    }`}
+                  >
+                    <TrendingUp className="w-4 h-4 text-rose-500" />
+                    <span className="text-[11px] truncate">Loans</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLinkerCategory('account')}
+                    className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                      linkerCategory === 'account'
+                        ? 'border-indigo-500 bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 font-bold shadow-2xs'
+                        : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                    }`}
+                  >
+                    <Landmark className="w-4 h-4 text-indigo-500" />
+                    <span className="text-[11px] truncate">Bank KYC</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLinkerCategory('note')}
+                    className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                      linkerCategory === 'note'
+                        ? 'border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-bold shadow-2xs'
+                        : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4 text-amber-500" />
+                    <span className="text-[11px] truncate">Notes</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLinkerCategory('people')}
+                    className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                      linkerCategory === 'people'
+                        ? 'border-purple-500 bg-purple-500/10 text-purple-700 dark:text-purple-400 font-bold shadow-2xs'
+                        : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                    }`}
+                  >
+                    <Users className="w-4 h-4 text-purple-500" />
+                    <span className="text-[11px] truncate">Khatabook</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLinkerCategory('goal')}
+                    className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                      linkerCategory === 'goal'
+                        ? 'border-teal-500 bg-teal-500/10 text-teal-700 dark:text-teal-400 font-bold shadow-2xs'
+                        : 'border-line bg-card hover:bg-surface-2 text-ink/70'
+                    }`}
+                  >
+                    <Target className="w-4 h-4 text-teal-500" />
+                    <span className="text-[11px] truncate">Goals</span>
+                  </button>
+                </div>
+
+                {/* Search items inside category */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink/40 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder={`Search ${
+                      linkerCategory === 'transaction'
+                        ? 'transactions'
+                        : linkerCategory === 'asset'
+                        ? 'assets'
+                        : linkerCategory === 'liability'
+                        ? 'liabilities'
+                        : linkerCategory === 'account'
+                        ? 'accounts'
+                        : linkerCategory === 'note'
+                        ? 'notes'
+                        : linkerCategory === 'people'
+                        ? 'people/contacts'
+                        : linkerCategory === 'goal'
+                        ? 'goals'
+                        : 'items'
+                    } by title, note, or amount...`}
+                    value={linkerSearch}
+                    onChange={(e) => setLinkerSearch(e.target.value)}
+                    className="w-full pl-8 pr-4 py-2 bg-surface-2/60 border border-line rounded-xl text-xs text-ink placeholder:text-ink/40 focus:outline-none focus:border-brand-500"
+                  />
+                </div>
+
+                {/* List of items */}
+                <div className="border border-line rounded-2xl bg-card overflow-hidden divide-y divide-line/60 max-h-[260px] overflow-y-auto custom-scrollbar">
+                  {linkableItems.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-ink/40">
+                      {linkerSearch.trim()
+                        ? `No matching ${
+                            linkerCategory === 'transaction'
+                              ? 'transactions'
+                              : linkerCategory === 'asset'
+                              ? 'assets'
+                              : linkerCategory === 'liability'
+                              ? 'liabilities'
+                              : linkerCategory === 'account'
+                              ? 'accounts'
+                              : linkerCategory === 'note'
+                              ? 'notes'
+                              : linkerCategory === 'people'
+                              ? 'people/contacts'
+                              : linkerCategory === 'goal'
+                              ? 'goals'
+                              : 'items'
+                          } found for "${linkerSearch}".`
+                        : `No ${
+                            linkerCategory === 'transaction'
+                              ? 'transactions'
+                              : linkerCategory === 'asset'
+                              ? 'assets'
+                              : linkerCategory === 'liability'
+                              ? 'liabilities'
+                              : linkerCategory === 'account'
+                              ? 'accounts'
+                              : linkerCategory === 'note'
+                              ? 'notes'
+                              : linkerCategory === 'people'
+                              ? 'people/contacts'
+                              : linkerCategory === 'goal'
+                              ? 'goals'
+                              : 'items'
+                          } recorded yet in your vault.`}
+                    </div>
+                  ) : (
+                    linkableItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="p-3 flex items-center justify-between gap-3 hover:bg-surface-2/50 transition-colors"
                       >
-                        <X className="w-3 h-3" />
-                        <span>Unlink</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleAddLink(linkerCategory, item.id, item.title)}
-                        className="px-2.5 py-1 rounded-lg bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-400 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
-                      >
-                        <Plus className="w-3 h-3" />
-                        <span>Link</span>
-                      </button>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-xs font-bold text-ink block truncate">{item.title}</span>
+                          <span className="text-[10px] text-ink/50 block truncate">{item.subtitle}</span>
+                        </div>
+
+                        {item.isLinked ? (
+                          <button
+                            type="button"
+                            onClick={() => handleUnlink(linkerCategory, item.id)}
+                            className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                          >
+                            <X className="w-3 h-3" />
+                            <span>Unlink</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleAddLink(linkerCategory, item.id, item.title)}
+                            className="px-2.5 py-1 rounded-lg bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-400 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Link</span>
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { formatFileSize, formatCurrency, formatCompactCurrency } from '../../utils/formatters';
 import { formatReadableDate, formatReadableDateTime } from '../../utils/dates';
 import { useVault } from '../../context/VaultContext';
@@ -51,6 +52,7 @@ import {
   Clipboard,
   StickyNote,
   Target,
+  PanelLeft,
 } from 'lucide-react';
 import { InternxtFileIcon, extractExtension } from './InternxtFileIcon';
 import { DriveDatabaseUsageMeter } from './DriveDatabaseUsageMeter';
@@ -160,6 +162,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     addDocument,
     updateDocument,
     loadDocumentDataUrl,
+    addDocumentFolder,
     transactions,
     accounts,
     assets,
@@ -170,19 +173,38 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   } = useVault();
 
   const confirm = useConfirm();
+  const navigate = useNavigate();
 
   // Navigation section: 'files' | 'recent' | 'starred'
   const [navSection, setNavSection] = useState<'files' | 'recent' | 'starred'>('files');
 
-  // Multi-selection state
+  // Multi-selection state (Files & Folders)
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+  const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
   const [lastSelectedDocId, setLastSelectedDocId] = useState<string | null>(null);
 
-  // Explorer Clipboard State (Copy, Cut, Paste)
+  // Drag-and-drop file into folder drop-target indicator
+  const [dropTargetFolderId, setDropTargetFolderId] = useState<string | null>(null);
+
+  // Mobile sidebar drawer state
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Explorer Clipboard State (Copy, Cut, Paste for docs & folders)
   const [clipboard, setClipboard] = useState<{
     action: 'copy' | 'cut';
     docIds: string[];
+    folderIds: string[];
   } | null>(null);
+
+  // Rubber-band marquee drag selection state
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [marquee, setMarquee] = useState<{
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
+  const [isMarqueeDragging, setIsMarqueeDragging] = useState(false);
 
   // Folder to Edit / Customize Modal State
   const [folderToEdit, setFolderToEdit] = useState<DocumentFolder | null>(null);
@@ -495,6 +517,16 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     setContextMenu(null);
   };
 
+  // Primary selected folder object for inspector panel
+  const primarySelectedFolder = useMemo(() => {
+    if (selectedFolderIds.size === 0) return null;
+    const firstId = Array.from(selectedFolderIds)[0];
+    return folders.find((f) => f.id === firstId) || null;
+  }, [selectedFolderIds, folders]);
+
+  const selectedFolderObj = primarySelectedFolder;
+  const selectedFolderId = selectedFolderIds.size === 1 ? Array.from(selectedFolderIds)[0] : null;
+
   // Selection handlers
   const handleSelectDoc = (docId: string, event?: React.MouseEvent) => {
     if (event?.shiftKey && lastSelectedDocId) {
@@ -525,50 +557,197 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
 
     // Default single click selection
     setSelectedDocIds(new Set([docId]));
+    setSelectedFolderIds(new Set());
     setLastSelectedDocId(docId);
   };
 
+  const handleSelectFolder = (folderId: string, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    if (event?.ctrlKey || event?.metaKey) {
+      setSelectedFolderIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(folderId)) {
+          next.delete(folderId);
+        } else {
+          next.add(folderId);
+        }
+        return next;
+      });
+      return;
+    }
+
+    // Default single click selection
+    setSelectedFolderIds(new Set([folderId]));
+    setSelectedDocIds(new Set());
+    setLastSelectedDocId(null);
+  };
+
+  const handleOpenFolder = (folderId: string) => {
+    setNavSection('files');
+    setSelectedFolderIds(new Set());
+    setSelectedDocIds(new Set());
+    setLastSelectedDocId(null);
+    onSelectFolder(folderId);
+  };
+
   const handleSelectAll = () => {
-    if (selectedDocIds.size === displayedDocs.length) {
+    const totalSelectableFolders = (activeFolderId === 'all' && searchQuery === '') ? displayedSubfolders.length : 0;
+    const totalSelectableDocs = displayedDocs.length;
+    const isAllDocsSelected = totalSelectableDocs > 0 && selectedDocIds.size === totalSelectableDocs;
+    const isAllFoldersSelected = totalSelectableFolders > 0 && selectedFolderIds.size === totalSelectableFolders;
+
+    if ((totalSelectableDocs === 0 || isAllDocsSelected) && (totalSelectableFolders === 0 || isAllFoldersSelected)) {
+      // If everything is already selected, clear all
       setSelectedDocIds(new Set());
+      setSelectedFolderIds(new Set());
+      setLastSelectedDocId(null);
     } else {
+      // Select ALL folders and ALL docs
       setSelectedDocIds(new Set(displayedDocs.map((d) => d.id)));
+      if (activeFolderId === 'all' && searchQuery === '') {
+        setSelectedFolderIds(new Set(displayedSubfolders.map((f) => f.id)));
+      } else {
+        setSelectedFolderIds(new Set());
+      }
     }
   };
 
   const handleClearSelection = () => {
     setSelectedDocIds(new Set());
+    setSelectedFolderIds(new Set());
     setLastSelectedDocId(null);
   };
 
+  // Navigable items sequence for Arrow keys navigation
+  const visibleNavItems = useMemo(() => {
+    const foldersList = (displayedSubfolders.length > 0 && searchQuery === '') ? displayedSubfolders : [];
+    return [
+      ...foldersList.map((f) => ({ type: 'folder' as const, id: f.id })),
+      ...displayedDocs.map((d) => ({ type: 'doc' as const, id: d.id })),
+    ];
+  }, [displayedSubfolders, searchQuery, displayedDocs]);
+
+  const currentNavIndex = useMemo(() => {
+    if (selectedFolderIds.size > 0) {
+      const activeFId = Array.from(selectedFolderIds)[0];
+      return visibleNavItems.findIndex((item) => item.type === 'folder' && item.id === activeFId);
+    }
+    if (selectedDocIds.size > 0) {
+      const activeId = lastSelectedDocId || Array.from(selectedDocIds)[0];
+      return visibleNavItems.findIndex((item) => item.type === 'doc' && item.id === activeId);
+    }
+    return -1;
+  }, [selectedFolderIds, selectedDocIds, lastSelectedDocId, visibleNavItems]);
+
+  const handleSelectIndex = (idx: number) => {
+    if (idx < 0 || idx >= visibleNavItems.length) return;
+    const target = visibleNavItems[idx];
+    if (target.type === 'folder') {
+      setSelectedFolderIds(new Set([target.id]));
+      setSelectedDocIds(new Set());
+      setLastSelectedDocId(null);
+    } else {
+      setSelectedFolderIds(new Set());
+      setSelectedDocIds(new Set([target.id]));
+      setLastSelectedDocId(target.id);
+    }
+  };
+
+  const handleSelectNext = () => {
+    if (visibleNavItems.length === 0) return;
+    if (currentNavIndex === -1) {
+      handleSelectIndex(0);
+    } else if (currentNavIndex < visibleNavItems.length - 1) {
+      handleSelectIndex(currentNavIndex + 1);
+    }
+  };
+
+  const handleSelectPrev = () => {
+    if (visibleNavItems.length === 0) return;
+    if (currentNavIndex === -1) {
+      handleSelectIndex(0);
+    } else if (currentNavIndex > 0) {
+      handleSelectIndex(currentNavIndex - 1);
+    }
+  };
+
+  const handleSelectNextRow = () => {
+    if (visibleNavItems.length === 0) return;
+    if (viewMode === 'list') {
+      handleSelectNext();
+      return;
+    }
+    const step = 4;
+    const nextIdx = Math.min(visibleNavItems.length - 1, (currentNavIndex === -1 ? 0 : currentNavIndex) + step);
+    handleSelectIndex(nextIdx);
+  };
+
+  const handleSelectPrevRow = () => {
+    if (visibleNavItems.length === 0) return;
+    if (viewMode === 'list') {
+      handleSelectPrev();
+      return;
+    }
+    const step = 4;
+    const prevIdx = Math.max(0, (currentNavIndex === -1 ? 0 : currentNavIndex) - step);
+    handleSelectIndex(prevIdx);
+  };
+
+  const handleOpenSelected = () => {
+    if (selectedFolderIds.size === 1) {
+      const fId = Array.from(selectedFolderIds)[0];
+      handleOpenFolder(fId);
+      return;
+    }
+    if (selectedDocIds.size === 1) {
+      const docId = Array.from(selectedDocIds)[0];
+      onOpenDoc(docId);
+      return;
+    }
+  };
+
+  const handleNavigateUp = () => {
+    if (activeFolderId !== 'all') {
+      onSelectFolder('all');
+      setSelectedFolderIds(new Set());
+      setSelectedDocIds(new Set());
+      setLastSelectedDocId(null);
+    } else if (selectedFolderIds.size > 0 || selectedDocIds.size > 0) {
+      handleClearSelection();
+    }
+  };
+
   // ─────────────────────────────────────────────────────────────────
-  // EXPLORER CLIPBOARD OPERATIONS (Copy, Cut, Paste)
+  // EXPLORER CLIPBOARD OPERATIONS (Copy, Cut, Paste for docs & folders)
   // ─────────────────────────────────────────────────────────────────
-  const handleCopySelected = (specificIds?: string[]) => {
-    const ids = specificIds || Array.from(selectedDocIds);
-    if (ids.length === 0) return;
-    setClipboard({ action: 'copy', docIds: ids });
+  const handleCopySelected = (specificDocIds?: string[], specificFolderIds?: string[]) => {
+    const dIds = specificDocIds || Array.from(selectedDocIds);
+    const fIds = specificFolderIds || Array.from(selectedFolderIds);
+    if (dIds.length === 0 && fIds.length === 0) return;
+    setClipboard({ action: 'copy', docIds: dIds, folderIds: fIds });
     setContextMenu(null);
   };
 
-  const handleCutSelected = (specificIds?: string[]) => {
-    const ids = specificIds || Array.from(selectedDocIds);
-    if (ids.length === 0) return;
-    setClipboard({ action: 'cut', docIds: ids });
+  const handleCutSelected = (specificDocIds?: string[], specificFolderIds?: string[]) => {
+    const dIds = specificDocIds || Array.from(selectedDocIds);
+    const fIds = specificFolderIds || Array.from(selectedFolderIds);
+    if (dIds.length === 0 && fIds.length === 0) return;
+    setClipboard({ action: 'cut', docIds: dIds, folderIds: fIds });
     setContextMenu(null);
   };
 
   const handlePaste = async (targetFolderId?: string) => {
-    if (!clipboard || clipboard.docIds.length === 0) return;
+    if (!clipboard || (clipboard.docIds.length === 0 && clipboard.folderIds.length === 0)) return;
     const destination = targetFolderId || (activeFolderId !== 'all' ? activeFolderId : 'unfiled');
 
     try {
       if (clipboard.action === 'cut') {
         for (const id of clipboard.docIds) {
-          await updateDocument(id, { folderId: destination });
+          await updateDocument(id, { folderId: destination === 'unfiled' ? undefined : destination });
         }
         setClipboard(null);
       } else if (clipboard.action === 'copy') {
+        // Clone files
         for (const id of clipboard.docIds) {
           const originalDoc = documents.find((d) => d.id === id);
           if (originalDoc) {
@@ -578,7 +757,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 name: `Copy of ${originalDoc.name}`,
                 fileType: originalDoc.fileType,
                 fileSize: originalDoc.fileSize,
-                folderId: destination,
+                folderId: destination === 'unfiled' ? undefined : destination,
                 thumbnailUrl: originalDoc.thumbnailUrl,
                 notes: originalDoc.notes,
                 linkedType: originalDoc.linkedType,
@@ -590,6 +769,39 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               dataUrl,
               { isUncompressed: originalDoc.isUncompressed }
             );
+          }
+        }
+        // Clone folders if any
+        for (const fId of clipboard.folderIds) {
+          const originalFolder = folders.find((f) => f.id === fId);
+          if (originalFolder) {
+            const created = await addDocumentFolder({
+              name: `Copy of ${originalFolder.name}`,
+              color: originalFolder.color,
+              icon: originalFolder.icon,
+            });
+            // Also clone docs in this folder into the new folder
+            const folderDocs = documents.filter((d) => d.folderId === fId);
+            for (const doc of folderDocs) {
+              const dataUrl = doc.dataUrl || (await loadDocumentDataUrl(doc.id));
+              await addDocument(
+                {
+                  name: doc.name,
+                  fileType: doc.fileType,
+                  fileSize: doc.fileSize,
+                  folderId: created.id,
+                  thumbnailUrl: doc.thumbnailUrl,
+                  notes: doc.notes,
+                  linkedType: doc.linkedType,
+                  linkedId: doc.linkedId,
+                  links: doc.links,
+                  expiryDate: doc.expiryDate,
+                  isUncompressed: doc.isUncompressed,
+                },
+                dataUrl,
+                { isUncompressed: doc.isUncompressed }
+              );
+            }
           }
         }
         setClipboard(null);
@@ -633,26 +845,47 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     }
   };
 
-  // Batch delete selected documents
+  // Batch delete selected documents & folders
   const handleDeleteSelected = async () => {
-    const count = selectedDocIds.size;
-    if (count === 0) return;
+    const docCount = selectedDocIds.size;
+    const folderCount = selectedFolderIds.size;
+    if (docCount === 0 && folderCount === 0) return;
+
+    let title = '';
+    let description = '';
+    if (docCount > 0 && folderCount > 0) {
+      title = `Delete ${docCount} File${docCount > 1 ? 's' : ''} and ${folderCount} Folder${folderCount > 1 ? 's' : ''}?`;
+      description = `Permanently delete ${docCount} file${docCount > 1 ? 's' : ''} and ${folderCount} folder${folderCount > 1 ? 's' : ''}? File linkages will be removed.`;
+    } else if (folderCount > 0) {
+      title = `Delete ${folderCount} Folder${folderCount > 1 ? 's' : ''}?`;
+      description = `Delete selected custom folder${folderCount > 1 ? 's' : ''}? Files inside will become unfiled.`;
+    } else {
+      title = `Delete ${docCount} Document${docCount > 1 ? 's' : ''}?`;
+      description = `Permanently delete ${docCount} selected file${
+        docCount > 1 ? 's' : ''
+      } from encrypted storage? This will unlink them from any financial records.`;
+    }
 
     const ok = await confirm({
-      title: `Delete ${count} Document${count > 1 ? 's' : ''}?`,
-      description: `Permanently delete ${count} selected file${
-        count > 1 ? 's' : ''
-      } from encrypted storage? This will unlink them from any financial records.`,
-      confirmText: `Delete ${count} File${count > 1 ? 's' : ''}`,
+      title,
+      description,
+      confirmText: `Delete Selected`,
       variant: 'danger',
     });
 
     if (ok) {
-      const ids = Array.from(selectedDocIds);
-      for (const id of ids) {
+      for (const id of Array.from(selectedDocIds)) {
         const doc = documents.find((d) => d.id === id);
         if (doc) {
           await onDeleteDoc(doc);
+        }
+      }
+      if (onDeleteFolder) {
+        for (const fId of Array.from(selectedFolderIds)) {
+          const f = folders.find((item) => item.id === fId);
+          if (f && !f.isSystem) {
+            await onDeleteFolder(fId);
+          }
         }
       }
       handleClearSelection();
@@ -667,6 +900,137 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     }
     setIsMoveMenuOpen(false);
   };
+
+  // Drag-and-drop file into folder handlers
+  const handleDocDragStart = (docId: string, e: React.DragEvent) => {
+    const ids = selectedDocIds.has(docId) ? Array.from(selectedDocIds) : [docId];
+    e.dataTransfer.setData('application/json', JSON.stringify({ type: 'doc', ids }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDropOnFolder = async (folderId: string, e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTargetFolderId(null);
+
+    const raw = e.dataTransfer.getData('application/json');
+    if (raw) {
+      try {
+        const data = JSON.parse(raw);
+        if (data.type === 'doc' && Array.isArray(data.ids)) {
+          for (const id of data.ids) {
+            await updateDocument(id, { folderId });
+          }
+          setSelectedDocIds(new Set());
+          return;
+        }
+      } catch {}
+    }
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      for (const file of Array.from(e.dataTransfer.files)) {
+        try {
+          const processed = await processFileForVault(file, false);
+          await addDocument(
+            {
+              name: file.name,
+              fileType: file.type || 'application/octet-stream',
+              fileSize: processed.fileSize,
+              thumbnailUrl: processed.thumbnailUrl,
+              folderId,
+              linkedType: 'none',
+            },
+            processed.dataUrl,
+            { isUncompressed: processed.isUncompressed }
+          );
+        } catch (err) {
+          console.error('Failed uploading file to folder:', err);
+        }
+      }
+    }
+  };
+
+  // Canvas rubber-band marquee drag selection handlers
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-drive-item], button, input, textarea, a, select, [role="button"]')) {
+      return;
+    }
+    if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      handleClearSelection();
+    }
+    setMarquee({
+      startX: e.clientX,
+      startY: e.clientY,
+      currentX: e.clientX,
+      currentY: e.clientY,
+    });
+    setIsMarqueeDragging(false);
+  };
+
+  useEffect(() => {
+    if (!marquee) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const dx = Math.abs(e.clientX - marquee.startX);
+      const dy = Math.abs(e.clientY - marquee.startY);
+      if (!isMarqueeDragging && (dx > 3 || dy > 3)) {
+        setIsMarqueeDragging(true);
+      }
+
+      setMarquee((prev) => (prev ? { ...prev, currentX: e.clientX, currentY: e.clientY } : null));
+
+      const box = {
+        left: Math.min(marquee.startX, e.clientX),
+        top: Math.min(marquee.startY, e.clientY),
+        right: Math.max(marquee.startX, e.clientX),
+        bottom: Math.max(marquee.startY, e.clientY),
+      };
+
+      const items = canvasRef.current?.querySelectorAll<HTMLElement>('[data-drive-item]');
+      if (!items) return;
+
+      const newSelectedDocs = new Set(e.ctrlKey || e.shiftKey ? selectedDocIds : []);
+      const newSelectedFolders = new Set(e.ctrlKey || e.shiftKey ? selectedFolderIds : []);
+
+      items.forEach((item) => {
+        const rect = item.getBoundingClientRect();
+        const intersects = !(
+          rect.right < box.left ||
+          rect.left > box.right ||
+          rect.bottom < box.top ||
+          rect.top > box.bottom
+        );
+        if (intersects) {
+          const type = item.dataset.driveType;
+          const id = item.dataset.driveId;
+          if (id) {
+            if (type === 'folder') {
+              newSelectedFolders.add(id);
+            } else if (type === 'doc') {
+              newSelectedDocs.add(id);
+            }
+          }
+        }
+      });
+
+      setSelectedDocIds(newSelectedDocs);
+      setSelectedFolderIds(newSelectedFolders);
+    };
+
+    const handleMouseUp = () => {
+      setMarquee(null);
+      setIsMarqueeDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [marquee, isMarqueeDragging, selectedDocIds, selectedFolderIds]);
 
   // Drag and drop upload handlers
   const handleDragOver = (e: React.DragEvent) => {
@@ -724,6 +1088,14 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     onUpload: onUploadClick,
     onDeleteSelected: handleDeleteSelected,
     onClearSelection: handleClearSelection,
+    onOpenSelected: handleOpenSelected,
+    onNavigateUp: handleNavigateUp,
+    onSelectNext: handleSelectNext,
+    onSelectPrev: handleSelectPrev,
+    onSelectNextRow: handleSelectNextRow,
+    onSelectPrevRow: handleSelectPrevRow,
+    onSelectAll: handleSelectAll,
+    hasSelection: Boolean(selectedFolderIds.size > 0 || selectedDocIds.size > 0),
   });
 
   // Explorer keyboard listener for Copy, Cut, Paste, F2
@@ -735,17 +1107,17 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
       }
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
-        if (selectedDocIds.size > 0) {
+        if (selectedDocIds.size > 0 || selectedFolderIds.size > 0) {
           e.preventDefault();
           handleCopySelected();
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x') {
-        if (selectedDocIds.size > 0) {
+        if (selectedDocIds.size > 0 || selectedFolderIds.size > 0) {
           e.preventDefault();
           handleCutSelected();
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-        if (clipboard && clipboard.docIds.length > 0) {
+        if (clipboard && (clipboard.docIds.length > 0 || clipboard.folderIds.length > 0)) {
           e.preventDefault();
           handlePaste();
         }
@@ -753,13 +1125,16 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
         if (selectedDocIds.size === 1 && primarySelectedDoc) {
           e.preventDefault();
           handleStartRename(primarySelectedDoc);
+        } else if (selectedFolderIds.size === 1 && selectedFolderObj) {
+          e.preventDefault();
+          setFolderToEdit(selectedFolderObj);
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedDocIds, clipboard, activeFolderId, primarySelectedDoc, documents]);
+  }, [selectedDocIds, selectedFolderIds, clipboard, activeFolderId, primarySelectedDoc, selectedFolderObj, documents]);
 
   // Close context menu & popovers on outside click
   useEffect(() => {
@@ -801,211 +1176,289 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
       {/* ─────────────────────────────────────────────────────────────
           1. TOP TOOLBAR & DYNAMIC BULK ACTIONS (Internxt TopBar)
       ───────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-line bg-surface shrink-0">
-        {/* Left: Breadcrumbs navigation */}
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-ink/60 overflow-hidden">
-          <button
-            type="button"
-            onClick={() => {
-              setNavSection('files');
-              onSelectFolder('all');
-              onSelectEntityFilter('all');
-            }}
-            className={`px-3 py-1.5 rounded-xl transition-all ${
-              navSection === 'files' && activeFolderId === 'all' && selectedEntityFilter === 'all'
-                ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold shadow-2xs'
-                : 'hover:bg-surface-2 text-ink/70 hover:text-ink'
-            }`}
-          >
-            Files
-          </button>
-
-          {activeFolder && (
-            <>
-              <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
-              <span className="px-3 py-1.5 rounded-xl bg-surface-2 font-bold text-ink truncate flex items-center gap-2 border border-line/60 shadow-2xs">
-                <FolderIconBadge folder={activeFolder} size="sm" isOpen={true} />
-                <span className="truncate">{activeFolder.name}</span>
-              </span>
-            </>
-          )}
-
-          {navSection === 'recent' && (
-            <>
-              <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
-              <span className="px-3 py-1.5 rounded-xl bg-surface-2 font-bold text-ink border border-line/60">
-                Recent
-              </span>
-            </>
-          )}
-
-          {navSection === 'starred' && (
-            <>
-              <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
-              <span className="px-3 py-1.5 rounded-xl bg-surface-2 font-bold text-ink border border-line/60">
-                Starred
-              </span>
-            </>
-          )}
-
-          {selectedEntityFilter !== 'all' && (
-            <>
-              <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
-              <span className="px-3 py-1.5 rounded-xl bg-brand-500/10 text-brand-600 font-bold capitalize border border-brand-500/20">
-                {selectedEntityFilter === 'unlinked' ? 'Unlinked Files' : `${selectedEntityFilter}s`}
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* Center: Search pill with shortcut hint */}
-        <div className="relative flex-1 max-w-md hidden sm:block">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-ink/40 pointer-events-none" />
-          <input
-            ref={searchInputRef}
-            type="text"
-            placeholder="Search Vault files, receipts, notes... (Press /)"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-9 pr-14 py-2 bg-surface-2/60 border border-line rounded-2xl text-xs text-ink placeholder:text-ink/40 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all shadow-2xs"
-          />
-          {searchQuery ? (
-            <button
-              type="button"
-              onClick={() => onSearchChange('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-ink/40 hover:text-ink"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          ) : (
-            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-surface border border-line font-mono text-[10px] text-ink/40">
-              /
-            </kbd>
-          )}
-        </div>
-
-        {/* Right: Actions / Selection Bar */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {selectedDocIds.size > 0 ? (
-            /* Contextual Action Bar when items selected */
-            <div className="flex items-center gap-1.5 bg-brand-500/10 border border-brand-500/20 px-2.5 py-1 rounded-2xl anim-fade">
-              <span className="text-xs font-bold text-brand-700 dark:text-brand-300 pr-1">
-                {selectedDocIds.size} selected
-              </span>
-
+      <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-b border-line bg-surface shrink-0 min-w-0">
+        {(selectedDocIds.size > 0 || selectedFolderIds.size > 0) ? (
+          /* Contextual Action Bar when any folder(s) or file(s) are selected (Full Width) */
+          <div className="flex items-center justify-between gap-2 w-full min-w-0 anim-fade">
+            {/* Left: Clear button + Selection Count & Name */}
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 shrink">
               <button
                 type="button"
-                onClick={handleDownloadSelected}
-                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors"
-                title="Download selected unencrypted to disk"
+                onClick={handleClearSelection}
+                className="p-1.5 rounded-xl hover:bg-surface-2 text-ink/60 hover:text-ink transition-colors cursor-pointer shrink-0 border border-line/60 shadow-2xs"
+                title="Clear selection (Esc)"
               >
-                <Download className="w-3.5 h-3.5" />
+                <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
 
-              {selectedDocIds.size === 1 && primarySelectedDoc && (
+              <span className="text-xs font-bold text-brand-700 dark:text-brand-300 truncate max-w-[110px] xs:max-w-[150px] sm:max-w-[260px] bg-brand-500/10 border border-brand-500/20 px-2.5 py-1 rounded-xl">
+                {selectedFolderIds.size > 0 && selectedDocIds.size === 0
+                  ? selectedFolderIds.size === 1 && selectedFolderObj
+                    ? selectedFolderObj.name
+                    : `${selectedFolderIds.size} folders`
+                  : selectedDocIds.size > 0 && selectedFolderIds.size === 0
+                  ? selectedDocIds.size === 1 && primarySelectedDoc
+                    ? primarySelectedDoc.name
+                    : `${selectedDocIds.size} files`
+                  : `${selectedFolderIds.size} folders, ${selectedDocIds.size} files`}
+              </span>
+            </div>
+
+            {/* Right: Scrollable actions strip - NEVER CLIPS OR OVERFLOWS */}
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5 shrink-0 max-w-[calc(100%-140px)] sm:max-w-none">
+              {/* If exactly 1 folder selected: Open & Customize */}
+              {selectedFolderIds.size === 1 && selectedFolderId && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenFolder(selectedFolderId)}
+                    className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer shrink-0"
+                    title="Open Folder (Enter)"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFolderToEdit(selectedFolderObj)}
+                    className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer shrink-0"
+                    title="Customize Folder Icon & Color"
+                  >
+                    <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  </button>
+                </>
+              )}
+
+              {/* If exactly 1 doc selected: Attach to financial record & rename */}
+              {selectedDocIds.size === 1 && primarySelectedDoc && selectedFolderIds.size === 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onOpenDoc(primarySelectedDoc.id)}
+                    className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer shrink-0"
+                    title="Attach to Financial Record / View Details"
+                  >
+                    <Link2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleStartRename(primarySelectedDoc)}
+                    className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer shrink-0"
+                    title="Rename file (F2 / R)"
+                  >
+                    <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  </button>
+                </>
+              )}
+
+              {/* Download files if any docs selected */}
+              {selectedDocIds.size > 0 && (
                 <button
                   type="button"
-                  onClick={() => handleStartRename(primarySelectedDoc)}
-                  className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors"
-                  title="Rename file (R)"
+                  onClick={handleDownloadSelected}
+                  className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer shrink-0"
+                  title="Download selected unencrypted to disk"
                 >
-                  <Edit2 className="w-3.5 h-3.5" />
+                  <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </button>
               )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  Array.from(selectedDocIds).forEach((id) => toggleStar(id));
-                }}
-                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors"
-                title="Star / Unstar (S)"
-              >
-                <Star className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Move to folder dropdown */}
-              <div className="relative" ref={moveMenuRef}>
+              {/* Star/Unstar if any docs selected */}
+              {selectedDocIds.size > 0 && (
                 <button
                   type="button"
-                  onClick={() => setIsMoveMenuOpen((prev) => !prev)}
-                  className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer"
-                  title="Move to folder"
+                  onClick={() => {
+                    Array.from(selectedDocIds).forEach((id) => toggleStar(id));
+                  }}
+                  className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer shrink-0"
+                  title="Star / Unstar (S)"
                 >
-                  <Folder className="w-3.5 h-3.5" />
+                  <Star className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </button>
+              )}
 
-                {isMoveMenuOpen && (
-                  <div className="absolute right-0 top-full mt-1.5 w-52 py-1.5 bg-card border border-line rounded-2xl shadow-2xl z-50 text-xs text-ink space-y-0.5 anim-scale">
-                    <span className="px-3 py-1 text-[10px] font-bold text-ink/40 uppercase block">
-                      Move to Folder:
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleMoveSelected('unfiled')}
-                      className="w-full text-left px-3 py-1.5 hover:bg-surface-2 flex items-center gap-2 cursor-pointer"
-                    >
-                      <Folder className="w-3.5 h-3.5 text-ink/40" /> Unfiled
-                    </button>
-                    {folders.map((f) => (
+              {/* Move to folder dropdown if docs selected */}
+              {selectedDocIds.size > 0 && (
+                <div className="relative shrink-0" ref={moveMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsMoveMenuOpen((prev) => !prev)}
+                    className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer shrink-0"
+                    title="Move to folder"
+                  >
+                    <Folder className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  </button>
+
+                  {isMoveMenuOpen && (
+                    <div className="absolute right-0 top-full mt-1.5 w-52 py-1.5 bg-card border border-line rounded-2xl shadow-2xl z-50 text-xs text-ink space-y-0.5 anim-scale">
+                      <span className="px-3 py-1 text-[10px] font-bold text-ink/40 uppercase block">
+                        Move to Folder:
+                      </span>
                       <button
-                        key={f.id}
                         type="button"
-                        onClick={() => handleMoveSelected(f.id)}
-                        className="w-full text-left px-3 py-1.5 hover:bg-surface-2 flex items-center gap-2 truncate cursor-pointer"
+                        onClick={() => handleMoveSelected('unfiled')}
+                        className="w-full text-left px-3 py-1.5 hover:bg-surface-2 flex items-center gap-2 cursor-pointer"
                       >
-                        <FolderIconBadge folder={f} size="sm" />
-                        <span className="truncate">{f.name}</span>
+                        <Folder className="w-3.5 h-3.5 text-ink/40" /> Unfiled
                       </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      {folders.map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => handleMoveSelected(f.id)}
+                          className="w-full text-left px-3 py-1.5 hover:bg-surface-2 flex items-center gap-2 truncate cursor-pointer"
+                        >
+                          <FolderIconBadge folder={f} size="sm" />
+                          <span className="truncate">{f.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Copy Selected */}
               <button
                 type="button"
                 onClick={() => handleCopySelected()}
-                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer"
+                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer shrink-0"
                 title="Copy selected (Ctrl+C)"
               >
-                <Copy className="w-3.5 h-3.5" />
+                <Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
 
               {/* Cut Selected */}
               <button
                 type="button"
                 onClick={() => handleCutSelected()}
-                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer"
+                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors cursor-pointer shrink-0"
                 title="Cut / Move selected (Ctrl+X)"
               >
-                <Scissors className="w-3.5 h-3.5" />
+                <Scissors className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
 
+              {/* Paste button if clipboard active */}
+              {clipboard && (clipboard.docIds.length > 0 || clipboard.folderIds.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => handlePaste(selectedFolderIds.size === 1 ? selectedFolderId! : undefined)}
+                  className="px-2 py-1 rounded-xl bg-brand-500 text-white hover:bg-brand-600 transition-colors shadow-2xs flex items-center gap-1 cursor-pointer shrink-0"
+                  title={`Paste ${clipboard.docIds.length + clipboard.folderIds.length} items here (Ctrl+V)`}
+                >
+                  <Clipboard className="w-3.5 h-3.5" />
+                  <span className="text-[11px] font-bold">Paste</span>
+                </button>
+              )}
+
+              {/* Delete Selected */}
               <button
                 type="button"
                 onClick={handleDeleteSelected}
-                className="p-1.5 rounded-xl hover:bg-rose-500/20 text-rose-600 transition-colors cursor-pointer"
-                title="Delete selected (Backspace)"
+                className="p-1.5 rounded-xl hover:bg-rose-500/20 text-rose-600 transition-colors cursor-pointer shrink-0"
+                title="Delete selected (Delete / Backspace)"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* STANDARD TOOLBAR WHEN NOTHING SELECTED */
+          <div className="flex items-center justify-between gap-2 w-full min-w-0">
+            {/* Left: Mobile Drawer Trigger + Breadcrumbs navigation */}
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-ink/60 overflow-hidden min-w-0">
+              <button
+                type="button"
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="md:hidden p-1.5 rounded-xl border border-line bg-surface hover:bg-surface-2 text-ink/70 hover:text-ink shadow-2xs mr-0.5 cursor-pointer shrink-0"
+                title="Open Folders and Financial Links"
+              >
+                <PanelLeft className="w-4 h-4 text-brand-600" />
               </button>
 
               <button
                 type="button"
-                onClick={handleClearSelection}
-                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-ink/50 hover:text-ink transition-colors ml-1 cursor-pointer"
-                title="Clear selection (Esc)"
+                onClick={() => {
+                  setNavSection('files');
+                  onSelectFolder('all');
+                  onSelectEntityFilter('all');
+                }}
+                className={`px-2.5 sm:px-3 py-1.5 rounded-xl transition-all shrink-0 ${
+                  navSection === 'files' && activeFolderId === 'all' && selectedEntityFilter === 'all'
+                    ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold shadow-2xs'
+                    : 'hover:bg-surface-2 text-ink/70 hover:text-ink'
+                }`}
               >
-                <X className="w-3.5 h-3.5" />
+                Files
               </button>
+
+              {activeFolder && (
+                <>
+                  <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
+                  <span className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-surface-2 font-bold text-ink truncate flex items-center gap-2 border border-line/60 shadow-2xs min-w-0">
+                    <FolderIconBadge folder={activeFolder} size="sm" isOpen={true} />
+                    <span className="truncate">{activeFolder.name}</span>
+                  </span>
+                </>
+              )}
+
+              {navSection === 'recent' && (
+                <>
+                  <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
+                  <span className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-surface-2 font-bold text-ink border border-line/60 shrink-0">
+                    Recent
+                  </span>
+                </>
+              )}
+
+              {navSection === 'starred' && (
+                <>
+                  <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
+                  <span className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-surface-2 font-bold text-ink border border-line/60 shrink-0">
+                    Starred
+                  </span>
+                </>
+              )}
+
+              {selectedEntityFilter !== 'all' && (
+                <>
+                  <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
+                  <span className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-brand-500/10 text-brand-600 font-bold capitalize border border-brand-500/20 shrink-0">
+                    {selectedEntityFilter === 'unlinked' ? 'Unlinked Files' : `${selectedEntityFilter}s`}
+                  </span>
+                </>
+              )}
             </div>
-          ) : (
-            /* Standard Action Bar when nothing selected */
-            <>
+
+            {/* Center: Search pill with shortcut hint */}
+            <div className="relative flex-1 max-w-md hidden sm:block mx-2">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-ink/40 pointer-events-none" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search Vault files, receipts, notes... (Press /)"
+                value={searchQuery}
+                onChange={(e) => onSearchChange(e.target.value)}
+                className="w-full pl-9 pr-14 py-2 bg-surface-2/60 border border-line rounded-2xl text-xs text-ink placeholder:text-ink/40 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all shadow-2xs"
+              />
+              {searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => onSearchChange('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink/40 hover:text-ink"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <kbd className="absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-surface border border-line font-mono text-[10px] text-ink/40">
+                  /
+                </kbd>
+              )}
+            </div>
+
+            {/* Right: Actions */}
+            <div className="flex items-center gap-1.5 shrink-0">
               {/* Explorer Clipboard Paste Button when items copied/cut */}
-              {clipboard && clipboard.docIds.length > 0 && (
-                <div className="flex items-center gap-1 bg-brand-500/10 border border-brand-500/20 px-2.5 py-1 rounded-2xl anim-fade">
+              {clipboard && (clipboard.docIds.length > 0 || clipboard.folderIds.length > 0) && (
+                <div className="flex items-center gap-1 bg-brand-500/10 border border-brand-500/20 px-2.5 py-1 rounded-xl anim-fade">
                   <button
                     type="button"
                     onClick={() => handlePaste()}
@@ -1013,7 +1466,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                     title="Paste into current folder (Ctrl+V)"
                   >
                     <Clipboard className="w-3.5 h-3.5" />
-                    <span>Paste ({clipboard.docIds.length})</span>
+                    <span>Paste ({clipboard.docIds.length + clipboard.folderIds.length})</span>
                   </button>
                   <button
                     type="button"
@@ -1025,6 +1478,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   </button>
                 </div>
               )}
+
               {/* Database usage mini indicator */}
               <DriveDatabaseUsageMeter
                 compact={true}
@@ -1087,7 +1541,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={onToggleViewMode}
-                className="p-2 rounded-xl border border-line bg-surface hover:bg-surface-2 text-ink/70 hover:text-ink transition-all shadow-2xs"
+                className="p-2 rounded-xl border border-line bg-surface hover:bg-surface-2 text-ink/70 hover:text-ink transition-all shadow-2xs cursor-pointer"
                 title={`Switch to ${viewMode === 'grid' ? 'List' : 'Grid'} view (V)`}
               >
                 {viewMode === 'grid' ? <List className="w-3.5 h-3.5" /> : <Grid className="w-3.5 h-3.5" />}
@@ -1145,7 +1599,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={() => setIsDesktopWidgetOpen((prev) => !prev)}
-                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200 dark:border-pine-800 text-pine-700 dark:text-pine-300 text-xs font-bold shadow-2xs hover:bg-pine-100 transition-colors"
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200 dark:border-pine-800 text-pine-700 dark:text-pine-300 text-xs font-bold shadow-2xs hover:bg-pine-100 transition-colors cursor-pointer"
                 title="Open Sovereign Vault Status Tray (W)"
               >
                 <span className="w-2 h-2 rounded-full bg-pine-500 animate-pulse" />
@@ -1156,7 +1610,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={() => setIsInspectorOpen((prev) => !prev)}
-                className={`p-2 rounded-xl border transition-all shadow-2xs ${
+                className={`p-2 rounded-xl border transition-all shadow-2xs cursor-pointer ${
                   isInspectorOpen
                     ? 'border-brand-500 bg-brand-500/10 text-brand-600'
                     : 'border-line bg-surface hover:bg-surface-2 text-ink/60 hover:text-ink'
@@ -1170,14 +1624,14 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={() => setIsShortcutsModalOpen(true)}
-                className="p-2 rounded-xl border border-line bg-surface hover:bg-surface-2 text-ink/60 hover:text-ink transition-all shadow-2xs"
+                className="p-2 rounded-xl border border-line bg-surface hover:bg-surface-2 text-ink/60 hover:text-ink transition-all shadow-2xs cursor-pointer"
                 title="Keyboard shortcuts (?)"
               >
                 <Keyboard className="w-3.5 h-3.5" />
               </button>
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
@@ -1187,7 +1641,8 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
         {/* ───────────────────────────────────────────────────────────
             LEFT SIDEBAR (Internxt Drive Nav & Financial Link Filters)
         ─────────────────────────────────────────────────────────── */}
-        <div className="w-60 xl:w-64 shrink-0 border-r border-line bg-surface flex flex-col justify-between overflow-y-auto custom-scrollbar p-3 space-y-4">
+        {/* Desktop Sidebar */}
+        <div className="hidden md:flex w-60 xl:w-64 shrink-0 border-r border-line bg-surface flex-col justify-between overflow-y-auto custom-scrollbar p-3 space-y-4">
           <div className="space-y-4">
             {/* Primary navigation */}
             <div className="space-y-1">
@@ -1198,7 +1653,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   onSelectFolder('all');
                   onSelectEntityFilter('all');
                 }}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   navSection === 'files' && activeFolderId === 'all' && selectedEntityFilter === 'all'
                     ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
                     : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
@@ -1218,7 +1673,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   onSelectFolder('all');
                   onSelectEntityFilter('all');
                 }}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   navSection === 'recent'
                     ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
                     : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
@@ -1237,7 +1692,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   onSelectFolder('all');
                   onSelectEntityFilter('all');
                 }}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   navSection === 'starred'
                     ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
                     : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
@@ -1260,7 +1715,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectEntityFilter('all')}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
                   selectedEntityFilter === 'all'
                     ? 'bg-brand-500/10 text-brand-600 font-bold'
                     : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
@@ -1273,7 +1728,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectEntityFilter('transaction')}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
                   selectedEntityFilter === 'transaction'
                     ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold'
                     : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
@@ -1291,7 +1746,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectEntityFilter('asset')}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
                   selectedEntityFilter === 'asset'
                     ? 'bg-blue-500/10 text-blue-700 dark:text-blue-400 font-bold'
                     : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
@@ -1309,7 +1764,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectEntityFilter('liability')}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
                   selectedEntityFilter === 'liability'
                     ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold'
                     : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
@@ -1327,7 +1782,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectEntityFilter('account')}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
                   selectedEntityFilter === 'account'
                     ? 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 font-bold'
                     : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
@@ -1345,7 +1800,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectEntityFilter('note')}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
                   selectedEntityFilter === 'note'
                     ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 font-bold'
                     : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
@@ -1363,7 +1818,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectEntityFilter('people')}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
                   selectedEntityFilter === 'people'
                     ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400 font-bold'
                     : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
@@ -1381,7 +1836,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectEntityFilter('goal')}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
                   selectedEntityFilter === 'goal'
                     ? 'bg-teal-500/10 text-teal-700 dark:text-teal-400 font-bold'
                     : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
@@ -1400,7 +1855,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectEntityFilter('unlinked')}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all ${
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
                   selectedEntityFilter === 'unlinked'
                     ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 font-bold'
                     : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
@@ -1430,21 +1885,392 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
           </div>
         </div>
 
+        {/* Mobile Slide-Over Sidebar Drawer */}
+        {isMobileSidebarOpen && (
+          <div className="fixed inset-0 z-50 md:hidden flex">
+            <div
+              className="fixed inset-0 bg-black/50 backdrop-blur-xs animate-in fade-in"
+              onClick={() => setIsMobileSidebarOpen(false)}
+            />
+            <div className="relative w-72 max-w-[85vw] bg-surface h-full z-10 flex flex-col justify-between overflow-y-auto custom-scrollbar p-4 space-y-4 shadow-2xl border-r border-line animate-in slide-in-from-left duration-200">
+              <div className="flex items-center justify-between pb-3 border-b border-line/60 shrink-0">
+                <div className="flex items-center gap-2">
+                  <FolderLock className="w-5 h-5 text-brand-600" />
+                  <span className="font-bold text-sm text-ink">Vault Explorer</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileSidebarOpen(false)}
+                  className="p-1.5 rounded-xl hover:bg-surface-2 text-ink/60 hover:text-ink cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4">
+                {/* Primary navigation */}
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNavSection('files');
+                      onSelectFolder('all');
+                      onSelectEntityFilter('all');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      navSection === 'files' && activeFolderId === 'all' && selectedEntityFilter === 'all'
+                        ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
+                        : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <FolderLock className="w-4 h-4 text-brand-500" />
+                      <span>My Files</span>
+                    </div>
+                    <span className="text-[11px] font-mono text-ink/40">{documents.length}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNavSection('recent');
+                      onSelectFolder('all');
+                      onSelectEntityFilter('all');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      navSection === 'recent'
+                        ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
+                        : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Clock className="w-4 h-4 text-sky-500" />
+                      <span>Recent</span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNavSection('starred');
+                      onSelectFolder('all');
+                      onSelectEntityFilter('all');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      navSection === 'starred'
+                        ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
+                        : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Star className="w-4 h-4 text-amber-500" />
+                      <span>Starred</span>
+                    </div>
+                    <span className="text-[11px] font-mono text-ink/40">{starredIds.size}</span>
+                  </button>
+                </div>
+
+                {/* Financial Link Filters */}
+                <div className="space-y-1 pt-2 border-t border-line/60">
+                  <span className="px-3 py-1 text-[10px] font-bold text-ink/40 uppercase tracking-wider block">
+                    Financial Links
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectEntityFilter('all');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
+                      selectedEntityFilter === 'all'
+                        ? 'bg-brand-500/10 text-brand-600 font-bold'
+                        : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <span>All Documents</span>
+                    <span className="text-[10px] font-mono text-ink/40">{documents.length}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectEntityFilter('transaction');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
+                      selectedEntityFilter === 'transaction'
+                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold'
+                        : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Receipt className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Receipts (Txs)</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-ink/40">
+                      {documents.filter((d) => d.linkedType === 'transaction' || d.links?.some((l) => l.entityType === 'transaction')).length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectEntityFilter('asset');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
+                      selectedEntityFilter === 'asset'
+                        ? 'bg-blue-500/10 text-blue-700 dark:text-blue-400 font-bold'
+                        : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Landmark className="w-3.5 h-3.5 text-blue-500" />
+                      <span>Deeds (Assets)</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-ink/40">
+                      {documents.filter((d) => d.linkedType === 'asset' || d.links?.some((l) => l.entityType === 'asset')).length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectEntityFilter('liability');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
+                      selectedEntityFilter === 'liability'
+                        ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold'
+                        : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-3.5 h-3.5 text-rose-500" />
+                      <span>Loans (Debts)</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-ink/40">
+                      {documents.filter((d) => d.linkedType === 'liability' || d.links?.some((l) => l.entityType === 'liability')).length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectEntityFilter('account');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
+                      selectedEntityFilter === 'account'
+                        ? 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 font-bold'
+                        : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Landmark className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Bank KYC</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-ink/40">
+                      {documents.filter((d) => d.linkedType === 'account' || d.links?.some((l) => l.entityType === 'account')).length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectEntityFilter('note');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
+                      selectedEntityFilter === 'note'
+                        ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 font-bold'
+                        : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <StickyNote className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Vault Notes</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-ink/40">
+                      {documents.filter((d) => d.linkedType === 'note' || d.links?.some((l) => l.entityType === 'note')).length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectEntityFilter('people');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
+                      selectedEntityFilter === 'people'
+                        ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400 font-bold'
+                        : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Users className="w-3.5 h-3.5 text-purple-500" />
+                      <span>Khatabook</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-ink/40">
+                      {documents.filter((d) => d.linkedType === 'people' || d.links?.some((l) => l.entityType === 'people')).length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectEntityFilter('goal');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
+                      selectedEntityFilter === 'goal'
+                        ? 'bg-teal-500/10 text-teal-700 dark:text-teal-400 font-bold'
+                        : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Target className="w-3.5 h-3.5 text-teal-500" />
+                      <span>Savings Goals</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-ink/40">
+                      {documents.filter((d) => d.linkedType === 'goal' || d.links?.some((l) => l.entityType === 'goal')).length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectEntityFilter('unlinked');
+                      setIsMobileSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer ${
+                      selectedEntityFilter === 'unlinked'
+                        ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 font-bold'
+                        : 'text-ink/70 hover:bg-surface-2 hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Unlink className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Unlinked Files</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-ink/40">
+                      {documents.filter((d) => (!d.linkedType || d.linkedType === 'none') && (!d.links || d.links.length === 0)).length}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Bottom Database Usage Meter & Quick Tools */}
+              <div className="pt-2 border-t border-line/60 shrink-0">
+                <DriveDatabaseUsageMeter
+                  compact={false}
+                  onOpenTools={(tab) => {
+                    setToolsModalInitialTab(tab || 'cleaner');
+                    setIsToolsModalOpen(true);
+                    setIsMobileSidebarOpen(false);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ───────────────────────────────────────────────────────────
             MAIN FILE CANVAS (1:1 Square Grid or High-Density List)
         ─────────────────────────────────────────────────────────── */}
         <div
-          className="flex-1 flex flex-col min-w-0 bg-surface-2/20 overflow-y-auto custom-scrollbar p-4"
+          ref={canvasRef}
+          onMouseDown={handleCanvasMouseDown}
+          className={`flex-1 flex flex-col min-w-0 bg-surface-2/20 overflow-y-auto custom-scrollbar p-4 relative ${
+            clipboard && (clipboard.docIds.length > 0 || clipboard.folderIds.length > 0) ? 'pb-24' : ''
+          }`}
           onContextMenu={(e) => {
             const target = e.target as HTMLElement;
-            if (target === e.currentTarget || target.classList.contains('canvas-empty-area')) {
+            if (target === e.currentTarget || target.classList.contains('canvas-empty-area') || !target.closest('[data-drive-item]')) {
               e.preventDefault();
               setContextMenu({ x: e.clientX, y: e.clientY });
             }
           }}
         >
-          {/* Main Screen Folders Section */}
-          {(displayedSubfolders.length > 0 || activeFolderId === 'all') && searchQuery === '' && (
+          {/* Mobile quick horizontal filter strip */}
+          <div className="md:hidden flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-2 mb-3 shrink-0 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setNavSection('files');
+                onSelectFolder('all');
+                onSelectEntityFilter('all');
+              }}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 border transition-all cursor-pointer ${
+                navSection === 'files' && activeFolderId === 'all' && selectedEntityFilter === 'all'
+                  ? 'bg-brand-500 text-white border-brand-500 shadow-2xs'
+                  : 'bg-surface border-line text-ink/70 hover:bg-surface-2'
+              }`}
+            >
+              All ({documents.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectEntityFilter('transaction')}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 border transition-all cursor-pointer ${
+                selectedEntityFilter === 'transaction'
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                  : 'bg-surface border-line text-emerald-700 dark:text-emerald-400 hover:bg-surface-2'
+              }`}
+            >
+              Receipts
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectEntityFilter('asset')}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 border transition-all cursor-pointer ${
+                selectedEntityFilter === 'asset'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                  : 'bg-surface border-line text-blue-700 dark:text-blue-400 hover:bg-surface-2'
+              }`}
+            >
+              Deeds
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectEntityFilter('liability')}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 border transition-all cursor-pointer ${
+                selectedEntityFilter === 'liability'
+                  ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                  : 'bg-surface border-line text-rose-700 dark:text-rose-400 hover:bg-surface-2'
+              }`}
+            >
+              Loans
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectEntityFilter('account')}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 border transition-all cursor-pointer ${
+                selectedEntityFilter === 'account'
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                  : 'bg-surface border-line text-indigo-700 dark:text-indigo-400 hover:bg-surface-2'
+              }`}
+            >
+              Bank KYC
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectEntityFilter('unlinked')}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap shrink-0 border transition-all cursor-pointer ${
+                selectedEntityFilter === 'unlinked'
+                  ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                  : 'bg-surface border-line text-amber-700 dark:text-amber-400 hover:bg-surface-2'
+              }`}
+            >
+              Unlinked
+            </button>
+          </div>
+          {/* Main Screen Folders Section (Only in Grid View, List View renders folders directly in table rows) */}
+          {viewMode === 'grid' && (displayedSubfolders.length > 0 || activeFolderId === 'all') && searchQuery === '' && (
             <div className="mb-6 shrink-0">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
@@ -1465,45 +2291,94 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
                 {displayedSubfolders.map((folder) => {
                   const count = documents.filter((d) => d.folderId === folder.id).length;
+                  const isSelected = selectedFolderIds.has(folder.id);
+                  const isDropTarget = dropTargetFolderId === folder.id;
+                  const isCut = clipboard?.action === 'cut' && clipboard.folderIds.includes(folder.id);
                   return (
                     <div
                       key={folder.id}
-                      onClick={() => {
-                        setNavSection('files');
-                        onSelectFolder(folder.id);
+                      data-drive-item="true"
+                      data-drive-type="folder"
+                      data-drive-id={folder.id}
+                      onClick={(e) => handleSelectFolder(folder.id, e)}
+                      onDoubleClick={() => handleOpenFolder(folder.id)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDropTargetFolderId(folder.id);
                       }}
+                      onDragLeave={(e) => {
+                        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                        setDropTargetFolderId(null);
+                      }}
+                      onDrop={(e) => handleDropOnFolder(folder.id, e)}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
+                        handleSelectFolder(folder.id);
                         setContextMenu({ x: e.clientX, y: e.clientY, folder });
                       }}
-                      className="group p-3.5 rounded-2xl border border-line bg-card hover:border-brand-500/50 hover:shadow-xs transition-all cursor-pointer flex items-center justify-between min-h-[64px]"
-                      title={`Click to open folder: ${folder.name}`}
+                      className={`group relative p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between min-h-[68px] ${
+                        isDropTarget
+                          ? 'border-brand-500 bg-brand-500/20 ring-2 ring-brand-500 scale-[1.02] shadow-md'
+                          : isSelected
+                          ? 'border-brand-500 bg-brand-500/10 ring-2 ring-brand-500/40 shadow-xs'
+                          : 'border-line bg-card hover:border-brand-500/50 hover:shadow-xs'
+                      } ${isCut ? 'opacity-50 border-dashed border-brand-500/60' : ''}`}
+                      title={`Double-click or press Enter to open: ${folder.name}`}
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <FolderIconBadge folder={folder} size="md" />
                         <div className="min-w-0 flex-1">
-                          <span className="text-xs font-bold text-ink group-hover:text-brand-600 line-clamp-2 break-words leading-tight" title={folder.name}>
+                          <span
+                            className="text-xs font-bold text-ink group-hover:text-brand-600 line-clamp-2 break-words leading-snug"
+                            title={folder.name}
+                          >
                             {folder.name}
                           </span>
-                          <span className="text-[10px] font-mono text-ink/40 block mt-0.5">{count} {count === 1 ? 'file' : 'files'}</span>
+                          <span className="text-[10px] font-mono text-ink/40 block mt-0.5">
+                            {count} {count === 1 ? 'file' : 'files'}
+                          </span>
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setContextMenu({ x: e.clientX, y: e.clientY, folder });
-                        }}
-                        className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-surface-2 opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0 cursor-pointer"
-                        title="Folder options"
-                      >
-                        <MoreVertical className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {/* Checkbox */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectFolder(folder.id, { ctrlKey: true } as any);
+                          }}
+                          className={`p-1 rounded-lg transition-all cursor-pointer ${
+                            isSelected
+                              ? 'opacity-100 text-brand-600'
+                              : 'opacity-0 group-hover:opacity-100 text-ink/40 hover:text-ink'
+                          }`}
+                          title="Select folder (Ctrl+Click)"
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="w-4 h-4 text-brand-600" />
+                          ) : (
+                            <Square className="w-4 h-4" />
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setContextMenu({ x: e.clientX, y: e.clientY, folder });
+                          }}
+                          className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-surface-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity ml-1 shrink-0 cursor-pointer"
+                          title="Folder options"
+                        >
+                          <MoreVertical className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1512,7 +2387,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 <button
                   type="button"
                   onClick={onNewFolderClick}
-                  className="p-3.5 rounded-2xl border border-dashed border-line hover:border-brand-500/60 bg-card/50 hover:bg-brand-500/5 transition-all cursor-pointer flex items-center gap-3 text-ink/60 hover:text-brand-600 group text-left min-h-[64px]"
+                  className="p-3.5 rounded-2xl border border-dashed border-line hover:border-brand-500/60 bg-card/50 hover:bg-brand-500/5 transition-all cursor-pointer flex items-center gap-3 text-ink/60 hover:text-brand-600 group text-left min-h-[68px]"
                   title="Create a new folder"
                 >
                   <div className="w-10 h-10 rounded-xl bg-surface-2 group-hover:bg-brand-500/10 grid place-items-center text-ink/50 group-hover:text-brand-600 transition-colors shrink-0">
@@ -1532,13 +2407,16 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
             <h3 className="text-xs font-bold uppercase tracking-wider text-ink/50">
               {activeFolder ? activeFolder.name : 'All Vault Files'} ({displayedDocs.length})
             </h3>
-            {displayedDocs.length > 0 && (
+            {(displayedDocs.length > 0 || displayedSubfolders.length > 0) && (
               <button
                 type="button"
                 onClick={handleSelectAll}
-                className="text-xs text-ink/50 hover:text-brand-600 font-semibold flex items-center gap-1"
+                className="text-xs text-ink/50 hover:text-brand-600 font-semibold flex items-center gap-1 cursor-pointer"
               >
-                {selectedDocIds.size === displayedDocs.length ? 'Deselect All' : 'Select All'}
+                {selectedDocIds.size === displayedDocs.length &&
+                (displayedSubfolders.length === 0 || selectedFolderIds.size === displayedSubfolders.length)
+                  ? 'Deselect All'
+                  : 'Select All (Ctrl+A)'}
               </button>
             )}
           </div>
@@ -1579,10 +2457,16 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 const isStarred = starredIds.has(doc.id);
                 const isRenaming = renamingDocId === doc.id;
                 const linkInfo = getLinkedEntityInfo(doc);
+                const isCut = clipboard?.action === 'cut' && clipboard.docIds.includes(doc.id);
 
                 return (
                   <div
                     key={doc.id}
+                    data-drive-item="true"
+                    data-drive-type="doc"
+                    data-drive-id={doc.id}
+                    draggable={!renamingDocId}
+                    onDragStart={(e) => handleDocDragStart(doc.id, e)}
                     onClick={(e) => handleSelectDoc(doc.id, e)}
                     onDoubleClick={() => onOpenDoc(doc.id)}
                     onContextMenu={(e) => {
@@ -1594,7 +2478,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                       isSelected
                         ? 'border-brand-500 bg-brand-500/5 ring-2 ring-brand-500/40 shadow-xs'
                         : 'border-line bg-surface hover:border-brand-500/40 hover:shadow-xs'
-                    }`}
+                    } ${isCut ? 'opacity-50 border-dashed border-brand-500/60' : ''}`}
                   >
                     {/* Top Overlay Actions: Checkbox + Star + 3-Dot Floating Trigger */}
                     <div className="absolute top-2 left-2 right-2 flex items-center justify-between z-10 pointer-events-none">
@@ -1605,7 +2489,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                           e.stopPropagation();
                           handleSelectDoc(doc.id, { ctrlKey: true } as any);
                         }}
-                        className={`p-1 rounded-lg bg-surface/90 backdrop-blur-xs shadow-2xs transition-all pointer-events-auto ${
+                        className={`p-1 rounded-lg bg-surface/90 backdrop-blur-xs shadow-2xs transition-all pointer-events-auto cursor-pointer ${
                           isSelected
                             ? 'opacity-100 text-brand-600 bg-brand-500/10'
                             : 'opacity-0 group-hover:opacity-100 text-ink/40 hover:text-ink'
@@ -1624,7 +2508,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                         <button
                           type="button"
                           onClick={(e) => toggleStar(doc.id, e)}
-                          className={`p-1 rounded-lg bg-surface/90 backdrop-blur-xs transition-opacity ${
+                          className={`p-1 rounded-lg bg-surface/90 backdrop-blur-xs transition-opacity cursor-pointer ${
                             isStarred
                               ? 'opacity-100 text-amber-500'
                               : 'opacity-0 group-hover:opacity-100 text-ink/30 hover:text-amber-500'
@@ -1641,7 +2525,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                             handleSelectDoc(doc.id);
                             setContextMenu({ x: e.clientX, y: e.clientY, doc });
                           }}
-                          className="w-6 h-6 rounded-full bg-surface shadow-md border border-line/60 flex items-center justify-center text-ink/70 hover:text-ink hover:bg-surface-2 opacity-0 group-hover:opacity-100 transition-all hover:scale-105 active:scale-95"
+                          className="w-6 h-6 rounded-full bg-surface shadow-md border border-line/60 flex items-center justify-center text-ink/70 hover:text-ink hover:bg-surface-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all hover:scale-105 active:scale-95 cursor-pointer"
                           title="File options"
                         >
                           <MoreVertical className="w-3.5 h-3.5" />
@@ -1742,9 +2626,12 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                       <button
                         type="button"
                         onClick={handleSelectAll}
-                        className="text-ink/40 hover:text-ink"
+                        className="text-ink/40 hover:text-ink cursor-pointer"
+                        title="Select All (Ctrl+A)"
                       >
-                        {selectedDocIds.size === displayedDocs.length && displayedDocs.length > 0 ? (
+                        {displayedDocs.length > 0 &&
+                        selectedDocIds.size === displayedDocs.length &&
+                        (displayedSubfolders.length === 0 || selectedFolderIds.size === displayedSubfolders.length) ? (
                           <CheckSquare className="w-3.5 h-3.5 text-brand-600" />
                         ) : (
                           <Square className="w-3.5 h-3.5" />
@@ -1759,15 +2646,124 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line/60 text-xs">
+                  {/* Folders rendered as rows in List View for full, uncapped title display */}
+                  {displayedSubfolders.length > 0 && searchQuery === '' && (
+                    displayedSubfolders.map((folder) => {
+                      const isSelected = selectedFolderIds.has(folder.id);
+                      const isDropTarget = dropTargetFolderId === folder.id;
+                      const count = documents.filter((d) => d.folderId === folder.id).length;
+                      const isCut = clipboard?.action === 'cut' && clipboard.folderIds.includes(folder.id);
+                      return (
+                        <tr
+                          key={`folder-${folder.id}`}
+                          data-drive-item="true"
+                          data-drive-type="folder"
+                          data-drive-id={folder.id}
+                          onClick={(e) => handleSelectFolder(folder.id, e)}
+                          onDoubleClick={() => handleOpenFolder(folder.id)}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDropTargetFolderId(folder.id);
+                          }}
+                          onDragLeave={(e) => {
+                            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                            setDropTargetFolderId(null);
+                          }}
+                          onDrop={(e) => handleDropOnFolder(folder.id, e)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            handleSelectFolder(folder.id);
+                            setContextMenu({ x: e.clientX, y: e.clientY, folder });
+                          }}
+                          className={`group transition-colors cursor-pointer ${
+                            isDropTarget
+                              ? 'bg-brand-500/20 ring-1 ring-brand-500'
+                              : isSelected
+                              ? 'bg-brand-500/10'
+                              : 'hover:bg-surface-2/60'
+                          } ${isCut ? 'opacity-50' : ''}`}
+                          title={`Double-click or press Enter to open: ${folder.name}`}
+                        >
+                          {/* Checkbox column */}
+                          <td className="py-2.5 pl-4 pr-2" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectFolder(folder.id, { ctrlKey: true } as any)}
+                              className={`p-1 rounded cursor-pointer ${
+                                isSelected ? 'text-brand-600' : 'text-ink/40 hover:text-ink'
+                              }`}
+                            >
+                              {isSelected ? (
+                                <CheckSquare className="w-4 h-4 text-brand-600" />
+                              ) : (
+                                <Square className="w-4 h-4" />
+                              )}
+                            </button>
+                          </td>
+
+                          {/* Folder Name Column */}
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <FolderIconBadge folder={folder} size="sm" />
+                              <span className="font-semibold text-ink group-hover:text-brand-600 break-words line-clamp-1">
+                                {folder.name}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* Modified Date */}
+                          <td className="py-2.5 px-3 text-ink/50 text-[11px] font-mono hidden sm:table-cell whitespace-nowrap">
+                            {folder.updatedAt ? formatReadableDate(folder.updatedAt) : 'Folder'}
+                          </td>
+
+                          {/* Size / File count */}
+                          <td className="py-2.5 px-3 text-ink/50 text-[11px] font-mono hidden md:table-cell whitespace-nowrap">
+                            {count} {count === 1 ? 'file' : 'files'}
+                          </td>
+
+                          {/* Type */}
+                          <td className="py-2.5 px-3 hidden lg:table-cell">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-surface-2 text-ink/60 border border-line">
+                              <Folder className="w-3 h-3 text-amber-500" />
+                              <span>Folder</span>
+                            </span>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-2.5 pr-4 pl-2 text-right">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setContextMenu({ x: e.clientX, y: e.clientY, folder });
+                              }}
+                              className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-surface-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity cursor-pointer"
+                              title="Folder options"
+                            >
+                              <MoreVertical className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+
                   {displayedDocs.map((doc) => {
                     const isSelected = selectedDocIds.has(doc.id);
                     const isStarred = starredIds.has(doc.id);
                     const isRenaming = renamingDocId === doc.id;
                     const linkInfo = getLinkedEntityInfo(doc);
+                    const isCut = clipboard?.action === 'cut' && clipboard.docIds.includes(doc.id);
 
                     return (
                       <tr
                         key={doc.id}
+                        data-drive-item="true"
+                        data-drive-type="doc"
+                        data-drive-id={doc.id}
+                        draggable={!renamingDocId}
+                        onDragStart={(e) => handleDocDragStart(doc.id, e)}
                         onClick={(e) => handleSelectDoc(doc.id, e)}
                         onDoubleClick={() => onOpenDoc(doc.id)}
                         onContextMenu={(e) => {
@@ -1777,7 +2773,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                         }}
                         className={`group transition-colors cursor-pointer ${
                           isSelected ? 'bg-brand-500/10' : 'hover:bg-surface-2/60'
-                        }`}
+                        } ${isCut ? 'opacity-50' : ''}`}
                       >
                         {/* Checkbox column */}
                         <td className="py-2.5 pl-4 pr-2" onClick={(e) => e.stopPropagation()}>
@@ -1905,6 +2901,19 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               </table>
             </div>
           )}
+
+          {/* Rubber-band Marquee Selection Box */}
+          {marquee && isMarqueeDragging && (
+            <div
+              className="fixed pointer-events-none z-50 border-2 border-brand-500 bg-brand-500/15 rounded-xs"
+              style={{
+                left: Math.min(marquee.startX, marquee.currentX),
+                top: Math.min(marquee.startY, marquee.currentY),
+                width: Math.abs(marquee.currentX - marquee.startX),
+                height: Math.abs(marquee.currentY - marquee.startY),
+              }}
+            />
+          )}
         </div>
 
         {/* ───────────────────────────────────────────────────────────
@@ -2023,10 +3032,19 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                               <span className="font-semibold uppercase">{link.label}</span>
                               <button
                                 type="button"
-                                onClick={() => onOpenDoc(primarySelectedDoc.id)}
-                                className="font-bold underline hover:opacity-80"
+                                onClick={() => {
+                                  if (primarySelectedDoc.linkedType === 'transaction') navigate('/transactions');
+                                  else if (primarySelectedDoc.linkedType === 'asset') navigate('/assets');
+                                  else if (primarySelectedDoc.linkedType === 'liability') navigate('/liabilities');
+                                  else if (primarySelectedDoc.linkedType === 'account') navigate('/accounts');
+                                  else if (primarySelectedDoc.linkedType === 'people') navigate('/people');
+                                  else if (primarySelectedDoc.linkedType === 'goal') navigate('/budgets');
+                                  else onOpenDoc(primarySelectedDoc.id);
+                                }}
+                                className="font-bold underline hover:opacity-80 flex items-center gap-1 cursor-pointer"
                               >
-                                View Entry Details
+                                <span>View Entry</span>
+                                <ExternalLink className="w-2.5 h-2.5" />
                               </button>
                             </div>
                           </div>
@@ -2034,13 +3052,14 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                       }
                       return (
                         <div className="p-2.5 rounded-xl bg-surface-2/40 border border-line text-ink/50 text-[11px] flex items-center justify-between">
-                          <span>Not linked to any transaction or asset</span>
+                          <span>Not attached to any financial record</span>
                           <button
                             type="button"
                             onClick={() => onOpenDoc(primarySelectedDoc.id)}
-                            className="text-brand-600 font-bold hover:underline"
+                            className="px-2.5 py-1 rounded-lg bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-400 font-bold flex items-center gap-1 transition-colors cursor-pointer"
                           >
-                            Link
+                            <Plus className="w-3 h-3" />
+                            <span>Attach</span>
                           </button>
                         </div>
                       );
@@ -2053,7 +3072,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenDoc(primarySelectedDoc.id)}
-                    className="w-full py-2 px-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-colors"
+                    className="w-full py-2 px-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
                   >
                     <Eye className="w-3.5 h-3.5" /> Open Full Viewer
                   </button>
@@ -2062,7 +3081,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleDownloadDoc(primarySelectedDoc)}
-                      className="py-2 px-3 rounded-xl border border-line bg-surface hover:bg-surface-2 text-ink text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
+                      className="py-2 px-3 rounded-xl border border-line bg-surface hover:bg-surface-2 text-ink text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" /> Download
                     </button>
@@ -2070,17 +3089,93 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                     <button
                       type="button"
                       onClick={() => onDeleteDoc(primarySelectedDoc)}
-                      className="py-2 px-3 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                      className="py-2 px-3 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" /> Delete
                     </button>
                   </div>
                 </div>
               </div>
+            ) : selectedFolderObj ? (
+              /* Folder Inspector */
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-ink/50">
+                    Folder Inspector
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setIsInspectorOpen(false)}
+                    className="p-1 rounded-lg hover:bg-surface-2 text-ink/40 hover:text-ink cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Big Folder Icon */}
+                <div className="w-full aspect-video rounded-2xl bg-surface-2/40 border border-line overflow-hidden grid place-items-center relative shadow-2xs">
+                  <FolderIconBadge folder={selectedFolderObj} size="lg" />
+                </div>
+
+                {/* Metadata */}
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <span className="text-[10px] font-bold text-ink/40 uppercase">Folder Name</span>
+                    <p className="font-bold text-ink break-words mt-0.5">
+                      {selectedFolderObj.name}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-line/60">
+                    <div>
+                      <span className="text-[10px] font-bold text-ink/40 uppercase">Items</span>
+                      <p className="font-mono font-bold text-ink mt-0.5">
+                        {documents.filter((d) => d.folderId === selectedFolderObj.id).length} files
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-ink/40 uppercase">Total Size</span>
+                      <p className="font-mono font-bold text-ink mt-0.5">
+                        {formatFileSize(
+                          documents
+                            .filter((d) => d.folderId === selectedFolderObj.id)
+                            .reduce((sum, d) => sum + (d.fileSize || 0), 0)
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-1 border-t border-line/60">
+                    <span className="text-[10px] font-bold text-ink/40 uppercase">Category</span>
+                    <p className="text-ink/70 mt-0.5">
+                      {selectedFolderObj.isSystem ? 'System Category Folder' : 'Custom Vault Folder'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Direct Action Buttons */}
+                <div className="pt-2 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenFolder(selectedFolderObj.id)}
+                    className="w-full py-2 px-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" /> Open Folder
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFolderToEdit(selectedFolderObj)}
+                    className="w-full py-2 px-3 rounded-xl border border-line bg-surface hover:bg-surface-2 text-ink text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Edit2 className="w-3.5 h-3.5 text-amber-500" /> Customize Color & Icon
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="text-center py-20 text-xs text-ink/40 space-y-2">
                 <Info className="w-6 h-6 mx-auto text-ink/30" />
-                <p>Click on any document to inspect its properties, encryption, and financial linkages</p>
+                <p>Click on any file or folder to inspect its properties, encryption, and financial linkages</p>
               </div>
             )}
           </div>
@@ -2093,8 +3188,8 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
       {contextMenu && (
         <div
           style={{
-            top: Math.min(contextMenu.y, window.innerHeight - 300),
-            left: Math.min(contextMenu.x, window.innerWidth - 240),
+            top: Math.max(12, Math.min(contextMenu.y, window.innerHeight - 340)),
+            left: Math.max(12, Math.min(contextMenu.x, window.innerWidth - 240)),
           }}
           className="fixed z-50 w-56 py-1.5 bg-card border border-line rounded-2xl shadow-2xl text-xs text-ink space-y-0.5 anim-scale"
           onClick={(e) => e.stopPropagation()}
@@ -2114,6 +3209,18 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   <span>Open Preview & Details</span>
                 </div>
                 <kbd className="text-[10px] text-ink/40">Enter</kbd>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenDoc(contextMenu.doc!.id);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center gap-2.5 font-semibold cursor-pointer"
+              >
+                <Link2 className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+                <span>Attach to Financial Entry...</span>
               </button>
 
               <button
@@ -2227,7 +3334,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 <span>Open Folder</span>
               </button>
 
-              {clipboard && clipboard.docIds.length > 0 && (
+              {clipboard && (clipboard.docIds.length > 0 || clipboard.folderIds.length > 0) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -2236,9 +3343,33 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   className="w-full text-left px-3.5 py-2 hover:bg-surface-2 text-brand-600 flex items-center gap-2.5 font-bold cursor-pointer"
                 >
                   <Clipboard className="w-3.5 h-3.5 text-brand-500" />
-                  <span>Paste {clipboard.docIds.length} {clipboard.docIds.length === 1 ? 'file' : 'files'} here</span>
+                  <span>Paste {clipboard.docIds.length + clipboard.folderIds.length} items here</span>
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={() => handleCopySelected([], [contextMenu.folder!.id])}
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center justify-between font-semibold cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Copy className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Copy Folder</span>
+                </div>
+                <kbd className="text-[10px] text-ink/40">Ctrl+C</kbd>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleCutSelected([], [contextMenu.folder!.id])}
+                className="w-full text-left px-3.5 py-2 hover:bg-surface-2 flex items-center justify-between font-semibold cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Scissors className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Cut Folder</span>
+                </div>
+                <kbd className="text-[10px] text-ink/40">Ctrl+X</kbd>
+              </button>
 
               <button
                 type="button"
@@ -2252,7 +3383,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 <span>Rename & Customize Folder</span>
               </button>
 
-              {onDeleteFolder && (
+              {onDeleteFolder && !contextMenu.folder!.isSystem && (
                 <>
                   <hr className="border-line my-1" />
                   <button
@@ -2272,14 +3403,14 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
           ) : (
             /* Background Canvas Right-Click */
             <>
-              {clipboard && clipboard.docIds.length > 0 && (
+              {clipboard && (clipboard.docIds.length > 0 || clipboard.folderIds.length > 0) && (
                 <button
                   type="button"
                   onClick={() => handlePaste()}
                   className="w-full text-left px-3.5 py-2 hover:bg-surface-2 text-brand-600 flex items-center gap-2.5 font-bold cursor-pointer"
                 >
                   <Clipboard className="w-3.5 h-3.5 text-brand-500" />
-                  <span>Paste {clipboard.docIds.length} {clipboard.docIds.length === 1 ? 'file' : 'files'} here</span>
+                  <span>Paste {clipboard.docIds.length + clipboard.folderIds.length} items here</span>
                 </button>
               )}
 
@@ -2308,6 +3439,60 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          4.5 FLOATING EXPLORER CLIPBOARD BAR (Copy / Cut & Paste Bar)
+      ───────────────────────────────────────────────────────────── */}
+      {clipboard && (clipboard.docIds.length > 0 || clipboard.folderIds.length > 0) && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] max-w-md anim-slide-up">
+          <div className="bg-surface/95 dark:bg-card/95 backdrop-blur-md border border-brand-500/40 rounded-2xl p-2.5 sm:px-4 sm:py-3 flex items-center justify-between gap-3 shadow-2xl ring-1 ring-brand-500/20">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-brand-500/15 text-brand-600 dark:text-brand-400 grid place-items-center shrink-0">
+                <Clipboard className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-ink truncate flex items-center gap-1.5">
+                  <span>
+                    {clipboard.action === 'cut' ? 'Ready to move' : 'Copied to clipboard'}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-md bg-brand-500/10 text-brand-700 dark:text-brand-300 text-[10px] font-mono font-semibold">
+                    {clipboard.docIds.length + clipboard.folderIds.length}{' '}
+                    {clipboard.docIds.length + clipboard.folderIds.length === 1 ? 'item' : 'items'}
+                  </span>
+                </div>
+                <div className="text-[10px] text-ink/50 truncate">
+                  {selectedFolderIds.size === 1 && selectedFolderObj
+                    ? `Ready to paste into "${selectedFolderObj.name}"`
+                    : activeFolder
+                    ? `Ready to paste into "${activeFolder.name}"`
+                    : 'Ready to paste into Files root'}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => handlePaste(selectedFolderIds.size === 1 ? selectedFolderId! : undefined)}
+                className="px-3 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 active:scale-[0.98] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+              >
+                <Clipboard className="w-3.5 h-3.5" />
+                <span>
+                  Paste {selectedFolderIds.size === 1 ? 'into folder' : 'here'}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setClipboard(null)}
+                className="p-1.5 rounded-xl hover:bg-surface-2 text-ink/40 hover:text-ink transition-colors cursor-pointer"
+                title="Clear clipboard"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

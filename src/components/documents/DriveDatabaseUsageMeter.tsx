@@ -91,14 +91,20 @@ export const DriveDatabaseUsageMeter: React.FC<DriveDatabaseUsageMeterProps> = (
     estimatedAssetDebtBytes +
     estimatedPeopleGoalBytes;
 
-  // Canonical total physical database footprint
+  // Encrypted document files have base64 + IV + auth tag overhead (~1.35x raw file size)
+  const estimatedEncryptedDocBytes = useMemo(() => {
+    return Math.round(totalDocBytes * 1.35);
+  }, [totalDocBytes]);
+
+  const minRequiredDbBytes = useMemo(() => {
+    return estimatedEncryptedDocBytes + estimatedLedgerTotalBytes + estimatedNotesBytes + 65536; // + 64KB SQLite/Dexie metadata overhead
+  }, [estimatedEncryptedDocBytes, estimatedLedgerTotalBytes, estimatedNotesBytes]);
+
+  // Canonical total physical database footprint (never under-calculated even if browser estimate lags)
   const totalDbBytes = useMemo(() => {
-    if (dbStats?.fileSizeBytes && dbStats.fileSizeBytes > 0) {
-      return dbStats.fileSizeBytes;
-    }
-    // Fallback computed
-    return totalDocBytes + estimatedLedgerTotalBytes + estimatedNotesBytes + 65536; // + 64KB SQLite overhead
-  }, [dbStats, totalDocBytes, estimatedLedgerTotalBytes, estimatedNotesBytes]);
+    const osReported = dbStats?.fileSizeBytes || 0;
+    return Math.max(osReported, minRequiredDbBytes);
+  }, [dbStats, minRequiredDbBytes]);
 
   const totalAppRecords =
     documents.length +
@@ -111,8 +117,10 @@ export const DriveDatabaseUsageMeter: React.FC<DriveDatabaseUsageMeterProps> = (
     goals.length +
     budgets.length;
 
+  const displayRecordCount = Math.max(totalAppRecords, dbStats?.recordCount || 0);
+
   // Percentage calculations for segmented bar
-  const docPct = Math.min(100, Math.max(2, Math.round((totalDocBytes / (totalDbBytes || 1)) * 100)));
+  const docPct = Math.min(100, Math.max(2, Math.round((estimatedEncryptedDocBytes / (totalDbBytes || 1)) * 100)));
   const ledgerPct = Math.min(
     100 - docPct,
     Math.max(2, Math.round((estimatedLedgerTotalBytes / (totalDbBytes || 1)) * 100))
