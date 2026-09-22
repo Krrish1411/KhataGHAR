@@ -1,17 +1,19 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { formatFileSize } from '../../utils/formatters';
 import { formatReadableDate } from '../../utils/dates';
+import { useVault } from '../../context/VaultContext';
+import { useConfirm } from '../../context/DialogContext';
+import { processFileForVault } from '../../utils/imageCompressor';
 import type { DocumentRecord, DocumentFolder, LinkedEntityType } from '../../types';
 import {
-  HardDrive,
   Folder,
   FolderPlus,
   Upload,
   Search,
   Grid,
   List,
-  SlidersHorizontal,
   ChevronRight,
+  ChevronDown,
   Star,
   Clock,
   Link2,
@@ -26,8 +28,18 @@ import {
   ShieldCheck,
   Check,
   X,
-  CornerDownLeft,
   ArrowUpDown,
+  FileSpreadsheet,
+  FileCode,
+  Archive,
+  Plus,
+  ExternalLink,
+  FolderOpen,
+  CheckSquare,
+  Square,
+  Sparkles,
+  Layers,
+  ArrowLeft,
   MoveRight,
 } from 'lucide-react';
 import { useDriveShortcuts } from '../../hooks/useDriveShortcuts';
@@ -75,18 +87,32 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   onUploadClick,
   onNewFolderClick,
   onDeleteDoc,
+  onDeleteFolder,
   totalStorageBytes,
 }) => {
-  // Navigation section: 'my-drive' | 'recent' | 'starred' | 'entities'
-  const [navSection, setNavSection] = useState<'my-drive' | 'recent' | 'starred' | 'entities'>('my-drive');
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const { loadDocumentDataUrl, updateDocument, addDocument } = useVault();
+  const confirm = useConfirm();
+
+  // Navigation section: 'files' | 'recent' | 'starred' | 'entities'
+  const [navSection, setNavSection] = useState<'files' | 'recent' | 'starred' | 'entities'>('files');
+
+  // Multi-selection state
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+
+  // Inspector panel state
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [isMoveMenuOpen, setIsMoveMenuOpen] = useState(false);
+
+  // Right-click context menu
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
-    doc: DocumentRecord;
+    doc?: DocumentRecord;
+    folder?: DocumentFolder;
   } | null>(null);
 
   // Starred IDs set (stored in localStorage)
@@ -99,7 +125,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     }
   });
 
-  const toggleStar = (docId: string, e?: React.MouseEvent) => {
+  const toggleStar = useCallback((docId: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
     setStarredIds((prev) => {
       const next = new Set(prev);
@@ -110,13 +136,15 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
       } catch {}
       return next;
     });
-  };
+  }, []);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const newMenuRef = useRef<HTMLDivElement>(null);
+  const moveMenuRef = useRef<HTMLDivElement>(null);
 
   const folderLookup = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
 
-  // Active folder details
+  // Active folder
   const activeFolder = useMemo(() => {
     if (activeFolderId === 'all') return null;
     return folderLookup.get(activeFolderId) || null;
@@ -130,11 +158,10 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     if (navSection === 'starred') {
       list = list.filter((d) => starredIds.has(d.id));
     } else if (navSection === 'recent') {
-      // Last 30 days or top 20 recent
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       list = list.filter((d) => new Date(d.createdAt) >= thirtyDaysAgo);
-    } else if (navSection === 'my-drive' && activeFolderId !== 'all') {
+    } else if (navSection === 'files' && activeFolderId !== 'all') {
       list = list.filter((d) => (d.folderId || 'unfiled') === activeFolderId);
     }
 
@@ -189,13 +216,170 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     starredIds,
   ]);
 
-  // Selected doc details
-  const selectedDoc = useMemo(() => {
-    if (!selectedDocId) return displayedDocs[0] || null;
-    return documents.find((d) => d.id === selectedDocId) || null;
-  }, [selectedDocId, documents, displayedDocs]);
+  // Primary selected document (for details inspector)
+  const primarySelectedDoc = useMemo(() => {
+    if (selectedDocIds.size > 0) {
+      const firstId = Array.from(selectedDocIds)[0];
+      return documents.find((d) => d.id === firstId) || null;
+    }
+    if (focusedIndex >= 0 && displayedDocs[focusedIndex]) {
+      return displayedDocs[focusedIndex];
+    }
+    return displayedDocs[0] || null;
+  }, [selectedDocIds, focusedIndex, documents, displayedDocs]);
 
-  // Keyboard Shortcuts Hook
+  // Handle single item selection
+  const handleSelectDoc = (docId: string, e?: React.MouseEvent) => {
+    if (e?.shiftKey || e?.ctrlKey || e?.metaKey) {
+      // Multi-select toggle
+      setSelectedDocIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(docId)) next.delete(docId);
+        else next.add(docId);
+        return next;
+      });
+    } else {
+      // Single select
+      setSelectedDocIds(new Set([docId]));
+    }
+    const idx = displayedDocs.findIndex((d) => d.id === docId);
+    if (idx !== -1) setFocusedIndex(idx);
+  };
+
+  // Select all visible
+  const handleSelectAll = useCallback(() => {
+    setSelectedDocIds(new Set(displayedDocs.map((d) => d.id)));
+  }, [displayedDocs]);
+
+  // Clear selection
+  const handleClearSelection = useCallback(() => {
+    setSelectedDocIds(new Set());
+    setContextMenu(null);
+    setIsNewMenuOpen(false);
+    setIsMoveMenuOpen(false);
+  }, []);
+
+  // Download a single document
+  const handleDownloadDoc = useCallback(async (doc: DocumentRecord, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    try {
+      let url = doc.dataUrl;
+      if (!url) {
+        url = await loadDocumentDataUrl(doc.id);
+      }
+      if (url) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = doc.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } catch (err) {
+      console.error('Failed to download document:', err);
+    }
+  }, [loadDocumentDataUrl]);
+
+  // Download all selected
+  const handleDownloadSelected = useCallback(async () => {
+    const toDownload = documents.filter((d) => selectedDocIds.has(d.id));
+    for (const doc of toDownload) {
+      await handleDownloadDoc(doc);
+    }
+  }, [documents, selectedDocIds, handleDownloadDoc]);
+
+  // Delete all selected
+  const handleDeleteSelected = useCallback(async () => {
+    const toDelete = documents.filter((d) => selectedDocIds.has(d.id));
+    if (toDelete.length === 0) return;
+
+    const ok = await confirm({
+      title: `Delete ${toDelete.length} Document${toDelete.length > 1 ? 's' : ''}`,
+      description: `Permanently delete ${toDelete.length} selected document(s) from encrypted storage?`,
+      confirmText: 'Delete Files',
+      variant: 'danger',
+    });
+
+    if (ok) {
+      for (const doc of toDelete) {
+        await onDeleteDoc(doc);
+      }
+      setSelectedDocIds(new Set());
+    }
+  }, [documents, selectedDocIds, confirm, onDeleteDoc]);
+
+  // Move selected to folder
+  const handleMoveSelected = useCallback(async (targetFolderId: string) => {
+    const ids = Array.from(selectedDocIds);
+    for (const id of ids) {
+      await updateDocument(id, { folderId: targetFolderId });
+    }
+    setIsMoveMenuOpen(false);
+  }, [selectedDocIds, updateDocument]);
+
+  // File drag & drop over vault canvas
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+
+    for (const file of files) {
+      try {
+        const processed = await processFileForVault(file, false);
+        await addDocument(
+          {
+            name: file.name,
+            folderId: activeFolderId !== 'all' ? activeFolderId : 'unfiled',
+            fileType: processed.fileType,
+            fileSize: processed.fileSize,
+            thumbnailUrl: processed.thumbnailUrl,
+            linkedType: 'none',
+          },
+          processed.dataUrl
+        );
+      } catch (err) {
+        console.error('Drag-and-drop file upload failed:', err);
+      }
+    }
+  };
+
+  // Keyboard navigation helpers
+  const handleSelectNext = useCallback(() => {
+    if (displayedDocs.length === 0) return;
+    setFocusedIndex((prev) => {
+      const next = prev < displayedDocs.length - 1 ? prev + 1 : 0;
+      setSelectedDocIds(new Set([displayedDocs[next].id]));
+      return next;
+    });
+  }, [displayedDocs]);
+
+  const handleSelectPrev = useCallback(() => {
+    if (displayedDocs.length === 0) return;
+    setFocusedIndex((prev) => {
+      const next = prev > 0 ? prev - 1 : displayedDocs.length - 1;
+      setSelectedDocIds(new Set([displayedDocs[next].id]));
+      return next;
+    });
+  }, [displayedDocs]);
+
+  const handleOpenSelected = useCallback(() => {
+    if (primarySelectedDoc) {
+      onOpenDoc(primarySelectedDoc.id);
+    }
+  }, [primarySelectedDoc, onOpenDoc]);
+
+  // Register keyboard shortcuts
   useDriveShortcuts({
     onSearchFocus: () => searchInputRef.current?.focus(),
     onToggleViewMode: () => onToggleViewMode(),
@@ -203,803 +387,1040 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     onUpload: () => onUploadClick(),
     onToggleInspector: () => setIsInspectorOpen((prev) => !prev),
     onToggleStar: () => {
-      if (selectedDoc) toggleStar(selectedDoc.id);
+      if (primarySelectedDoc) toggleStar(primarySelectedDoc.id);
     },
     onShowShortcuts: () => setIsShortcutsModalOpen(true),
-    onSelectNext: () => {
-      if (displayedDocs.length === 0) return;
-      const idx = displayedDocs.findIndex((d) => d.id === selectedDocId);
-      const nextIdx = idx < displayedDocs.length - 1 ? idx + 1 : 0;
-      setSelectedDocId(displayedDocs[nextIdx].id);
-    },
-    onSelectPrev: () => {
-      if (displayedDocs.length === 0) return;
-      const idx = displayedDocs.findIndex((d) => d.id === selectedDocId);
-      const prevIdx = idx > 0 ? idx - 1 : displayedDocs.length - 1;
-      setSelectedDocId(displayedDocs[prevIdx].id);
-    },
-    onClearSelection: () => {
-      setSelectedDocId(null);
-      setContextMenu(null);
-    },
-    onOpenSelected: () => {
-      if (selectedDoc) onOpenDoc(selectedDoc.id);
-    },
-    onDeleteSelected: () => {
-      if (selectedDoc) onDeleteDoc(selectedDoc);
-    },
+    onSelectNext: handleSelectNext,
+    onSelectPrev: handleSelectPrev,
+    onSelectAll: handleSelectAll,
+    onClearSelection: handleClearSelection,
+    onOpenSelected: handleOpenSelected,
+    onDeleteSelected: handleDeleteSelected,
     onNavigateUp: () => {
       if (activeFolderId !== 'all') onSelectFolder('all');
     },
+    hasSelection: selectedDocIds.size > 0,
     isEnabled: true,
   });
 
-  // Close context menu on global click
+  // Global click handler to close dropdowns and context menu
   useEffect(() => {
-    const handleOutside = () => setContextMenu(null);
-    window.addEventListener('click', handleOutside);
-    return () => window.removeEventListener('click', handleOutside);
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (newMenuRef.current && !newMenuRef.current.contains(e.target as Node)) {
+        setIsNewMenuOpen(false);
+      }
+      if (moveMenuRef.current && !moveMenuRef.current.contains(e.target as Node)) {
+        setIsMoveMenuOpen(false);
+      }
+      setContextMenu(null);
+    };
+
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
   }, []);
 
   // Format Storage breakdown string
   const storageFormatted = useMemo(() => formatFileSize(totalStorageBytes), [totalStorageBytes]);
 
+  // File type icon resolver
+  const renderFileIcon = (fileType: string, name: string, className = 'w-5 h-5') => {
+    const lowerName = name.toLowerCase();
+    if (fileType.startsWith('image/')) {
+      return <ImageIcon className={`${className} text-brand-500`} />;
+    }
+    if (fileType.includes('pdf') || lowerName.endsWith('.pdf')) {
+      return <FileText className={`${className} text-rose-500`} />;
+    }
+    if (
+      fileType.includes('sheet') ||
+      fileType.includes('excel') ||
+      lowerName.endsWith('.csv') ||
+      lowerName.endsWith('.xlsx') ||
+      lowerName.endsWith('.xls')
+    ) {
+      return <FileSpreadsheet className={`${className} text-emerald-500`} />;
+    }
+    if (lowerName.endsWith('.zip') || lowerName.endsWith('.tar') || lowerName.endsWith('.gz')) {
+      return <Archive className={`${className} text-amber-500`} />;
+    }
+    if (lowerName.endsWith('.json') || lowerName.endsWith('.js') || lowerName.endsWith('.ts')) {
+      return <FileCode className={`${className} text-indigo-500`} />;
+    }
+    return <FileText className={`${className} text-slate-400 dark:text-slate-500`} />;
+  };
+
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] min-h-[580px] bg-surface rounded-3xl border border-line/80 shadow-xs overflow-hidden">
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className="flex flex-col h-[calc(100vh-6.5rem)] min-h-[640px] bg-surface rounded-3xl border border-line/80 shadow-xs overflow-hidden relative select-none"
+    >
       {/* ─────────────────────────────────────────────────────────────
-          1. TOP DRIVE TOOLBAR & BREADCRUMBS
+          DRAG AND DROP OVERLAY (Internxt style)
       ───────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-4 px-6 py-3 border-b border-line bg-surface-2/40 select-none">
+      {isDraggingOver && (
+        <div className="absolute inset-0 z-50 bg-brand-500/10 backdrop-blur-xs border-2 border-dashed border-brand-500 rounded-3xl flex flex-col items-center justify-center gap-3 anim-fade pointer-events-none">
+          <div className="w-16 h-16 rounded-3xl bg-brand-500 text-white grid place-items-center shadow-lg animate-bounce">
+            <Upload className="w-8 h-8" />
+          </div>
+          <div className="text-center">
+            <h3 className="font-display font-bold text-lg text-ink">Drop files here to upload</h3>
+            <p className="text-xs text-ink/60">Files will be AES-256 encrypted and stored locally in your sovereign vault</p>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          1. TOP DRIVE TOOLBAR & SEARCH PILL (Internxt TopBar)
+      ───────────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-line bg-surface shrink-0">
         {/* Left: Breadcrumbs navigation */}
-        <div className="flex items-center gap-1.5 text-xs text-ink/70">
+        <div className="flex items-center gap-1 text-xs font-semibold text-ink/60 overflow-hidden">
           <button
             type="button"
             onClick={() => {
-              setNavSection('my-drive');
+              setNavSection('files');
               onSelectFolder('all');
+              onSelectEntityFilter('all');
             }}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-moss/70 font-semibold text-ink transition-colors"
+            className={`px-2.5 py-1 rounded-xl transition-all ${
+              navSection === 'files' && activeFolderId === 'all'
+                ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
+                : 'hover:bg-moss text-ink/70 hover:text-ink'
+            }`}
           >
-            <HardDrive className="w-4 h-4 text-brand-500" />
-            <span>My Vault Storage</span>
+            Files
           </button>
 
           {activeFolder && (
             <>
-              <ChevronRight className="w-3.5 h-3.5 text-ink/30" />
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-moss/80 font-bold text-ink">
+              <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
+              <span className="px-2.5 py-1 rounded-xl bg-surface-2 font-bold text-ink truncate flex items-center gap-1.5">
                 <span>{activeFolder.icon || '📁'}</span>
                 <span>{activeFolder.name}</span>
-              </div>
-            </>
-          )}
-
-          {navSection === 'starred' && (
-            <>
-              <ChevronRight className="w-3.5 h-3.5 text-ink/30" />
-              <span className="flex items-center gap-1 px-2 py-1 font-bold text-amber-500">
-                <Star className="w-3.5 h-3.5 fill-amber-400" /> Starred
               </span>
             </>
           )}
 
           {navSection === 'recent' && (
             <>
-              <ChevronRight className="w-3.5 h-3.5 text-ink/30" />
-              <span className="flex items-center gap-1 px-2 py-1 font-bold text-blue-500">
-                <Clock className="w-3.5 h-3.5" /> Recent
+              <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
+              <span className="px-2.5 py-1 rounded-xl bg-surface-2 font-bold text-ink">Recent</span>
+            </>
+          )}
+
+          {navSection === 'starred' && (
+            <>
+              <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
+              <span className="px-2.5 py-1 rounded-xl bg-surface-2 font-bold text-ink">Starred</span>
+            </>
+          )}
+
+          {selectedEntityFilter !== 'all' && (
+            <>
+              <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
+              <span className="px-2.5 py-1 rounded-xl bg-brand-500/10 text-brand-600 font-bold capitalize">
+                {selectedEntityFilter}s
               </span>
             </>
           )}
         </div>
 
-        {/* Center: Google Drive Search Bar */}
-        <div className="flex-1 max-w-xl relative">
-          <div className="relative flex items-center">
-            <Search className="w-4 h-4 absolute left-3.5 text-ink/40 pointer-events-none" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search in Vault... (Press '/' to focus)"
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full pl-10 pr-20 py-2 text-xs bg-surface border border-line rounded-full shadow-inner focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-ink placeholder:text-ink/40 transition-all"
-            />
-            {searchQuery && (
+        {/* Center: Search pill with shortcut hint */}
+        <div className="relative flex-1 max-w-md hidden sm:block">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-ink/40 pointer-events-none" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="Search in Vault... (Press / to focus)"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="w-full pl-9 pr-14 py-2 bg-surface-2/60 border border-line rounded-2xl text-xs text-ink placeholder:text-ink/40 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all shadow-2xs"
+          />
+          {searchQuery ? (
+            <button
+              type="button"
+              onClick={() => onSearchChange('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-ink/40 hover:text-ink"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          ) : (
+            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-surface border border-line font-mono text-[10px] text-ink/40">
+              /
+            </kbd>
+          )}
+        </div>
+
+        {/* Right: Actions / Selection Bar */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {selectedDocIds.size > 0 ? (
+            /* Contextual Action Bar when items selected */
+            <div className="flex items-center gap-1.5 bg-brand-500/10 border border-brand-500/20 px-2.5 py-1 rounded-2xl anim-fade">
+              <span className="text-xs font-bold text-brand-700 dark:text-brand-300 pr-1">
+                {selectedDocIds.size} selected
+              </span>
+
               <button
                 type="button"
-                onClick={() => onSearchChange('')}
-                className="absolute right-8 p-1 text-ink/40 hover:text-ink transition-colors"
-                title="Clear search"
+                onClick={handleDownloadSelected}
+                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors"
+                title="Download selected"
+              >
+                <Download className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  Array.from(selectedDocIds).forEach((id) => toggleStar(id));
+                }}
+                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors"
+                title="Star / Unstar"
+              >
+                <Star className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Move to folder dropdown */}
+              <div className="relative" ref={moveMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsMoveMenuOpen((prev) => !prev)}
+                  className="p-1.5 rounded-xl hover:bg-brand-500/20 text-brand-700 dark:text-brand-300 transition-colors"
+                  title="Move to folder"
+                >
+                  <Folder className="w-3.5 h-3.5" />
+                </button>
+
+                {isMoveMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-48 py-1.5 bg-surface border border-line rounded-2xl shadow-xl z-50 text-xs text-ink space-y-0.5 anim-scale">
+                    <span className="px-3 py-1 text-[10px] font-bold text-ink/40 uppercase block">
+                      Move to Folder:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleMoveSelected('unfiled')}
+                      className="w-full text-left px-3 py-1.5 hover:bg-moss flex items-center gap-2"
+                    >
+                      <Folder className="w-3.5 h-3.5 text-ink/40" /> Unfiled
+                    </button>
+                    {folders.map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => handleMoveSelected(f.id)}
+                        className="w-full text-left px-3 py-1.5 hover:bg-moss flex items-center gap-2 truncate"
+                      >
+                        <span>{f.icon || '📁'}</span>
+                        <span className="truncate">{f.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDeleteSelected}
+                className="p-1.5 rounded-xl hover:bg-rose-500/20 text-rose-600 transition-colors"
+                title="Delete selected"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearSelection}
+                className="p-1.5 rounded-xl hover:bg-brand-500/20 text-ink/50 hover:text-ink transition-colors ml-1"
+                title="Clear selection (Esc)"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
-            )}
-            <kbd className="absolute right-3 px-1.5 py-0.5 text-[10px] font-mono text-ink/40 bg-surface-2 border border-line rounded">
-              /
-            </kbd>
-          </div>
-        </div>
+            </div>
+          ) : (
+            /* Standard Action Bar when nothing selected */
+            <>
+              {/* Type Filter Pills */}
+              <div className="hidden lg:flex items-center gap-1 bg-surface-2 p-0.5 rounded-xl border border-line text-[11px] font-medium">
+                <button
+                  type="button"
+                  onClick={() => onSelectFileTypeFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    fileTypeFilter === 'all'
+                      ? 'bg-surface text-brand-600 font-bold shadow-2xs'
+                      : 'text-ink/60 hover:text-ink'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectFileTypeFilter('image')}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    fileTypeFilter === 'image'
+                      ? 'bg-surface text-brand-600 font-bold shadow-2xs'
+                      : 'text-ink/60 hover:text-ink'
+                  }`}
+                >
+                  Images
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectFileTypeFilter('pdf')}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    fileTypeFilter === 'pdf'
+                      ? 'bg-surface text-brand-600 font-bold shadow-2xs'
+                      : 'text-ink/60 hover:text-ink'
+                  }`}
+                >
+                  PDFs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectFileTypeFilter('other')}
+                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                    fileTypeFilter === 'other'
+                      ? 'bg-surface text-brand-600 font-bold shadow-2xs'
+                      : 'text-ink/60 hover:text-ink'
+                  }`}
+                >
+                  Other
+                </button>
+              </div>
 
-        {/* Right: Quick Action Controls */}
-        <div className="flex items-center gap-1.5">
-          {/* Grid / List Toggle */}
-          <button
-            type="button"
-            onClick={onToggleViewMode}
-            className="p-2 rounded-xl text-ink/60 hover:text-ink hover:bg-moss/70 transition-colors border border-transparent hover:border-line"
-            title={`Toggle View Mode (V) — Current: ${viewMode}`}
-          >
-            {viewMode === 'grid' ? <List className="w-4 h-4" /> : <Grid className="w-4 h-4" />}
-          </button>
+              {/* View Mode Toggle */}
+              <button
+                type="button"
+                onClick={onToggleViewMode}
+                className="p-2 rounded-xl border border-line bg-surface hover:bg-moss text-ink/70 hover:text-ink transition-all shadow-2xs"
+                title={`Switch to ${viewMode === 'grid' ? 'List' : 'Grid'} view (V)`}
+              >
+                {viewMode === 'grid' ? <List className="w-3.5 h-3.5" /> : <Grid className="w-3.5 h-3.5" />}
+              </button>
 
-          {/* Sort Dropdown */}
-          <div className="relative group">
-            <select
-              value={sortBy}
-              onChange={(e) => onSortChange(e.target.value as any)}
-              className="text-xs bg-transparent border border-line rounded-xl px-2.5 py-1.5 text-ink/70 hover:text-ink cursor-pointer focus:outline-none"
-            >
-              <option value="newest">Sort: Newest</option>
-              <option value="oldest">Sort: Oldest</option>
-              <option value="name">Sort: Name (A-Z)</option>
-              <option value="size">Sort: File Size</option>
-            </select>
-          </div>
+              {/* Sort selector */}
+              <select
+                value={sortBy}
+                onChange={(e) => onSortChange(e.target.value as any)}
+                className="px-2.5 py-1.5 rounded-xl border border-line bg-surface text-xs text-ink/70 hover:text-ink focus:outline-none cursor-pointer shadow-2xs"
+              >
+                <option value="newest">Recent</option>
+                <option value="oldest">Oldest</option>
+                <option value="name">Name (A-Z)</option>
+                <option value="size">Size (Largest)</option>
+              </select>
 
-          {/* Toggle Inspector Pane */}
-          <button
-            type="button"
-            onClick={() => setIsInspectorOpen(!isInspectorOpen)}
-            className={`p-2 rounded-xl border transition-colors ${
-              isInspectorOpen
-                ? 'bg-brand-50 dark:bg-brand-950/50 text-brand-600 border-brand-200 dark:border-brand-800'
-                : 'text-ink/60 hover:text-ink hover:bg-moss/70 border-transparent hover:border-line'
-            }`}
-            title="Details Inspector (I)"
-          >
-            <Info className="w-4 h-4" />
-          </button>
+              {/* Inspector panel toggle */}
+              <button
+                type="button"
+                onClick={() => setIsInspectorOpen((prev) => !prev)}
+                className={`p-2 rounded-xl border transition-all shadow-2xs ${
+                  isInspectorOpen
+                    ? 'border-brand-500/40 bg-brand-500/10 text-brand-600'
+                    : 'border-line bg-surface hover:bg-moss text-ink/70 hover:text-ink'
+                }`}
+                title="Toggle Details Inspector (I)"
+              >
+                <Info className="w-3.5 h-3.5" />
+              </button>
 
-          {/* Keyboard Shortcuts Help Button */}
-          <button
-            type="button"
-            onClick={() => setIsShortcutsModalOpen(true)}
-            className="p-2 rounded-xl text-ink/60 hover:text-ink hover:bg-moss/70 transition-colors border border-transparent hover:border-line"
-            title="Keyboard Shortcuts (?)"
-          >
-            <Keyboard className="w-4 h-4" />
-          </button>
+              {/* Keyboard shortcuts */}
+              <button
+                type="button"
+                onClick={() => setIsShortcutsModalOpen(true)}
+                className="p-2 rounded-xl border border-line bg-surface hover:bg-moss text-ink/70 hover:text-ink transition-all shadow-2xs"
+                title="Keyboard shortcuts cheat sheet (?)"
+              >
+                <Keyboard className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
-          2. MAIN SPLIT BODY (Sidebar + Files Workspace + Inspector)
+          2. TWO-PANE BODY (Left Internxt Sidebar + Main Content)
       ───────────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Left Drive Navigation Rail */}
-        <div className="w-64 shrink-0 border-r border-line bg-surface/60 flex flex-col justify-between p-3 select-none overflow-y-auto">
+      <div className="flex flex-1 overflow-hidden">
+        {/* ───────────────────────────────────────────────────────────
+            LEFT SIDEBAR (Internxt Drive Style)
+        ─────────────────────────────────────────────────────────── */}
+        <div className="w-64 shrink-0 border-r border-line bg-surface-2/30 flex flex-col justify-between p-3.5 hidden md:flex">
           <div className="space-y-4">
-            {/* Google Drive '+ New' Button */}
-            <div className="relative">
+            {/* Prominent Internxt "+ New" Button */}
+            <div className="relative" ref={newMenuRef}>
               <button
                 type="button"
-                onClick={() => setIsNewMenuOpen(!isNewMenuOpen)}
-                className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 bg-brand-500 hover:bg-brand-600 text-white font-semibold text-xs rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-[0.98]"
+                onClick={() => setIsNewMenuOpen((prev) => !prev)}
+                className="w-full py-2.5 px-4 rounded-2xl bg-brand-500 hover:bg-brand-600 active:scale-[0.98] text-white text-xs font-bold flex items-center justify-between shadow-sm transition-all"
               >
-                <div className="w-4 h-4 rounded-full bg-white/20 grid place-items-center">
-                  <span className="text-sm leading-none font-bold">+</span>
+                <div className="flex items-center gap-2">
+                  <Plus className="w-4 h-4" />
+                  <span>New</span>
                 </div>
-                <span>New</span>
+                <ChevronDown className="w-3.5 h-3.5 opacity-80" />
               </button>
 
-              {/* '+ New' Dropdown Menu */}
+              {/* Dropdown Menu */}
               {isNewMenuOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-20"
-                    onClick={() => setIsNewMenuOpen(false)}
-                  />
-                  <div className="absolute top-12 left-0 w-52 bg-surface rounded-2xl border border-line shadow-xl p-1.5 z-30 space-y-0.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsNewMenuOpen(false);
-                        onUploadClick();
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-ink hover:bg-moss/70 rounded-xl transition-colors text-left"
-                    >
-                      <Upload className="w-4 h-4 text-brand-500" />
-                      <span>Upload Document (U)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsNewMenuOpen(false);
-                        onNewFolderClick();
-                      }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-ink hover:bg-moss/70 rounded-xl transition-colors text-left"
-                    >
+                <div className="absolute left-0 top-full mt-2 w-full py-2 bg-surface border border-line rounded-2xl shadow-xl z-50 text-xs text-ink space-y-1 anim-scale">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNewMenuOpen(false);
+                      onNewFolderClick();
+                    }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-moss flex items-center justify-between transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5 font-semibold">
                       <FolderPlus className="w-4 h-4 text-amber-500" />
-                      <span>New Folder (N)</span>
-                    </button>
-                  </div>
-                </>
+                      <span>New Folder</span>
+                    </div>
+                    <kbd className="px-1.5 py-0.5 rounded bg-surface-2 border border-line font-mono text-[10px] text-ink/40">
+                      N
+                    </kbd>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNewMenuOpen(false);
+                      onUploadClick();
+                    }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-moss flex items-center justify-between transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5 font-semibold">
+                      <Upload className="w-4 h-4 text-brand-500" />
+                      <span>File Upload</span>
+                    </div>
+                    <kbd className="px-1.5 py-0.5 rounded bg-surface-2 border border-line font-mono text-[10px] text-ink/40">
+                      U
+                    </kbd>
+                  </button>
+                </div>
               )}
             </div>
 
-            {/* Main Drive Tree */}
-            <div className="space-y-1 text-xs">
+            {/* Primary Navigation Links */}
+            <div className="space-y-1">
               <button
                 type="button"
                 onClick={() => {
-                  setNavSection('my-drive');
+                  setNavSection('files');
                   onSelectFolder('all');
+                  onSelectEntityFilter('all');
                 }}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors ${
-                  navSection === 'my-drive' && activeFolderId === 'all'
-                    ? 'bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 font-bold'
-                    : 'text-ink/70 hover:text-ink hover:bg-moss/50 font-medium'
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                  navSection === 'files' && activeFolderId === 'all' && selectedEntityFilter === 'all'
+                    ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
+                    : 'text-ink/70 hover:text-ink hover:bg-moss/60'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <HardDrive className="w-4 h-4 text-brand-500" />
-                  <span>My Vault Storage</span>
+                  <Folder className="w-4 h-4" />
+                  <span>My Files</span>
                 </div>
-                <span className="text-[11px] font-mono text-ink/40">{documents.length}</span>
+                <span className="text-[10px] font-mono text-ink/40">{documents.length}</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setNavSection('recent')}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors ${
+                onClick={() => {
+                  setNavSection('recent');
+                  onSelectFolder('all');
+                  onSelectEntityFilter('all');
+                }}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
                   navSection === 'recent'
-                    ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
-                    : 'text-ink/70 hover:text-ink hover:bg-moss/50 font-medium'
+                    ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
+                    : 'text-ink/70 hover:text-ink hover:bg-moss/60'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <Clock className="w-4 h-4 text-blue-500" />
-                  <span>Recent</span>
+                  <Clock className="w-4 h-4" />
+                  <span>Recents</span>
                 </div>
               </button>
 
               <button
                 type="button"
-                onClick={() => setNavSection('starred')}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors ${
+                onClick={() => {
+                  setNavSection('starred');
+                  onSelectFolder('all');
+                  onSelectEntityFilter('all');
+                }}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
                   navSection === 'starred'
-                    ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-bold'
-                    : 'text-ink/70 hover:text-ink hover:bg-moss/50 font-medium'
+                    ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
+                    : 'text-ink/70 hover:text-ink hover:bg-moss/60'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
                   <Star className="w-4 h-4 text-amber-500" />
-                  <span>Starred</span>
+                  <span>Favorites</span>
                 </div>
-                <span className="text-[11px] font-mono text-ink/40">{starredIds.size}</span>
+                <span className="text-[10px] font-mono text-ink/40">{starredIds.size}</span>
               </button>
             </div>
 
-            {/* Folders List */}
-            <div className="space-y-1.5 pt-2 border-t border-line/60">
-              <div className="flex items-center justify-between px-2 text-[11px] font-bold text-ink/40 uppercase tracking-wider">
-                <span>Folders</span>
-                <button
-                  type="button"
-                  onClick={onNewFolderClick}
-                  className="p-0.5 hover:text-brand-500 transition-colors"
-                  title="Create folder"
-                >
-                  <FolderPlus className="w-3.5 h-3.5" />
-                </button>
-              </div>
+            {/* Entity Hub Navigation Links */}
+            <div className="pt-2">
+              <span className="px-3 text-[10px] font-bold text-ink/40 uppercase tracking-wider block mb-1">
+                Linked Entities
+              </span>
 
               <div className="space-y-0.5">
-                {folders.map((f) => {
-                  const isSelected = navSection === 'my-drive' && activeFolderId === f.id;
-                  const count = documents.filter((d) => (d.folderId || 'unfiled') === f.id).length;
+                {(
+                  [
+                    { id: 'transaction', label: 'Transactions', icon: <Sparkles className="w-3.5 h-3.5 text-amber-500" /> },
+                    { id: 'asset', label: 'Assets & Deeds', icon: <ShieldCheck className="w-3.5 h-3.5 text-pine-500" /> },
+                    { id: 'liability', label: 'Loans & Liabilities', icon: <Layers className="w-3.5 h-3.5 text-rose-500" /> },
+                    { id: 'goal', label: 'Goals', icon: <Clock className="w-3.5 h-3.5 text-blue-500" /> },
+                    { id: 'people', label: 'People & KYC', icon: <Link2 className="w-3.5 h-3.5 text-violet-500" /> },
+                    { id: 'account', label: 'Bank Accounts', icon: <FileText className="w-3.5 h-3.5 text-indigo-500" /> },
+                  ] as const
+                ).map((ent) => {
+                  const count = documents.filter(
+                    (d) =>
+                      d.linkedType === ent.id || d.links?.some((l) => l.entityType === ent.id)
+                  ).length;
                   return (
                     <button
-                      key={f.id}
+                      key={ent.id}
                       type="button"
                       onClick={() => {
-                        setNavSection('my-drive');
-                        onSelectFolder(f.id);
+                        setNavSection('entities');
+                        onSelectFolder('all');
+                        onSelectEntityFilter(selectedEntityFilter === ent.id ? 'all' : ent.id);
                       }}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-colors group ${
-                        isSelected
-                          ? 'bg-brand-50 dark:bg-brand-950/60 text-brand-700 dark:text-brand-300 font-bold'
-                          : 'text-ink/70 hover:text-ink hover:bg-moss/50 font-medium'
+                      className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                        selectedEntityFilter === ent.id
+                          ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
+                          : 'text-ink/65 hover:text-ink hover:bg-moss/40'
                       }`}
                     >
-                      <div className="flex items-center gap-2 truncate">
-                        <span className="text-sm">{f.icon || '📁'}</span>
-                        <span className="truncate">{f.name}</span>
+                      <div className="flex items-center gap-2">
+                        {ent.icon}
+                        <span>{ent.label}</span>
                       </div>
-                      <span className="text-[11px] font-mono text-ink/40 group-hover:text-ink/70">
-                        {count}
-                      </span>
+                      <span className="text-[10px] font-mono text-ink/40">{count}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
-
-            {/* Linked Entity Filter Section */}
-            <div className="space-y-1.5 pt-2 border-t border-line/60">
-              <span className="block px-2 text-[11px] font-bold text-ink/40 uppercase tracking-wider">
-                Linked By Entity
-              </span>
-              <div className="grid grid-cols-2 gap-1 text-[11px]">
-                {(
-                  [
-                    { id: 'all', label: 'All Entities' },
-                    { id: 'transaction', label: 'Tx Entries' },
-                    { id: 'asset', label: 'Assets' },
-                    { id: 'liability', label: 'Loans' },
-                    { id: 'people', label: 'People' },
-                    { id: 'account', label: 'Accounts' },
-                  ] as const
-                ).map((e) => (
-                  <button
-                    key={e.id}
-                    type="button"
-                    onClick={() => onSelectEntityFilter(e.id)}
-                    className={`px-2 py-1 rounded-lg text-left truncate transition-colors ${
-                      selectedEntityFilter === e.id
-                        ? 'bg-pine-50 dark:bg-pine-950/60 text-pine-700 dark:text-pine-300 font-bold border border-pine-200 dark:border-pine-800'
-                        : 'text-ink/60 hover:text-ink hover:bg-moss/40'
-                    }`}
-                  >
-                    {e.label}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
 
-          {/* Storage Quota Footer Card */}
-          <div className="pt-3 border-t border-line/60">
-            <div className="p-3 bg-surface-2/60 rounded-2xl border border-line/60 space-y-2">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="font-semibold text-ink flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-pine-500" />
-                  Encrypted Storage
-                </span>
-                <span className="font-mono text-ink/60">{storageFormatted}</span>
-              </div>
-              <div className="w-full h-1.5 bg-line rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-brand-500 to-pine-500 rounded-full"
-                  style={{
-                    width: `${Math.min(100, Math.max(5, (totalStorageBytes / (100 * 1024 * 1024)) * 100))}%`,
-                  }}
-                />
-              </div>
-              <span className="block text-[10px] text-ink/40 leading-tight">
-                {documents.length} sovereign files in AES-256 vault
+          {/* Bottom Storage Meter Widget (Internxt Style) */}
+          <div className="p-3 bg-surface rounded-2xl border border-line shadow-2xs space-y-2">
+            <div className="flex items-center justify-between text-[11px] font-bold text-ink">
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-pine-500" /> Vault Storage
               </span>
+              <span className="font-mono text-[10px] text-ink/50">{storageFormatted}</span>
             </div>
+
+            <div className="w-full h-1.5 bg-line rounded-full overflow-hidden">
+              <div
+                style={{
+                  width: `${Math.min(100, Math.max(8, (totalStorageBytes / (100 * 1024 * 1024)) * 100))}%`,
+                }}
+                className="h-full bg-brand-500 rounded-full transition-all"
+              />
+            </div>
+
+            <p className="text-[10px] text-ink/50 leading-tight">
+              Zero-knowledge client-side encrypted in SQLite.
+            </p>
           </div>
         </div>
 
-        {/* Center: File Browser Workspace */}
-        <div className="flex-1 min-w-0 flex flex-col min-h-0 bg-surface overflow-y-auto p-6 space-y-6">
-          {/* Quick Category / Format Pills */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 select-none">
-            {(
-              [
-                { id: 'all', label: 'All Formats' },
-                { id: 'image', label: '🖼️ Images' },
-                { id: 'pdf', label: '📄 PDFs' },
-                { id: 'other', label: '📦 Other' },
-              ] as const
-            ).map((fmt) => (
-              <button
-                key={fmt.id}
-                type="button"
-                onClick={() => onSelectFileTypeFilter(fmt.id)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-all shrink-0 ${
-                  fileTypeFilter === fmt.id
-                    ? 'bg-brand-500 text-white shadow-xs'
-                    : 'bg-surface-2 text-ink/70 hover:text-ink hover:bg-moss/70 border border-line'
-                }`}
-              >
-                {fmt.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Folders Section (Only in Root or All view) */}
-          {activeFolderId === 'all' && navSection === 'my-drive' && folders.length > 0 && (
-            <div className="space-y-2.5">
-              <h3 className="text-xs font-bold text-ink/50 uppercase tracking-wider">Folders</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {folders.map((f) => {
-                  const count = documents.filter((d) => (d.folderId || 'unfiled') === f.id).length;
-                  return (
-                    <div
-                      key={f.id}
-                      onClick={() => onSelectFolder(f.id)}
-                      onDoubleClick={() => onSelectFolder(f.id)}
-                      className="flex items-center gap-3 p-3 rounded-2xl border border-line bg-surface-2/40 hover:bg-moss/60 hover:border-brand-300 dark:hover:border-brand-700 cursor-pointer transition-all shadow-xs group"
-                    >
-                      <span className="text-xl shrink-0">{f.icon || '📁'}</span>
-                      <div className="min-w-0 flex-1">
-                        <span className="block text-xs font-bold text-ink truncate group-hover:text-brand-600 dark:group-hover:text-brand-400">
-                          {f.name}
-                        </span>
-                        <span className="block text-[10px] text-ink/40 font-mono">
-                          {count} {count === 1 ? 'file' : 'files'}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Files Section Header */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-ink/50 uppercase tracking-wider">
-                Files ({displayedDocs.length})
-              </h3>
-              <span className="text-[11px] text-ink/40 font-mono">
-                Click to inspect • Double-click to preview • '?' for shortcuts
-              </span>
-            </div>
-
-            {/* Empty State */}
-            {displayedDocs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-12 text-center border-2 border-dashed border-line rounded-3xl space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-brand-50 dark:bg-brand-950/50 grid place-items-center text-brand-500">
-                  <Upload className="w-6 h-6" />
+        {/* ───────────────────────────────────────────────────────────
+            MAIN EXPLORER AREA (Folders & Files Grid / List)
+        ─────────────────────────────────────────────────────────── */}
+        <div className="flex-1 flex flex-col min-w-0 bg-surface overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-6">
+            {/* ───────────────────────────────────────────────────────
+                A. FOLDERS SECTION
+            ─────────────────────────────────────────────────────── */}
+            {navSection === 'files' && activeFolderId === 'all' && folders.length > 0 && (
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-ink/40">
+                    Folders ({folders.length})
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={onNewFolderClick}
+                    className="text-xs font-semibold text-brand-600 hover:text-brand-700 flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" /> New
+                  </button>
                 </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-ink">No Documents Found</h4>
-                  <p className="text-xs text-ink/50 max-w-sm">
-                    {searchQuery
-                      ? `No files matched "${searchQuery}". Try adjusting your search query or filters.`
-                      : 'No attachments in this view. Click Upload Document or press U to add one.'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={onUploadClick}
-                  className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors"
-                >
-                  Upload Document
-                </button>
-              </div>
-            ) : viewMode === 'grid' ? (
-              /* ── Grid View ── */
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5">
-                {displayedDocs.map((doc) => {
-                  const isSelected = selectedDocId === doc.id;
-                  const isStarred = starredIds.has(doc.id);
-                  const isImage = doc.fileType.startsWith('image/');
-                  const isPdf = doc.fileType.includes('pdf') || doc.name.toLowerCase().endsWith('.pdf');
 
-                  return (
-                    <div
-                      key={doc.id}
-                      onClick={() => setSelectedDocId(doc.id)}
-                      onDoubleClick={() => onOpenDoc(doc.id)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        setSelectedDocId(doc.id);
-                        setContextMenu({ x: e.clientX, y: e.clientY, doc });
-                      }}
-                      className={`group relative flex flex-col rounded-2xl border transition-all cursor-pointer overflow-hidden bg-surface shadow-xs ${
-                        isSelected
-                          ? 'border-brand-500 ring-2 ring-brand-500/20 shadow-md bg-brand-50/10'
-                          : 'border-line hover:border-brand-300 dark:hover:border-brand-700 hover:shadow-sm'
-                      }`}
-                    >
-                      {/* Thumbnail / Preview Canvas */}
-                      <div className="h-28 w-full bg-surface-2/70 flex items-center justify-center overflow-hidden relative border-b border-line/40">
-                        {doc.thumbnailUrl ? (
-                          <img
-                            src={doc.thumbnailUrl}
-                            alt={doc.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                          />
-                        ) : isImage ? (
-                          <ImageIcon className="w-10 h-10 text-brand-400/80" />
-                        ) : isPdf ? (
-                          <FileText className="w-10 h-10 text-rose-500/80" />
-                        ) : (
-                          <FileText className="w-10 h-10 text-ink/30" />
-                        )}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {folders.map((f) => {
+                    const count = documents.filter((d) => (d.folderId || 'unfiled') === f.id).length;
+                    return (
+                      <div
+                        key={f.id}
+                        onClick={() => onSelectFolder(f.id)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setContextMenu({ x: e.clientX, y: e.clientY, folder: f });
+                        }}
+                        className="group flex items-center justify-between p-3 bg-surface hover:bg-surface-2 border border-line hover:border-brand-500/40 rounded-2xl cursor-pointer transition-all shadow-2xs hover:shadow-xs"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="text-xl shrink-0">{f.icon || '📁'}</span>
+                          <div className="min-w-0">
+                            <span className="block text-xs font-bold text-ink truncate group-hover:text-brand-600">
+                              {f.name}
+                            </span>
+                            <span className="block text-[10px] text-ink/40 font-mono">
+                              {count} {count === 1 ? 'file' : 'files'}
+                            </span>
+                          </div>
+                        </div>
 
-                        {/* Top badges: Star + Format */}
                         <button
                           type="button"
-                          onClick={(e) => toggleStar(doc.id, e)}
-                          className={`absolute top-2 right-2 p-1.5 rounded-full transition-all ${
-                            isStarred
-                              ? 'bg-white text-amber-500 shadow-sm'
-                              : 'bg-black/20 text-white/70 opacity-0 group-hover:opacity-100 hover:text-white'
-                          }`}
-                          title={isStarred ? 'Unstar' : 'Star (S)'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setContextMenu({ x: e.clientX, y: e.clientY, folder: f });
+                          }}
+                          className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-moss text-ink/40 hover:text-ink transition-opacity"
                         >
-                          <Star className={`w-3 h-3 ${isStarred ? 'fill-amber-400' : ''}`} />
+                          <MoreVertical className="w-3.5 h-3.5" />
                         </button>
                       </div>
-
-                      {/* File Card Meta */}
-                      <div className="p-3 space-y-1">
-                        <div className="flex items-center gap-1.5">
-                          {isImage ? (
-                            <ImageIcon className="w-3.5 h-3.5 shrink-0 text-brand-500" />
-                          ) : isPdf ? (
-                            <FileText className="w-3.5 h-3.5 shrink-0 text-rose-500" />
-                          ) : (
-                            <FileText className="w-3.5 h-3.5 shrink-0 text-ink/40" />
-                          )}
-                          <span className="text-xs font-semibold text-ink truncate flex-1">
-                            {doc.name}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center justify-between text-[10px] text-ink/40 font-mono">
-                          <span>{formatFileSize(doc.fileSize)}</span>
-                          <span>{doc.createdAt.split('T')[0]}</span>
-                        </div>
-
-                        {/* Linked Entities Pill */}
-                        {doc.links && doc.links.length > 0 && (
-                          <div className="pt-1 flex items-center gap-1 text-[10px] text-pine-600 dark:text-pine-400 truncate">
-                            <Link2 className="w-2.5 h-2.5 shrink-0" />
-                            <span className="truncate">{doc.links[0].entityName || doc.links[0].entityType}</span>
-                            {doc.links.length > 1 && (
-                              <span className="text-[9px] font-bold">+{doc.links.length - 1}</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              /* ── List View (Dense Table) ── */
-              <div className="rounded-2xl border border-line bg-surface overflow-hidden shadow-xs">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-line bg-surface-2/60 text-[11px] font-bold text-ink/50 uppercase tracking-wider">
-                      <th className="py-2.5 px-4">Name</th>
-                      <th className="py-2.5 px-3">Linked Entities</th>
-                      <th className="py-2.5 px-3">Folder</th>
-                      <th className="py-2.5 px-3">Modified</th>
-                      <th className="py-2.5 px-3">Size</th>
-                      <th className="py-2.5 px-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-line/60">
-                    {displayedDocs.map((doc) => {
-                      const isSelected = selectedDocId === doc.id;
-                      const isStarred = starredIds.has(doc.id);
-                      const folder = folderLookup.get(doc.folderId || 'unfiled');
-
-                      return (
-                        <tr
-                          key={doc.id}
-                          onClick={() => setSelectedDocId(doc.id)}
-                          onDoubleClick={() => onOpenDoc(doc.id)}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            setSelectedDocId(doc.id);
-                            setContextMenu({ x: e.clientX, y: e.clientY, doc });
-                          }}
-                          className={`group cursor-pointer transition-colors ${
-                            isSelected ? 'bg-brand-50/40 dark:bg-brand-950/40' : 'hover:bg-moss/40'
-                          }`}
-                        >
-                          <td className="py-2.5 px-4">
-                            <div className="flex items-center gap-2.5 truncate max-w-xs sm:max-w-sm">
-                              <button
-                                type="button"
-                                onClick={(e) => toggleStar(doc.id, e)}
-                                className={`p-1 rounded-md transition-colors ${
-                                  isStarred ? 'text-amber-500' : 'text-ink/20 hover:text-ink/50'
-                                }`}
-                              >
-                                <Star className={`w-3.5 h-3.5 ${isStarred ? 'fill-amber-400' : ''}`} />
-                              </button>
-                              <span className="font-semibold text-ink truncate">{doc.name}</span>
-                            </div>
-                          </td>
-
-                          <td className="py-2.5 px-3">
-                            {doc.links && doc.links.length > 0 ? (
-                              <div className="flex items-center gap-1 text-[11px] text-pine-600 dark:text-pine-400 truncate max-w-xs">
-                                <Link2 className="w-3 h-3 shrink-0" />
-                                <span className="truncate">{doc.links[0].entityName || doc.links[0].entityType}</span>
-                                {doc.links.length > 1 && (
-                                  <span className="px-1 py-0.2 bg-pine-100 dark:bg-pine-900/60 rounded text-[9px] font-bold">
-                                    +{doc.links.length - 1}
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-ink/30 italic">Unlinked</span>
-                            )}
-                          </td>
-
-                          <td className="py-2.5 px-3">
-                            <span className="inline-flex items-center gap-1 text-[11px] text-ink/60">
-                              <span>{folder?.icon || '📁'}</span>
-                              <span className="truncate max-w-[100px]">{folder?.name || 'Unfiled'}</span>
-                            </span>
-                          </td>
-
-                          <td className="py-2.5 px-3 font-mono text-[11px] text-ink/50">
-                            {doc.createdAt.split('T')[0]}
-                          </td>
-
-                          <td className="py-2.5 px-3 font-mono text-[11px] text-ink/50">
-                            {formatFileSize(doc.fileSize)}
-                          </td>
-
-                          <td className="py-2.5 px-4 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onOpenDoc(doc.id);
-                                }}
-                                className="p-1.5 text-ink/50 hover:text-brand-600 rounded-lg hover:bg-moss/70 transition-colors"
-                                title="Preview (Enter)"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onDeleteDoc(doc);
-                                }}
-                                className="p-1.5 text-ink/50 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
-                                title="Delete (Del)"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                    );
+                  })}
+                </div>
               </div>
             )}
+
+            {/* ───────────────────────────────────────────────────────
+                B. FILES SECTION (Grid vs List)
+            ─────────────────────────────────────────────────────── */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-ink/40">
+                  Files ({displayedDocs.length})
+                </h4>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSelectAll}
+                    className="text-[11px] font-semibold text-ink/50 hover:text-brand-600 flex items-center gap-1"
+                  >
+                    <CheckSquare className="w-3 h-3" /> Select All
+                  </button>
+                </div>
+              </div>
+
+              {/* Empty state */}
+              {displayedDocs.length === 0 ? (
+                <div className="py-16 text-center space-y-3 bg-surface-2/20 border border-dashed border-line rounded-3xl p-6">
+                  <div className="w-12 h-12 rounded-2xl bg-brand-500/10 text-brand-600 grid place-items-center mx-auto">
+                    <FileText className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-ink">No documents found</h3>
+                    <p className="text-xs text-ink/50 mt-1">
+                      {searchQuery
+                        ? `No results matching "${searchQuery}"`
+                        : 'Upload agreements, deeds, invoices, receipts, and policies'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onUploadClick}
+                    className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 shadow-xs transition-colors"
+                  >
+                    <Upload className="w-3.5 h-3.5" /> Upload File
+                  </button>
+                </div>
+              ) : viewMode === 'grid' ? (
+                /* ─────────────────────────────────────────────────────
+                    GRID VIEW (Internxt Card Grid)
+                ───────────────────────────────────────────────────── */
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3.5">
+                  {displayedDocs.map((doc, idx) => {
+                    const isSelected = selectedDocIds.has(doc.id);
+                    const isStarred = starredIds.has(doc.id);
+                    const isImage = doc.fileType.startsWith('image/');
+
+                    return (
+                      <div
+                        key={doc.id}
+                        onClick={(e) => handleSelectDoc(doc.id, e)}
+                        onDoubleClick={() => onOpenDoc(doc.id)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          handleSelectDoc(doc.id);
+                          setContextMenu({ x: e.clientX, y: e.clientY, doc });
+                        }}
+                        className={`group relative flex flex-col p-2.5 rounded-2xl border transition-all cursor-pointer shadow-2xs ${
+                          isSelected
+                            ? 'border-brand-500 bg-brand-500/10 ring-2 ring-brand-500/30 shadow-xs'
+                            : 'border-line bg-surface hover:border-brand-500/40 hover:bg-surface-2/60'
+                        }`}
+                      >
+                        {/* Top Card Bar: Checkbox + Star + More */}
+                        <div className="flex items-center justify-between mb-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectDoc(doc.id, { shiftKey: true } as any);
+                            }}
+                            className={`p-1 rounded-lg transition-opacity ${
+                              isSelected
+                                ? 'opacity-100 text-brand-600'
+                                : 'opacity-0 group-hover:opacity-100 text-ink/40 hover:text-ink'
+                            }`}
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-4 h-4" />
+                            ) : (
+                              <Square className="w-4 h-4" />
+                            )}
+                          </button>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => toggleStar(doc.id, e)}
+                              className={`p-1 rounded-lg transition-opacity ${
+                                isStarred
+                                  ? 'opacity-100 text-amber-500'
+                                  : 'opacity-0 group-hover:opacity-100 text-ink/30 hover:text-amber-500'
+                              }`}
+                            >
+                              <Star className="w-3.5 h-3.5 fill-current" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setContextMenu({ x: e.clientX, y: e.clientY, doc });
+                              }}
+                              className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-moss text-ink/40 hover:text-ink transition-opacity"
+                            >
+                              <MoreVertical className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Central Preview Box */}
+                        <div className="w-full aspect-[4/3] rounded-xl bg-surface-2/60 border border-line/50 overflow-hidden grid place-items-center mb-2.5 relative">
+                          {isImage && doc.thumbnailUrl ? (
+                            <img
+                              src={doc.thumbnailUrl}
+                              alt={doc.name}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center p-2">
+                              {renderFileIcon(doc.fileType, doc.name, 'w-8 h-8')}
+                              <span className="text-[10px] font-mono font-bold text-ink/40 uppercase mt-1">
+                                {doc.fileType.split('/')[1] || 'FILE'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Card Info Footer */}
+                        <div className="space-y-1">
+                          <span
+                            className="block text-xs font-bold text-ink truncate leading-tight group-hover:text-brand-600"
+                            title={doc.name}
+                          >
+                            {doc.name}
+                          </span>
+
+                          <div className="flex items-center justify-between text-[10px] text-ink/50 font-mono">
+                            <span>{formatFileSize(doc.fileSize || 0)}</span>
+                            <span>{formatReadableDate(doc.createdAt)}</span>
+                          </div>
+
+                          {/* Linked Entity Pill */}
+                          {doc.linkedType && (
+                            <span className="inline-block px-2 py-0.5 rounded-md bg-brand-500/10 text-brand-600 text-[9px] font-semibold uppercase tracking-wider truncate max-w-full">
+                              {doc.linkedType}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                /* ─────────────────────────────────────────────────────
+                    LIST VIEW (Internxt Table)
+                ───────────────────────────────────────────────────── */
+                <div className="rounded-2xl border border-line bg-surface overflow-hidden shadow-2xs">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-line bg-surface-2/50 text-[11px] font-bold text-ink/50 uppercase tracking-wider">
+                        <th className="py-2.5 pl-4 pr-2 w-10">
+                          <button
+                            type="button"
+                            onClick={handleSelectAll}
+                            className="text-ink/40 hover:text-ink"
+                          >
+                            <Square className="w-3.5 h-3.5" />
+                          </button>
+                        </th>
+                        <th className="py-2.5 px-3">Name</th>
+                        <th className="py-2.5 px-3 hidden sm:table-cell">Modified</th>
+                        <th className="py-2.5 px-3 hidden md:table-cell">Size</th>
+                        <th className="py-2.5 px-3 hidden lg:table-cell">Linked To</th>
+                        <th className="py-2.5 pr-4 pl-2 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line/60 text-xs">
+                      {displayedDocs.map((doc) => {
+                        const isSelected = selectedDocIds.has(doc.id);
+                        const isStarred = starredIds.has(doc.id);
+
+                        return (
+                          <tr
+                            key={doc.id}
+                            onClick={(e) => handleSelectDoc(doc.id, e)}
+                            onDoubleClick={() => onOpenDoc(doc.id)}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              handleSelectDoc(doc.id);
+                              setContextMenu({ x: e.clientX, y: e.clientY, doc });
+                            }}
+                            className={`group transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-brand-500/10'
+                                : 'hover:bg-moss/40'
+                            }`}
+                          >
+                            <td className="py-2.5 pl-4 pr-2" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => handleSelectDoc(doc.id, { shiftKey: true } as any)}
+                                className={`p-1 rounded text-ink/40 hover:text-ink ${
+                                  isSelected ? 'text-brand-600' : ''
+                                }`}
+                              >
+                                {isSelected ? (
+                                  <CheckSquare className="w-4 h-4 text-brand-600" />
+                                ) : (
+                                  <Square className="w-4 h-4" />
+                                )}
+                              </button>
+                            </td>
+
+                            <td className="py-2.5 px-3">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                {renderFileIcon(doc.fileType, doc.name, 'w-4 h-4 shrink-0')}
+                                <span className="font-semibold text-ink truncate group-hover:text-brand-600">
+                                  {doc.name}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="py-2.5 px-3 text-ink/50 text-[11px] font-mono hidden sm:table-cell whitespace-nowrap">
+                              {formatReadableDate(doc.createdAt)}
+                            </td>
+
+                            <td className="py-2.5 px-3 text-ink/50 text-[11px] font-mono hidden md:table-cell whitespace-nowrap">
+                              {formatFileSize(doc.fileSize || 0)}
+                            </td>
+
+                            <td className="py-2.5 px-3 hidden lg:table-cell">
+                              {doc.linkedType ? (
+                                <span className="px-2 py-0.5 rounded-md bg-brand-500/10 text-brand-600 text-[10px] font-semibold uppercase">
+                                  {doc.linkedType}
+                                </span>
+                              ) : (
+                                <span className="text-ink/30 text-[11px]">—</span>
+                              )}
+                            </td>
+
+                            <td className="py-2.5 pr-4 pl-2 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={(e) => toggleStar(doc.id, e)}
+                                  className={`p-1.5 rounded-lg transition-colors ${
+                                    isStarred
+                                      ? 'text-amber-500'
+                                      : 'opacity-0 group-hover:opacity-100 text-ink/30 hover:text-amber-500'
+                                  }`}
+                                >
+                                  <Star className="w-3.5 h-3.5 fill-current" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDownloadDoc(doc, e)}
+                                  className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-moss text-ink/50 hover:text-ink transition-opacity"
+                                  title="Download file"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setContextMenu({ x: e.clientX, y: e.clientY, doc });
+                                  }}
+                                  className="p-1.5 rounded-lg hover:bg-moss text-ink/40 hover:text-ink"
+                                >
+                                  <MoreVertical className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* ─────────────────────────────────────────────────────────────
-            3. RIGHT DETAILS INSPECTOR PANEL (Google Drive Details Pane)
-        ───────────────────────────────────────────────────────────── */}
+        {/* ───────────────────────────────────────────────────────────
+            RIGHT DETAILS INSPECTOR DRAWER (Internxt Side Drawer)
+        ─────────────────────────────────────────────────────────── */}
         {isInspectorOpen && (
-          <div className="w-72 shrink-0 border-l border-line bg-surface/90 flex flex-col min-h-0 overflow-y-auto select-none p-4 space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-line">
-              <span className="text-xs font-bold text-ink uppercase tracking-wider flex items-center gap-1.5">
-                <Info className="w-3.5 h-3.5 text-brand-500" />
-                Details & Activity
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsInspectorOpen(false)}
-                className="p-1 text-ink/40 hover:text-ink rounded-lg transition-colors"
-                title="Close Inspector (I)"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {selectedDoc ? (
-              <div className="space-y-4 text-xs">
-                {/* Large Preview Card */}
-                <div className="h-36 w-full rounded-2xl border border-line bg-surface-2 overflow-hidden flex items-center justify-center relative">
-                  {selectedDoc.thumbnailUrl ? (
-                    <img
-                      src={selectedDoc.thumbnailUrl}
-                      alt={selectedDoc.name}
-                      className="w-full h-full object-contain p-1"
-                    />
-                  ) : (
-                    <FileText className="w-12 h-12 text-ink/20" />
-                  )}
+          <div className="w-72 sm:w-80 shrink-0 border-l border-line bg-surface-2/20 flex flex-col justify-between overflow-y-auto p-4 anim-slide-left">
+            {primarySelectedDoc ? (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-ink/50">
+                    File Details
+                  </h3>
                   <button
                     type="button"
-                    onClick={() => onOpenDoc(selectedDoc.id)}
-                    className="absolute inset-0 bg-black/30 opacity-0 hover:opacity-100 flex items-center justify-center gap-1.5 text-white font-semibold text-xs transition-opacity backdrop-blur-xs"
+                    onClick={() => setIsInspectorOpen(false)}
+                    className="p-1 rounded-lg hover:bg-moss text-ink/40 hover:text-ink"
                   >
-                    <Eye className="w-4 h-4" /> Open Preview
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
 
-                {/* File Title */}
-                <div>
-                  <h4 className="font-bold text-ink break-words">{selectedDoc.name}</h4>
-                  <span className="text-[11px] text-ink/50">
-                    {selectedDoc.isUncompressed ? 'Bit-exact RAW original' : 'Smart Optimized 1080p'}
-                  </span>
-                </div>
-
-                {/* Quick Info Grid */}
-                <div className="p-3 bg-surface-2/60 rounded-2xl border border-line/60 space-y-2 text-[11px]">
-                  <div className="flex justify-between">
-                    <span className="text-ink/50">Type</span>
-                    <span className="font-semibold text-ink truncate max-w-[120px]">{selectedDoc.fileType}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-ink/50">Size</span>
-                    <span className="font-mono font-semibold text-ink">{formatFileSize(selectedDoc.fileSize)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-ink/50">Uploaded</span>
-                    <span className="font-mono text-ink">{formatReadableDate(selectedDoc.createdAt)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-ink/50">Folder</span>
-                    <span className="font-semibold text-ink">
-                      {folderLookup.get(selectedDoc.folderId || 'unfiled')?.name || 'Unfiled'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Linked Entities */}
-                <div className="space-y-1.5">
-                  <span className="text-[11px] font-bold text-ink/50 uppercase tracking-wider block">
-                    Linked Entities ({selectedDoc.links?.length || 0})
-                  </span>
-                  {selectedDoc.links && selectedDoc.links.length > 0 ? (
-                    <div className="space-y-1">
-                      {selectedDoc.links.map((link, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center gap-2 p-2 rounded-xl bg-moss/50 border border-line text-[11px]"
-                        >
-                          <Link2 className="w-3.5 h-3.5 text-pine-600 shrink-0" />
-                          <div className="min-w-0 flex-1">
-                            <span className="block font-semibold text-ink truncate">{link.entityName}</span>
-                            <span className="block text-[10px] text-ink/50 capitalize">{link.entityType}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                {/* Big Preview Banner */}
+                <div className="w-full aspect-video rounded-2xl bg-surface border border-line overflow-hidden grid place-items-center relative shadow-2xs">
+                  {primarySelectedDoc.fileType.startsWith('image/') && primarySelectedDoc.thumbnailUrl ? (
+                    <img
+                      src={primarySelectedDoc.thumbnailUrl}
+                      alt={primarySelectedDoc.name}
+                      className="w-full h-full object-contain"
+                    />
                   ) : (
-                    <p className="text-[11px] text-ink/40 italic">Not linked to any transaction or asset yet.</p>
+                    <div className="flex flex-col items-center justify-center p-3 text-center">
+                      {renderFileIcon(primarySelectedDoc.fileType, primarySelectedDoc.name, 'w-10 h-10')}
+                      <span className="text-xs font-mono font-bold text-ink/50 mt-1">
+                        {primarySelectedDoc.fileType}
+                      </span>
+                    </div>
                   )}
                 </div>
 
-                {/* Primary Action Buttons */}
+                {/* File Metadata List */}
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <span className="text-[10px] font-bold text-ink/40 uppercase">Name</span>
+                    <p className="font-bold text-ink break-words mt-0.5">
+                      {primarySelectedDoc.name}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-[10px] font-bold text-ink/40 uppercase">Size</span>
+                      <p className="font-mono text-ink mt-0.5">
+                        {formatFileSize(primarySelectedDoc.fileSize || 0)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] font-bold text-ink/40 uppercase">Format</span>
+                      <p className="font-mono text-ink mt-0.5 truncate">
+                        {primarySelectedDoc.fileType.split('/')[1]?.toUpperCase() || 'FILE'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-bold text-ink/40 uppercase">Security</span>
+                    <div className="flex items-center gap-1.5 text-pine-600 dark:text-pine-400 font-semibold mt-0.5">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>AES-256 Encrypted Sovereign SQLite</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] font-bold text-ink/40 uppercase">Created Date</span>
+                    <p className="text-ink/70 font-mono mt-0.5">
+                      {formatReadableDate(primarySelectedDoc.createdAt)}
+                    </p>
+                  </div>
+
+                  {/* Linked KhataGHAR entities */}
+                  <div>
+                    <span className="text-[10px] font-bold text-ink/40 uppercase">
+                      Linked KhataGHAR Records
+                    </span>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {primarySelectedDoc.linkedType ? (
+                        <span className="px-2.5 py-1 rounded-xl bg-brand-500/10 text-brand-600 text-[11px] font-semibold uppercase">
+                          {primarySelectedDoc.linkedType}
+                        </span>
+                      ) : (
+                        <span className="text-ink/40 text-[11px]">No direct entity link</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Direct action buttons */}
                 <div className="pt-2 space-y-2">
                   <button
                     type="button"
-                    onClick={() => onOpenDoc(selectedDoc.id)}
-                    className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-brand-500 hover:bg-brand-600 text-white rounded-xl font-semibold text-xs transition-colors shadow-xs"
+                    onClick={() => onOpenDoc(primarySelectedDoc.id)}
+                    className="w-full py-2 px-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-colors"
                   >
-                    <Eye className="w-3.5 h-3.5" /> Fullscreen Lightbox
+                    <Eye className="w-3.5 h-3.5" /> Open Full Viewer
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => onDeleteDoc(selectedDoc)}
-                    className="w-full flex items-center justify-center gap-2 py-1.5 px-3 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl font-semibold text-xs transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Delete File
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadDoc(primarySelectedDoc)}
+                      className="py-2 px-3 rounded-xl border border-line bg-surface hover:bg-moss text-ink text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Download
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onDeleteDoc(primarySelectedDoc)}
+                      className="py-2 px-3 rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className="py-12 text-center text-ink/40 text-xs">
-                Select a file to inspect its metadata and links.
+              <div className="text-center py-20 text-xs text-ink/40">
+                Select a document to inspect its properties and encryption status
               </div>
             )}
           </div>
@@ -1007,71 +1428,102 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
-          4. RIGHT-CLICK CONTEXT MENU
+          3. RIGHT-CLICK CONTEXT MENU
       ───────────────────────────────────────────────────────────── */}
       {contextMenu && (
         <div
-          style={{ top: contextMenu.y, left: contextMenu.x }}
-          className="fixed z-50 w-48 bg-surface rounded-2xl border border-line shadow-2xl p-1.5 space-y-0.5 select-none"
+          style={{ top: contextMenu.y, left: Math.min(contextMenu.x, window.innerWidth - 220) }}
+          className="fixed z-50 w-52 py-1.5 bg-surface border border-line rounded-2xl shadow-xl text-xs text-ink space-y-0.5 anim-scale"
           onClick={(e) => e.stopPropagation()}
         >
-          <button
-            type="button"
-            onClick={() => {
-              onOpenDoc(contextMenu.doc.id);
-              setContextMenu(null);
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-ink hover:bg-moss/70 rounded-xl transition-colors text-left font-medium"
-          >
-            <Eye className="w-3.5 h-3.5 text-brand-500" />
-            <span>Preview (Enter)</span>
-          </button>
+          {contextMenu.doc ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenDoc(contextMenu.doc!.id);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3.5 py-2 hover:bg-moss flex items-center gap-2.5 font-semibold"
+              >
+                <Eye className="w-3.5 h-3.5 text-brand-500" /> Open Viewer
+              </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              toggleStar(contextMenu.doc.id);
-              setContextMenu(null);
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-ink hover:bg-moss/70 rounded-xl transition-colors text-left"
-          >
-            <Star className="w-3.5 h-3.5 text-amber-500" />
-            <span>{starredIds.has(contextMenu.doc.id) ? 'Remove Star' : 'Add Star (S)'}</span>
-          </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleDownloadDoc(contextMenu.doc!);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3.5 py-2 hover:bg-moss flex items-center gap-2.5 font-semibold"
+              >
+                <Download className="w-3.5 h-3.5 text-blue-500" /> Download
+              </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              onOpenDoc(contextMenu.doc.id); // Lightbox has the folder mover
-              setContextMenu(null);
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-ink hover:bg-moss/70 rounded-xl transition-colors text-left"
-          >
-            <Folder className="w-3.5 h-3.5 text-amber-500" />
-            <span>Move to Folder</span>
-          </button>
+              <button
+                type="button"
+                onClick={() => {
+                  toggleStar(contextMenu.doc!.id);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3.5 py-2 hover:bg-moss flex items-center gap-2.5 font-semibold"
+              >
+                <Star className="w-3.5 h-3.5 text-amber-500" />
+                {starredIds.has(contextMenu.doc!.id) ? 'Unstar' : 'Star Document'}
+              </button>
 
-          <div className="my-1 border-t border-line/60" />
+              <hr className="border-line my-1" />
 
-          <button
-            type="button"
-            onClick={() => {
-              onDeleteDoc(contextMenu.doc);
-              setContextMenu(null);
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-xl transition-colors text-left font-medium"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Delete (Del)</span>
-          </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteDoc(contextMenu.doc!);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 flex items-center gap-2.5 font-semibold"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Delete File
+              </button>
+            </>
+          ) : contextMenu.folder ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectFolder(contextMenu.folder!.id);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3.5 py-2 hover:bg-moss flex items-center gap-2.5 font-semibold"
+              >
+                <FolderOpen className="w-3.5 h-3.5 text-amber-500" /> Open Folder
+              </button>
+
+              {onDeleteFolder && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDeleteFolder(contextMenu.folder!.id);
+                    setContextMenu(null);
+                  }}
+                  className="w-full text-left px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 flex items-center gap-2.5 font-semibold"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Delete Folder
+                </button>
+              )}
+            </>
+          ) : null}
         </div>
       )}
 
-      {/* Shortcuts Reference Dialog */}
-      <DriveShortcutsModal
-        isOpen={isShortcutsModalOpen}
-        onClose={() => setIsShortcutsModalOpen(false)}
-      />
+      {/* ─────────────────────────────────────────────────────────────
+          4. KEYBOARD SHORTCUTS CHEAT SHEET MODAL
+      ───────────────────────────────────────────────────────────── */}
+      {isShortcutsModalOpen && (
+        <DriveShortcutsModal
+          isOpen={isShortcutsModalOpen}
+          onClose={() => setIsShortcutsModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

@@ -22,11 +22,12 @@ export const DocumentsView: React.FC = () => {
     documents,
     documentFolders,
     deleteDocument,
+    deleteDocumentFolder,
   } = useVault();
 
   const confirm = useConfirm();
 
-  // Layout switcher state: 'drive' (Google Drive) | 'files' (Android File Manager)
+  // Layout switcher state: 'drive' (Web Drive) | 'files' (Mobile Files)
   const [uiLayout, setUiLayout] = useState<'drive' | 'files'>(() => {
     try {
       const saved = localStorage.getItem('khata_document_ui_layout');
@@ -72,6 +73,22 @@ export const DocumentsView: React.FC = () => {
     });
     if (ok) {
       await deleteDocument(doc.id);
+    }
+  };
+
+  const handleDeleteFolder = async (folderId: string) => {
+    const folder = documentFolders.find((f) => f.id === folderId);
+    const ok = await confirm({
+      title: 'Delete Folder',
+      description: `Delete folder "${folder?.name || 'Folder'}"? Any files inside will become unfiled, but not deleted.`,
+      confirmText: 'Delete Folder',
+      variant: 'danger',
+    });
+    if (ok) {
+      await deleteDocumentFolder(folderId);
+      if (activeFolderId === folderId) {
+        setActiveFolderId('all');
+      }
     }
   };
 
@@ -174,6 +191,7 @@ export const DocumentsView: React.FC = () => {
           onUploadClick={() => setIsUploadModalOpen(true)}
           onNewFolderClick={() => setIsFolderModalOpen(true)}
           onDeleteDoc={handleDeleteDoc}
+          onDeleteFolder={handleDeleteFolder}
           totalStorageBytes={totalStorageBytes}
         />
       ) : (
@@ -196,6 +214,7 @@ export const DocumentsView: React.FC = () => {
           onUploadClick={() => setIsUploadModalOpen(true)}
           onNewFolderClick={() => setIsFolderModalOpen(true)}
           onDeleteDoc={handleDeleteDoc}
+          onDeleteFolder={handleDeleteFolder}
           totalStorageBytes={totalStorageBytes}
         />
       )}

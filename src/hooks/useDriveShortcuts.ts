@@ -10,11 +10,14 @@ export interface DriveShortcutsConfig {
   onShowShortcuts?: () => void;
   onSelectNext?: () => void;
   onSelectPrev?: () => void;
+  onSelectNextRow?: () => void;
+  onSelectPrevRow?: () => void;
   onSelectAll?: () => void;
   onClearSelection?: () => void;
   onOpenSelected?: () => void;
   onDeleteSelected?: () => void;
   onNavigateUp?: () => void;
+  hasSelection?: boolean;
   isEnabled?: boolean;
 }
 
@@ -29,11 +32,14 @@ export function useDriveShortcuts(config: DriveShortcutsConfig) {
     onShowShortcuts,
     onSelectNext,
     onSelectPrev,
+    onSelectNextRow,
+    onSelectPrevRow,
     onSelectAll,
     onClearSelection,
     onOpenSelected,
     onDeleteSelected,
     onNavigateUp,
+    hasSelection = false,
     isEnabled = true,
   } = config;
 
@@ -41,19 +47,28 @@ export function useDriveShortcuts(config: DriveShortcutsConfig) {
     if (!isEnabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement as HTMLElement | null;
       const target = e.target as HTMLElement | null;
-      const isInputFocused =
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable ||
-          target.closest('input') ||
-          target.closest('textarea'));
 
-      // If user is typing in a form or input, only allow Escape or Enter (if not multiline)
+      const isInputFocused =
+        (activeEl &&
+          (activeEl.tagName === 'INPUT' ||
+            activeEl.tagName === 'TEXTAREA' ||
+            activeEl.isContentEditable ||
+            activeEl.getAttribute('role') === 'textbox')) ||
+        (target &&
+          (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.isContentEditable ||
+            target.getAttribute('role') === 'textbox'));
+
+      // If user is inside an input/textarea
       if (isInputFocused) {
         if (e.key === 'Escape') {
-          (target as HTMLElement).blur();
+          e.preventDefault();
+          if (activeEl && typeof activeEl.blur === 'function') {
+            activeEl.blur();
+          }
           onClearSelection?.();
         }
         return;
@@ -61,14 +76,14 @@ export function useDriveShortcuts(config: DriveShortcutsConfig) {
 
       const isMetaOrCtrl = e.metaKey || e.ctrlKey;
 
-      // ? -> Show Keyboard Shortcuts
+      // ? or Shift + / -> Show Keyboard Shortcuts dialog
       if (e.key === '?' || (e.shiftKey && e.key === '/')) {
         e.preventDefault();
         onShowShortcuts?.();
         return;
       }
 
-      // / or Ctrl+F -> Focus Search
+      // / or Ctrl+F / Cmd+F -> Focus Search Bar
       if (e.key === '/' || (isMetaOrCtrl && (e.key === 'f' || e.key === 'F'))) {
         e.preventDefault();
         onSearchFocus?.();
@@ -82,6 +97,13 @@ export function useDriveShortcuts(config: DriveShortcutsConfig) {
         return;
       }
 
+      // Escape -> Clear Selection / Close overlays
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClearSelection?.();
+        return;
+      }
+
       // V -> Toggle View Mode (Grid vs List)
       if (!isMetaOrCtrl && (e.key === 'v' || e.key === 'V')) {
         e.preventDefault();
@@ -89,14 +111,14 @@ export function useDriveShortcuts(config: DriveShortcutsConfig) {
         return;
       }
 
-      // I -> Toggle Details Inspector
+      // I -> Toggle Details Inspector Drawer
       if (!isMetaOrCtrl && (e.key === 'i' || e.key === 'I')) {
         e.preventDefault();
         onToggleInspector?.();
         return;
       }
 
-      // S -> Star / Unstar
+      // S -> Star / Unstar Selected Document
       if (!isMetaOrCtrl && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
         onToggleStar?.();
@@ -104,44 +126,62 @@ export function useDriveShortcuts(config: DriveShortcutsConfig) {
       }
 
       // N or Ctrl+Shift+N -> New Folder
-      if ((!isMetaOrCtrl && (e.key === 'n' || e.key === 'N')) || (isMetaOrCtrl && e.shiftKey && (e.key === 'n' || e.key === 'N'))) {
+      if (
+        (!isMetaOrCtrl && (e.key === 'n' || e.key === 'N')) ||
+        (isMetaOrCtrl && e.shiftKey && (e.key === 'n' || e.key === 'N'))
+      ) {
         e.preventDefault();
         onNewFolder?.();
         return;
       }
 
       // U or Ctrl+U -> Upload
-      if ((!isMetaOrCtrl && (e.key === 'u' || e.key === 'U')) || (isMetaOrCtrl && (e.key === 'u' || e.key === 'U'))) {
+      if (
+        (!isMetaOrCtrl && (e.key === 'u' || e.key === 'U')) ||
+        (isMetaOrCtrl && (e.key === 'u' || e.key === 'U'))
+      ) {
         e.preventDefault();
         onUpload?.();
         return;
       }
 
-      // Arrow Down / Arrow Right -> Next item
-      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      // Arrow navigation
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (onSelectNextRow) {
+          onSelectNextRow();
+        } else {
+          onSelectNext?.();
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (onSelectPrevRow) {
+          onSelectPrevRow();
+        } else {
+          onSelectPrev?.();
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowRight') {
         e.preventDefault();
         onSelectNext?.();
         return;
       }
 
-      // Arrow Up / Arrow Left -> Previous item
-      if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      if (e.key === 'ArrowLeft') {
         e.preventDefault();
         onSelectPrev?.();
         return;
       }
 
-      // Enter or Space -> Open selected
+      // Enter or Space -> Open / preview selected item
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         onOpenSelected?.();
-        return;
-      }
-
-      // Backspace -> Navigate Up
-      if (e.key === 'Backspace') {
-        e.preventDefault();
-        onNavigateUp?.();
         return;
       }
 
@@ -152,10 +192,14 @@ export function useDriveShortcuts(config: DriveShortcutsConfig) {
         return;
       }
 
-      // Escape -> Clear Selection
-      if (e.key === 'Escape') {
+      // Backspace -> If selection active, delete; otherwise navigate back / up
+      if (e.key === 'Backspace') {
         e.preventDefault();
-        onClearSelection?.();
+        if (hasSelection) {
+          onDeleteSelected?.();
+        } else {
+          onNavigateUp?.();
+        }
         return;
       }
     };
@@ -172,11 +216,14 @@ export function useDriveShortcuts(config: DriveShortcutsConfig) {
     onShowShortcuts,
     onSelectNext,
     onSelectPrev,
+    onSelectNextRow,
+    onSelectPrevRow,
     onSelectAll,
     onClearSelection,
     onOpenSelected,
     onDeleteSelected,
     onNavigateUp,
+    hasSelection,
     isEnabled,
   ]);
 }
