@@ -30,6 +30,7 @@ import {
   X,
   ExternalLink,
 } from 'lucide-react';
+import { FolderIconBadge } from './GoogleDriveView';
 
 interface AndroidFileManagerViewProps {
   documents: DocumentRecord[];
@@ -216,7 +217,7 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
   const renderFileIcon = (fileType: string, name: string, className = 'w-5 h-5') => {
     const lowerName = name.toLowerCase();
     if (fileType.startsWith('image/')) {
-      return <ImageIcon className={`${className} text-brand-500`} />;
+      return <ImageIcon className={`${className} text-sky-500`} />;
     }
     if (fileType.includes('pdf') || lowerName.endsWith('.pdf')) {
       return <FileText className={`${className} text-rose-500`} />;
@@ -236,6 +237,114 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
       return <FileCode className={`${className} text-indigo-500`} />;
     }
     return <FileText className={`${className} text-slate-400 dark:text-slate-500`} />;
+  };
+
+  // Native drive file preview box for Grid view cards
+  const renderFilePreviewBox = (doc: DocumentRecord) => {
+    const isImage = doc.fileType.startsWith('image/');
+    const lowerName = doc.name.toLowerCase();
+    const isPdf = doc.fileType.includes('pdf') || lowerName.endsWith('.pdf');
+    const isSheet =
+      doc.fileType.includes('sheet') ||
+      doc.fileType.includes('excel') ||
+      lowerName.endsWith('.csv') ||
+      lowerName.endsWith('.xlsx') ||
+      lowerName.endsWith('.xls');
+    const isArchive =
+      lowerName.endsWith('.zip') || lowerName.endsWith('.tar') || lowerName.endsWith('.gz');
+
+    if (isImage && doc.thumbnailUrl) {
+      return (
+        <div className="w-full h-full bg-surface-2/60 overflow-hidden grid place-items-center relative">
+          <img
+            src={doc.thumbnailUrl}
+            alt={doc.name}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        </div>
+      );
+    }
+
+    if (isPdf) {
+      return (
+        <div className="w-full h-full bg-rose-50/40 dark:bg-rose-950/20 p-2.5 flex flex-col justify-between relative overflow-hidden border-b border-rose-100 dark:border-rose-900/40">
+          <div className="flex items-center justify-between">
+            <span className="px-1.5 py-0.5 rounded bg-rose-500 text-white font-mono text-[9px] font-extrabold tracking-wider">
+              PDF
+            </span>
+            <FileText className="w-4 h-4 text-rose-500/70" />
+          </div>
+          <div className="space-y-1 opacity-40">
+            <div className="h-1 bg-rose-400 rounded-full w-4/5" />
+            <div className="h-1 bg-rose-300 rounded-full w-full" />
+            <div className="h-1 bg-rose-300 rounded-full w-2/3" />
+          </div>
+          <div className="text-[9px] font-mono text-rose-600/70 font-semibold truncate">
+            Encrypted Document
+          </div>
+        </div>
+      );
+    }
+
+    if (isSheet) {
+      return (
+        <div className="w-full h-full bg-emerald-50/40 dark:bg-emerald-950/20 p-2.5 flex flex-col justify-between relative overflow-hidden border-b border-emerald-100 dark:border-emerald-900/40">
+          <div className="flex items-center justify-between">
+            <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-white font-mono text-[9px] font-extrabold tracking-wider">
+              XLS
+            </span>
+            <FileSpreadsheet className="w-4 h-4 text-emerald-500/70" />
+          </div>
+          <div className="grid grid-cols-3 gap-1 opacity-40">
+            <div className="h-1.5 bg-emerald-300 rounded-xs" />
+            <div className="h-1.5 bg-emerald-300 rounded-xs" />
+            <div className="h-1.5 bg-emerald-300 rounded-xs" />
+          </div>
+          <div className="text-[9px] font-mono text-emerald-600/70 font-semibold truncate">
+            Spreadsheet
+          </div>
+        </div>
+      );
+    }
+
+    if (isArchive) {
+      return (
+        <div className="w-full h-full bg-amber-50/40 dark:bg-amber-950/20 p-2.5 flex flex-col justify-between relative overflow-hidden border-b border-amber-100 dark:border-amber-900/40">
+          <div className="flex items-center justify-between">
+            <span className="px-1.5 py-0.5 rounded bg-amber-500 text-white font-mono text-[9px] font-extrabold tracking-wider">
+              ZIP
+            </span>
+            <Archive className="w-4 h-4 text-amber-500/70" />
+          </div>
+          <div className="space-y-1 opacity-40">
+            <div className="h-1 bg-amber-400 rounded-full w-2/3" />
+            <div className="h-1 bg-amber-300 rounded-full w-4/5" />
+          </div>
+          <div className="text-[9px] font-mono text-amber-600/70 font-semibold truncate">
+            Archive
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="w-full h-full bg-surface-2/60 p-2.5 flex flex-col justify-between relative overflow-hidden border-b border-line/40">
+        <div className="flex items-center justify-between">
+          <span className="px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-600 font-mono text-[9px] font-extrabold tracking-wider uppercase">
+            {doc.fileType.split('/')[1] || 'DOC'}
+          </span>
+          <FileText className="w-4 h-4 text-ink/30" />
+        </div>
+        <div className="space-y-1 opacity-30">
+          <div className="h-1 bg-ink/40 rounded-full w-3/4" />
+          <div className="h-1 bg-ink/30 rounded-full w-full" />
+        </div>
+        <div className="text-[9px] font-mono text-ink/40 font-semibold truncate">
+          Vault File
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -297,8 +406,8 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">{activeFolder.icon || '📁'}</span>
+            <div className="flex items-center gap-2.5">
+              <FolderIconBadge folder={activeFolder} size="sm" isOpen={true} />
               <div>
                 <h2 className="text-sm font-bold text-ink leading-tight">{activeFolder.name}</h2>
                 <span className="text-[11px] text-ink/50">
@@ -478,16 +587,12 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
                   <div
                     key={doc.id}
                     onClick={() => onOpenDoc(doc.id)}
-                    className="w-36 shrink-0 p-2.5 bg-surface border border-line hover:border-brand-500/40 rounded-2xl cursor-pointer shadow-2xs space-y-2 transition-all active:scale-[0.98]"
+                    className="w-36 shrink-0 p-2 bg-surface border border-line hover:border-brand-500/40 rounded-2xl cursor-pointer shadow-2xs space-y-2 transition-all active:scale-[0.98] overflow-hidden"
                   >
-                    <div className="w-full aspect-video rounded-xl bg-surface-2/60 border border-line/40 overflow-hidden grid place-items-center">
-                      {doc.fileType.startsWith('image/') && doc.thumbnailUrl ? (
-                        <img src={doc.thumbnailUrl} alt={doc.name} className="w-full h-full object-cover" />
-                      ) : (
-                        renderFileIcon(doc.fileType, doc.name, 'w-6 h-6')
-                      )}
+                    <div className="w-full aspect-[4/3] rounded-xl overflow-hidden relative">
+                      {renderFilePreviewBox(doc)}
                     </div>
-                    <div>
+                    <div className="px-1">
                       <span className="block text-xs font-bold text-ink truncate leading-tight">
                         {doc.name}
                       </span>
@@ -528,10 +633,12 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
                       onClick={() => onSelectFolder(f.id)}
                       className="flex items-center justify-between p-3 bg-surface hover:bg-surface-2 border border-line rounded-2xl cursor-pointer shadow-2xs transition-all active:scale-[0.98]"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="text-xl shrink-0">{f.icon || '📁'}</span>
-                        <div className="min-w-0">
-                          <span className="block text-xs font-bold text-ink truncate">{f.name}</span>
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <FolderIconBadge folder={f} size="md" />
+                        <div className="min-w-0 flex-1">
+                          <span className="block text-xs font-bold text-ink truncate group-hover:text-brand-600">
+                            {f.name}
+                          </span>
                           <span className="block text-[10px] text-ink/40 font-mono">
                             {count} {count === 1 ? 'file' : 'files'}
                           </span>
@@ -544,7 +651,7 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
                           e.stopPropagation();
                           setActiveFolderMenu(f);
                         }}
-                        className="p-1 rounded-lg text-ink/40 hover:text-ink"
+                        className="p-1 rounded-lg text-ink/40 hover:text-ink ml-1"
                       >
                         <MoreVertical className="w-3.5 h-3.5" />
                       </button>
@@ -580,14 +687,10 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
               <div
                 key={doc.id}
                 onClick={() => onOpenDoc(doc.id)}
-                className="p-3 bg-surface border border-line hover:border-brand-500/40 rounded-2xl cursor-pointer shadow-2xs space-y-2.5 transition-all active:scale-[0.98]"
+                className="bg-surface border border-line hover:border-brand-500/40 rounded-2xl cursor-pointer shadow-2xs space-y-2 transition-all active:scale-[0.98] overflow-hidden"
               >
-                <div className="w-full aspect-[4/3] rounded-xl bg-surface-2/60 border border-line/40 overflow-hidden grid place-items-center relative">
-                  {doc.fileType.startsWith('image/') && doc.thumbnailUrl ? (
-                    <img src={doc.thumbnailUrl} alt={doc.name} className="w-full h-full object-cover" />
-                  ) : (
-                    renderFileIcon(doc.fileType, doc.name, 'w-8 h-8')
-                  )}
+                <div className="w-full aspect-[4/3] relative">
+                  {renderFilePreviewBox(doc)}
 
                   <button
                     type="button"
@@ -595,13 +698,13 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
                       e.stopPropagation();
                       setActiveBottomSheetDoc(doc);
                     }}
-                    className="absolute top-1.5 right-1.5 p-1 rounded-lg bg-surface/80 backdrop-blur-xs text-ink/60 hover:text-ink"
+                    className="absolute top-2 right-2 p-1 rounded-lg bg-surface/80 backdrop-blur-xs text-ink/60 hover:text-ink z-10"
                   >
                     <MoreVertical className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
-                <div>
+                <div className="p-3 pt-0">
                   <span className="block text-xs font-bold text-ink truncate leading-tight">
                     {doc.name}
                   </span>
@@ -632,7 +735,7 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
                       <span>{formatFileSize(doc.fileSize || 0)}</span>
                       <span>•</span>
                       <span>{formatReadableDate(doc.createdAt)}</span>
-                      {doc.linkedType && (
+                      {doc.linkedType && doc.linkedType !== 'none' && (
                         <>
                           <span>•</span>
                           <span className="text-brand-600 font-semibold uppercase">{doc.linkedType}</span>
@@ -833,9 +936,9 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
                   key={f.id}
                   type="button"
                   onClick={() => handleMoveDoc(activeBottomSheetDoc.id, f.id)}
-                  className="w-full p-2.5 rounded-xl hover:bg-moss text-left text-xs font-semibold text-ink flex items-center gap-2"
+                  className="w-full p-2.5 rounded-xl hover:bg-moss text-left text-xs font-semibold text-ink flex items-center gap-2.5"
                 >
-                  <span>{f.icon || '📁'}</span>
+                  <FolderIconBadge folder={f} size="sm" />
                   <span className="truncate">{f.name}</span>
                 </button>
               ))}
@@ -859,7 +962,7 @@ export const AndroidFileManagerView: React.FC<AndroidFileManagerViewProps> = ({
             <div className="w-12 h-1.5 bg-line rounded-full mx-auto -mt-1" />
 
             <div className="flex items-center gap-3 pt-1">
-              <span className="text-3xl">{activeFolderMenu.icon || '📁'}</span>
+              <FolderIconBadge folder={activeFolderMenu} size="md" />
               <div className="min-w-0 flex-1">
                 <h3 className="text-sm font-bold text-ink truncate">{activeFolderMenu.name}</h3>
                 <p className="text-[11px] text-ink/50">Folder</p>

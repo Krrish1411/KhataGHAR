@@ -7,6 +7,7 @@ import { processFileForVault } from '../../utils/imageCompressor';
 import type { DocumentRecord, DocumentFolder, LinkedEntityType } from '../../types';
 import {
   Folder,
+  FolderOpen,
   FolderPlus,
   Upload,
   Search,
@@ -28,22 +29,75 @@ import {
   ShieldCheck,
   Check,
   X,
-  ArrowUpDown,
   FileSpreadsheet,
   FileCode,
   Archive,
   Plus,
-  ExternalLink,
-  FolderOpen,
   CheckSquare,
   Square,
   Sparkles,
   Layers,
   ArrowLeft,
-  MoveRight,
+  Receipt,
+  ShieldAlert,
+  Users,
+  Landmark,
+  FolderLock,
+  TrendingUp,
 } from 'lucide-react';
 import { useDriveShortcuts } from '../../hooks/useDriveShortcuts';
 import { DriveShortcutsModal } from './DriveShortcutsModal';
+
+// Helper to render beautiful native Drive folder icons with custom color
+export const FolderIconBadge: React.FC<{
+  folder: { icon?: string; color?: string; name: string };
+  size?: 'sm' | 'md' | 'lg';
+  isOpen?: boolean;
+}> = ({ folder, size = 'md', isOpen = false }) => {
+  const color = folder.color || '#3b82f6';
+  const sizeClasses = {
+    sm: 'w-7 h-7 rounded-lg',
+    md: 'w-10 h-10 rounded-xl',
+    lg: 'w-14 h-14 rounded-2xl',
+  };
+  const iconSizes = {
+    sm: 'w-4 h-4',
+    md: 'w-5 h-5',
+    lg: 'w-7 h-7',
+  };
+
+  const isEmoji =
+    folder.icon &&
+    /\p{Extended_Pictographic}/u.test(folder.icon) &&
+    folder.icon.length <= 4;
+
+  if (isEmoji) {
+    return (
+      <div
+        className={`${sizeClasses[size]} grid place-items-center shrink-0 shadow-2xs`}
+        style={{ backgroundColor: `${color}18` }}
+      >
+        <span className={size === 'sm' ? 'text-sm' : size === 'md' ? 'text-lg' : 'text-2xl'}>
+          {folder.icon}
+        </span>
+      </div>
+    );
+  }
+
+  const FolderComponent = isOpen ? FolderOpen : Folder;
+
+  return (
+    <div
+      className={`${sizeClasses[size]} grid place-items-center shrink-0 shadow-2xs transition-transform group-hover:scale-105`}
+      style={{
+        backgroundColor: `${color}18`,
+        color: color,
+      }}
+    >
+      <FolderComponent className={`${iconSizes[size]} fill-current/25`} />
+    </div>
+  );
+};
 
 interface GoogleDriveViewProps {
   documents: DocumentRecord[];
@@ -100,12 +154,13 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
 
-  // Inspector panel state
-  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
+  // Inspector panel: DEFAULT CLOSED so it doesn't squish the UI
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [isMoveMenuOpen, setIsMoveMenuOpen] = useState(false);
+  const [isFoldersExpanded, setIsFoldersExpanded] = useState(true);
 
   // Right-click context menu
   const [contextMenu, setContextMenu] = useState<{
@@ -225,13 +280,12 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     if (focusedIndex >= 0 && displayedDocs[focusedIndex]) {
       return displayedDocs[focusedIndex];
     }
-    return displayedDocs[0] || null;
+    return null;
   }, [selectedDocIds, focusedIndex, documents, displayedDocs]);
 
   // Handle single item selection
   const handleSelectDoc = (docId: string, e?: React.MouseEvent) => {
     if (e?.shiftKey || e?.ctrlKey || e?.metaKey) {
-      // Multi-select toggle
       setSelectedDocIds((prev) => {
         const next = new Set(prev);
         if (next.has(docId)) next.delete(docId);
@@ -239,7 +293,6 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
         return next;
       });
     } else {
-      // Single select
       setSelectedDocIds(new Set([docId]));
     }
     const idx = displayedDocs.findIndex((d) => d.id === docId);
@@ -422,11 +475,11 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
   // Format Storage breakdown string
   const storageFormatted = useMemo(() => formatFileSize(totalStorageBytes), [totalStorageBytes]);
 
-  // File type icon resolver
+  // File type icon resolver for table & chips
   const renderFileIcon = (fileType: string, name: string, className = 'w-5 h-5') => {
     const lowerName = name.toLowerCase();
     if (fileType.startsWith('image/')) {
-      return <ImageIcon className={`${className} text-brand-500`} />;
+      return <ImageIcon className={`${className} text-sky-500`} />;
     }
     if (fileType.includes('pdf') || lowerName.endsWith('.pdf')) {
       return <FileText className={`${className} text-rose-500`} />;
@@ -449,6 +502,118 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
     return <FileText className={`${className} text-slate-400 dark:text-slate-500`} />;
   };
 
+  // Native drive file preview box for Grid view cards
+  const renderFilePreviewBox = (doc: DocumentRecord) => {
+    const isImage = doc.fileType.startsWith('image/');
+    const lowerName = doc.name.toLowerCase();
+    const isPdf = doc.fileType.includes('pdf') || lowerName.endsWith('.pdf');
+    const isSheet =
+      doc.fileType.includes('sheet') ||
+      doc.fileType.includes('excel') ||
+      lowerName.endsWith('.csv') ||
+      lowerName.endsWith('.xlsx') ||
+      lowerName.endsWith('.xls');
+    const isArchive =
+      lowerName.endsWith('.zip') || lowerName.endsWith('.tar') || lowerName.endsWith('.gz');
+
+    if (isImage && doc.thumbnailUrl) {
+      return (
+        <div className="w-full h-full bg-surface-2/60 overflow-hidden grid place-items-center relative">
+          <img
+            src={doc.thumbnailUrl}
+            alt={doc.name}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        </div>
+      );
+    }
+
+    if (isPdf) {
+      return (
+        <div className="w-full h-full bg-rose-50/40 dark:bg-rose-950/20 p-3 flex flex-col justify-between relative overflow-hidden border-b border-rose-100 dark:border-rose-900/40">
+          <div className="flex items-center justify-between">
+            <span className="px-1.5 py-0.5 rounded bg-rose-500 text-white font-mono text-[9px] font-extrabold tracking-wider">
+              PDF
+            </span>
+            <FileText className="w-5 h-5 text-rose-500/70" />
+          </div>
+          <div className="space-y-1.5 opacity-40">
+            <div className="h-1.5 bg-rose-400 rounded-full w-4/5" />
+            <div className="h-1.5 bg-rose-300 rounded-full w-full" />
+            <div className="h-1.5 bg-rose-300 rounded-full w-2/3" />
+          </div>
+          <div className="text-[10px] font-mono text-rose-600/70 font-semibold truncate">
+            Encrypted Document
+          </div>
+        </div>
+      );
+    }
+
+    if (isSheet) {
+      return (
+        <div className="w-full h-full bg-emerald-50/40 dark:bg-emerald-950/20 p-3 flex flex-col justify-between relative overflow-hidden border-b border-emerald-100 dark:border-emerald-900/40">
+          <div className="flex items-center justify-between">
+            <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-white font-mono text-[9px] font-extrabold tracking-wider">
+              XLS
+            </span>
+            <FileSpreadsheet className="w-5 h-5 text-emerald-500/70" />
+          </div>
+          <div className="grid grid-cols-3 gap-1 opacity-40">
+            <div className="h-2 bg-emerald-300 rounded-xs" />
+            <div className="h-2 bg-emerald-300 rounded-xs" />
+            <div className="h-2 bg-emerald-300 rounded-xs" />
+            <div className="h-2 bg-emerald-200 rounded-xs" />
+            <div className="h-2 bg-emerald-200 rounded-xs" />
+            <div className="h-2 bg-emerald-200 rounded-xs" />
+          </div>
+          <div className="text-[10px] font-mono text-emerald-600/70 font-semibold truncate">
+            Spreadsheet Data
+          </div>
+        </div>
+      );
+    }
+
+    if (isArchive) {
+      return (
+        <div className="w-full h-full bg-amber-50/40 dark:bg-amber-950/20 p-3 flex flex-col justify-between relative overflow-hidden border-b border-amber-100 dark:border-amber-900/40">
+          <div className="flex items-center justify-between">
+            <span className="px-1.5 py-0.5 rounded bg-amber-500 text-white font-mono text-[9px] font-extrabold tracking-wider">
+              ZIP
+            </span>
+            <Archive className="w-5 h-5 text-amber-500/70" />
+          </div>
+          <div className="space-y-1.5 opacity-40">
+            <div className="h-1.5 bg-amber-400 rounded-full w-2/3" />
+            <div className="h-1.5 bg-amber-300 rounded-full w-4/5" />
+          </div>
+          <div className="text-[10px] font-mono text-amber-600/70 font-semibold truncate">
+            Compressed Archive
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="w-full h-full bg-surface-2/60 p-3 flex flex-col justify-between relative overflow-hidden border-b border-line/40">
+        <div className="flex items-center justify-between">
+          <span className="px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-600 font-mono text-[9px] font-extrabold tracking-wider uppercase">
+            {doc.fileType.split('/')[1] || 'DOC'}
+          </span>
+          <FileText className="w-5 h-5 text-ink/30" />
+        </div>
+        <div className="space-y-1.5 opacity-30">
+          <div className="h-1.5 bg-ink/40 rounded-full w-3/4" />
+          <div className="h-1.5 bg-ink/30 rounded-full w-full" />
+          <div className="h-1.5 bg-ink/30 rounded-full w-1/2" />
+        </div>
+        <div className="text-[10px] font-mono text-ink/40 font-semibold truncate">
+          Vault File
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
       onDragOver={handleDragOver}
@@ -466,17 +631,19 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
           </div>
           <div className="text-center">
             <h3 className="font-display font-bold text-lg text-ink">Drop files here to upload</h3>
-            <p className="text-xs text-ink/60">Files will be AES-256 encrypted and stored locally in your sovereign vault</p>
+            <p className="text-xs text-ink/60">
+              Files will be AES-256 encrypted and stored locally in your sovereign vault
+            </p>
           </div>
         </div>
       )}
 
       {/* ─────────────────────────────────────────────────────────────
-          1. TOP DRIVE TOOLBAR & SEARCH PILL (Internxt TopBar)
+          1. TOP TOOLBAR & SEARCH PILL (Internxt TopBar)
       ───────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-line bg-surface shrink-0">
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-line bg-surface shrink-0">
         {/* Left: Breadcrumbs navigation */}
-        <div className="flex items-center gap-1 text-xs font-semibold text-ink/60 overflow-hidden">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-ink/60 overflow-hidden">
           <button
             type="button"
             onClick={() => {
@@ -484,9 +651,9 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               onSelectFolder('all');
               onSelectEntityFilter('all');
             }}
-            className={`px-2.5 py-1 rounded-xl transition-all ${
+            className={`px-3 py-1.5 rounded-xl transition-all ${
               navSection === 'files' && activeFolderId === 'all'
-                ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
+                ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold shadow-2xs'
                 : 'hover:bg-moss text-ink/70 hover:text-ink'
             }`}
           >
@@ -496,9 +663,9 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
           {activeFolder && (
             <>
               <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
-              <span className="px-2.5 py-1 rounded-xl bg-surface-2 font-bold text-ink truncate flex items-center gap-1.5">
-                <span>{activeFolder.icon || '📁'}</span>
-                <span>{activeFolder.name}</span>
+              <span className="px-3 py-1.5 rounded-xl bg-surface-2 font-bold text-ink truncate flex items-center gap-2 border border-line/60 shadow-2xs">
+                <FolderIconBadge folder={activeFolder} size="sm" isOpen={true} />
+                <span className="truncate">{activeFolder.name}</span>
               </span>
             </>
           )}
@@ -506,21 +673,25 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
           {navSection === 'recent' && (
             <>
               <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
-              <span className="px-2.5 py-1 rounded-xl bg-surface-2 font-bold text-ink">Recent</span>
+              <span className="px-3 py-1.5 rounded-xl bg-surface-2 font-bold text-ink border border-line/60">
+                Recent
+              </span>
             </>
           )}
 
           {navSection === 'starred' && (
             <>
               <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
-              <span className="px-2.5 py-1 rounded-xl bg-surface-2 font-bold text-ink">Starred</span>
+              <span className="px-3 py-1.5 rounded-xl bg-surface-2 font-bold text-ink border border-line/60">
+                Starred
+              </span>
             </>
           )}
 
           {selectedEntityFilter !== 'all' && (
             <>
               <ChevronRight className="w-3.5 h-3.5 text-ink/30 shrink-0" />
-              <span className="px-2.5 py-1 rounded-xl bg-brand-500/10 text-brand-600 font-bold capitalize">
+              <span className="px-3 py-1.5 rounded-xl bg-brand-500/10 text-brand-600 font-bold capitalize border border-brand-500/20">
                 {selectedEntityFilter}s
               </span>
             </>
@@ -594,7 +765,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 </button>
 
                 {isMoveMenuOpen && (
-                  <div className="absolute right-0 top-full mt-1.5 w-48 py-1.5 bg-surface border border-line rounded-2xl shadow-xl z-50 text-xs text-ink space-y-0.5 anim-scale">
+                  <div className="absolute right-0 top-full mt-1.5 w-52 py-1.5 bg-surface border border-line rounded-2xl shadow-xl z-50 text-xs text-ink space-y-0.5 anim-scale">
                     <span className="px-3 py-1 text-[10px] font-bold text-ink/40 uppercase block">
                       Move to Folder:
                     </span>
@@ -612,7 +783,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                         onClick={() => handleMoveSelected(f.id)}
                         className="w-full text-left px-3 py-1.5 hover:bg-moss flex items-center gap-2 truncate"
                       >
-                        <span>{f.icon || '📁'}</span>
+                        <FolderIconBadge folder={f} size="sm" />
                         <span className="truncate">{f.name}</span>
                       </button>
                     ))}
@@ -746,8 +917,8 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
         {/* ───────────────────────────────────────────────────────────
             LEFT SIDEBAR (Internxt Drive Style)
         ─────────────────────────────────────────────────────────── */}
-        <div className="w-64 shrink-0 border-r border-line bg-surface-2/30 flex flex-col justify-between p-3.5 hidden md:flex">
-          <div className="space-y-4">
+        <div className="w-64 shrink-0 border-r border-line bg-surface-2/30 flex flex-col justify-between p-3 hidden md:flex overflow-y-auto">
+          <div className="space-y-3">
             {/* Prominent Internxt "+ New" Button */}
             <div className="relative" ref={newMenuRef}>
               <button
@@ -802,27 +973,77 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               )}
             </div>
 
-            {/* Primary Navigation Links */}
-            <div className="space-y-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setNavSection('files');
-                  onSelectFolder('all');
-                  onSelectEntityFilter('all');
-                }}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-                  navSection === 'files' && activeFolderId === 'all' && selectedEntityFilter === 'all'
-                    ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
-                    : 'text-ink/70 hover:text-ink hover:bg-moss/60'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Folder className="w-4 h-4" />
-                  <span>My Files</span>
+            {/* Primary Navigation Links with Expandable Folder Tree */}
+            <div className="space-y-0.5">
+              <div className="flex items-center justify-between group">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNavSection('files');
+                    onSelectFolder('all');
+                    onSelectEntityFilter('all');
+                  }}
+                  className={`flex-1 flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    navSection === 'files' && activeFolderId === 'all' && selectedEntityFilter === 'all'
+                      ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
+                      : 'text-ink/70 hover:text-ink hover:bg-moss/60'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Folder className="w-4 h-4" />
+                    <span>My Files</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-ink/40">{documents.length}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsFoldersExpanded((prev) => !prev)}
+                  className="p-1.5 rounded-lg text-ink/40 hover:text-ink hover:bg-moss"
+                  title="Toggle Folders"
+                >
+                  <ChevronDown
+                    className={`w-3.5 h-3.5 transition-transform ${isFoldersExpanded ? 'rotate-0' : '-rotate-90'}`}
+                  />
+                </button>
+              </div>
+
+              {/* Expandable folder tree */}
+              {isFoldersExpanded && (
+                <div className="pl-3.5 pr-1 space-y-0.5 border-l border-line/60 ml-3 mt-1">
+                  {folders.map((f) => {
+                    const count = documents.filter((d) => (d.folderId || 'unfiled') === f.id).length;
+                    const isFolderActive = navSection === 'files' && activeFolderId === f.id;
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => {
+                          setNavSection('files');
+                          onSelectFolder(f.id);
+                          onSelectEntityFilter('all');
+                        }}
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-all ${
+                          isFolderActive
+                            ? 'bg-brand-500/15 text-brand-600 dark:text-brand-400 font-bold'
+                            : 'text-ink/65 hover:text-ink hover:bg-moss/40'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <Folder
+                            className="w-3.5 h-3.5 shrink-0 fill-current/25"
+                            style={{ color: f.color || '#3b82f6' }}
+                          />
+                          <span className="truncate">{f.name}</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-ink/40 shrink-0 ml-1">
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-                <span className="text-[10px] font-mono text-ink/40">{documents.length}</span>
-              </button>
+              )}
 
               <button
                 type="button"
@@ -913,7 +1134,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
           </div>
 
           {/* Bottom Storage Meter Widget (Internxt Style) */}
-          <div className="p-3 bg-surface rounded-2xl border border-line shadow-2xs space-y-2">
+          <div className="p-3 bg-surface rounded-2xl border border-line shadow-2xs space-y-2 mt-4">
             <div className="flex items-center justify-between text-[11px] font-bold text-ink">
               <span className="flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-pine-500" /> Vault Storage
@@ -972,9 +1193,9 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                         }}
                         className="group flex items-center justify-between p-3 bg-surface hover:bg-surface-2 border border-line hover:border-brand-500/40 rounded-2xl cursor-pointer transition-all shadow-2xs hover:shadow-xs"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="text-xl shrink-0">{f.icon || '📁'}</span>
-                          <div className="min-w-0">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <FolderIconBadge folder={f} size="md" />
+                          <div className="min-w-0 flex-1">
                             <span className="block text-xs font-bold text-ink truncate group-hover:text-brand-600">
                               {f.name}
                             </span>
@@ -990,7 +1211,8 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                             e.stopPropagation();
                             setContextMenu({ x: e.clientX, y: e.clientY, folder: f });
                           }}
-                          className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-moss text-ink/40 hover:text-ink transition-opacity"
+                          className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-moss text-ink/40 hover:text-ink transition-opacity ml-1"
+                          title="Folder options"
                         >
                           <MoreVertical className="w-3.5 h-3.5" />
                         </button>
@@ -1007,7 +1229,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-ink/40">
-                  Files ({displayedDocs.length})
+                  {activeFolder ? `${activeFolder.name} Files` : 'Files'} ({displayedDocs.length})
                 </h4>
 
                 <div className="flex items-center gap-2">
@@ -1023,16 +1245,24 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
 
               {/* Empty state */}
               {displayedDocs.length === 0 ? (
-                <div className="py-16 text-center space-y-3 bg-surface-2/20 border border-dashed border-line rounded-3xl p-6">
+                <div className="py-14 text-center space-y-3 bg-surface-2/20 border border-dashed border-line rounded-3xl p-6">
                   <div className="w-12 h-12 rounded-2xl bg-brand-500/10 text-brand-600 grid place-items-center mx-auto">
-                    <FileText className="w-6 h-6" />
+                    {activeFolder ? (
+                      <Folder className="w-6 h-6 fill-brand-500/20" />
+                    ) : (
+                      <FileText className="w-6 h-6" />
+                    )}
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-ink">No documents found</h3>
-                    <p className="text-xs text-ink/50 mt-1">
-                      {searchQuery
-                        ? `No results matching "${searchQuery}"`
-                        : 'Upload agreements, deeds, invoices, receipts, and policies'}
+                    <h3 className="text-sm font-bold text-ink">
+                      {activeFolder ? `"${activeFolder.name}" is empty` : 'No documents found'}
+                    </h3>
+                    <p className="text-xs text-ink/50 mt-1 max-w-sm mx-auto">
+                      {activeFolder
+                        ? 'Upload or drag files here to securely encrypt and store them in this folder'
+                        : searchQuery
+                          ? `No files matching "${searchQuery}"`
+                          : 'Upload agreements, deeds, invoices, receipts, and policies'}
                     </p>
                   </div>
                   <button
@@ -1051,7 +1281,6 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                   {displayedDocs.map((doc, idx) => {
                     const isSelected = selectedDocIds.has(doc.id);
                     const isStarred = starredIds.has(doc.id);
-                    const isImage = doc.fileType.startsWith('image/');
 
                     return (
                       <div
@@ -1063,41 +1292,41 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                           handleSelectDoc(doc.id);
                           setContextMenu({ x: e.clientX, y: e.clientY, doc });
                         }}
-                        className={`group relative flex flex-col p-2.5 rounded-2xl border transition-all cursor-pointer shadow-2xs ${
+                        className={`group relative flex flex-col rounded-2xl border transition-all cursor-pointer shadow-2xs overflow-hidden ${
                           isSelected
                             ? 'border-brand-500 bg-brand-500/10 ring-2 ring-brand-500/30 shadow-xs'
                             : 'border-line bg-surface hover:border-brand-500/40 hover:bg-surface-2/60'
                         }`}
                       >
-                        {/* Top Card Bar: Checkbox + Star + More */}
-                        <div className="flex items-center justify-between mb-2">
+                        {/* Top Overlay Actions: Checkbox + Star + More */}
+                        <div className="absolute top-2 left-2 right-2 flex items-center justify-between z-10 pointer-events-none">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleSelectDoc(doc.id, { shiftKey: true } as any);
                             }}
-                            className={`p-1 rounded-lg transition-opacity ${
+                            className={`p-1 rounded-lg bg-surface/80 backdrop-blur-xs transition-opacity pointer-events-auto ${
                               isSelected
                                 ? 'opacity-100 text-brand-600'
-                                : 'opacity-0 group-hover:opacity-100 text-ink/40 hover:text-ink'
+                                : 'opacity-0 group-hover:opacity-100 text-ink/50 hover:text-ink'
                             }`}
                           >
                             {isSelected ? (
-                              <CheckSquare className="w-4 h-4" />
+                              <CheckSquare className="w-3.5 h-3.5" />
                             ) : (
-                              <Square className="w-4 h-4" />
+                              <Square className="w-3.5 h-3.5" />
                             )}
                           </button>
 
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 pointer-events-auto">
                             <button
                               type="button"
                               onClick={(e) => toggleStar(doc.id, e)}
-                              className={`p-1 rounded-lg transition-opacity ${
+                              className={`p-1 rounded-lg bg-surface/80 backdrop-blur-xs transition-opacity ${
                                 isStarred
                                   ? 'opacity-100 text-amber-500'
-                                  : 'opacity-0 group-hover:opacity-100 text-ink/30 hover:text-amber-500'
+                                  : 'opacity-0 group-hover:opacity-100 text-ink/40 hover:text-amber-500'
                               }`}
                             >
                               <Star className="w-3.5 h-3.5 fill-current" />
@@ -1109,40 +1338,29 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                                 e.stopPropagation();
                                 setContextMenu({ x: e.clientX, y: e.clientY, doc });
                               }}
-                              className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-moss text-ink/40 hover:text-ink transition-opacity"
+                              className="p-1 rounded-lg bg-surface/80 backdrop-blur-xs opacity-0 group-hover:opacity-100 hover:bg-moss text-ink/50 hover:text-ink transition-opacity"
                             >
                               <MoreVertical className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
 
-                        {/* Central Preview Box */}
-                        <div className="w-full aspect-[4/3] rounded-xl bg-surface-2/60 border border-line/50 overflow-hidden grid place-items-center mb-2.5 relative">
-                          {isImage && doc.thumbnailUrl ? (
-                            <img
-                              src={doc.thumbnailUrl}
-                              alt={doc.name}
-                              className="w-full h-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="flex flex-col items-center justify-center p-2">
-                              {renderFileIcon(doc.fileType, doc.name, 'w-8 h-8')}
-                              <span className="text-[10px] font-mono font-bold text-ink/40 uppercase mt-1">
-                                {doc.fileType.split('/')[1] || 'FILE'}
-                              </span>
-                            </div>
-                          )}
+                        {/* Central Native Drive Preview Box */}
+                        <div className="w-full aspect-[4/3] relative">
+                          {renderFilePreviewBox(doc)}
                         </div>
 
                         {/* Card Info Footer */}
-                        <div className="space-y-1">
-                          <span
-                            className="block text-xs font-bold text-ink truncate leading-tight group-hover:text-brand-600"
-                            title={doc.name}
-                          >
-                            {doc.name}
-                          </span>
+                        <div className="p-3 space-y-1 bg-surface">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {renderFileIcon(doc.fileType, doc.name, 'w-3.5 h-3.5 shrink-0')}
+                            <span
+                              className="block text-xs font-bold text-ink truncate leading-tight group-hover:text-brand-600"
+                              title={doc.name}
+                            >
+                              {doc.name}
+                            </span>
+                          </div>
 
                           <div className="flex items-center justify-between text-[10px] text-ink/50 font-mono">
                             <span>{formatFileSize(doc.fileSize || 0)}</span>
@@ -1150,8 +1368,8 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                           </div>
 
                           {/* Linked Entity Pill */}
-                          {doc.linkedType && (
-                            <span className="inline-block px-2 py-0.5 rounded-md bg-brand-500/10 text-brand-600 text-[9px] font-semibold uppercase tracking-wider truncate max-w-full">
+                          {doc.linkedType && doc.linkedType !== 'none' && (
+                            <span className="inline-block px-2 py-0.5 rounded-md bg-brand-500/10 text-brand-600 text-[9px] font-semibold uppercase tracking-wider truncate max-w-full mt-0.5">
                               {doc.linkedType}
                             </span>
                           )}
@@ -1200,9 +1418,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                               setContextMenu({ x: e.clientX, y: e.clientY, doc });
                             }}
                             className={`group transition-colors cursor-pointer ${
-                              isSelected
-                                ? 'bg-brand-500/10'
-                                : 'hover:bg-moss/40'
+                              isSelected ? 'bg-brand-500/10' : 'hover:bg-moss/40'
                             }`}
                           >
                             <td className="py-2.5 pl-4 pr-2" onClick={(e) => e.stopPropagation()}>
@@ -1239,7 +1455,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                             </td>
 
                             <td className="py-2.5 px-3 hidden lg:table-cell">
-                              {doc.linkedType ? (
+                              {doc.linkedType && doc.linkedType !== 'none' ? (
                                 <span className="px-2 py-0.5 rounded-md bg-brand-500/10 text-brand-600 text-[10px] font-semibold uppercase">
                                   {doc.linkedType}
                                 </span>
@@ -1378,7 +1594,7 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                       Linked KhataGHAR Records
                     </span>
                     <div className="mt-1 flex flex-wrap gap-1.5">
-                      {primarySelectedDoc.linkedType ? (
+                      {primarySelectedDoc.linkedType && primarySelectedDoc.linkedType !== 'none' ? (
                         <span className="px-2.5 py-1 rounded-xl bg-brand-500/10 text-brand-600 text-[11px] font-semibold uppercase">
                           {primarySelectedDoc.linkedType}
                         </span>
@@ -1419,8 +1635,9 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="text-center py-20 text-xs text-ink/40">
-                Select a document to inspect its properties and encryption status
+              <div className="text-center py-20 text-xs text-ink/40 space-y-2">
+                <Info className="w-6 h-6 mx-auto text-ink/30" />
+                <p>Click on any document to inspect its properties and encryption status</p>
               </div>
             )}
           </div>
@@ -1470,6 +1687,18 @@ export const GoogleDriveView: React.FC<GoogleDriveViewProps> = ({
               >
                 <Star className="w-3.5 h-3.5 text-amber-500" />
                 {starredIds.has(contextMenu.doc!.id) ? 'Unstar' : 'Star Document'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDocIds(new Set([contextMenu.doc!.id]));
+                  setIsInspectorOpen(true);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3.5 py-2 hover:bg-moss flex items-center gap-2.5 font-semibold"
+              >
+                <Info className="w-3.5 h-3.5 text-indigo-500" /> View Details
               </button>
 
               <hr className="border-line my-1" />
