@@ -2,6 +2,9 @@ name: Release — Tag & Publish
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   release:
@@ -37,9 +40,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: khata-ghar-${{ github.ref_name }}.zip
-          prerelease: true
+          prerelease: false
           body: |
-            ## KhataGHAR ${{ github.ref_name }} — Sovereign Wealth Operating System
+            ## KhataGHAR ${{ github.ref_name }} — Sovereign Wealth Operating System (Official Release)
 
             ### 🗂️ Drive UX Overhaul — Google Drive / Native Explorer Parity
             - 🖱️ **Rubber-band Marquee Selection**: Click-drag anywhere on the canvas to select multiple items exactly like Google Drive Desktop.

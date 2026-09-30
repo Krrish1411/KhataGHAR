@@ -4,6 +4,7 @@ import { Modal } from './Modal';
 import { Button } from './Button';
 import { AppVersionInfo, AppDistribution, APP_VERSION } from '../../types';
 import { detectDistribution } from '../../services/updater';
+import { openExternalLink } from '../../utils/native';
 
 interface UpdateModalProps {
   open: boolean;
@@ -22,6 +23,8 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ open, onClose, data })
 
   if (!data) return null;
 
+  const githubReleaseUrl = data.htmlUrl || `https://github.com/Krrish1411/KhataGHAR/releases/tag/${data.tagName}`;
+
   let platformLabel = 'Your Platform';
   let targetDownloadUrl: string | undefined = undefined;
   let targetFilename = 'KhataGHAR Update Package';
@@ -30,43 +33,43 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ open, onClose, data })
   switch (dist) {
     case 'windows-portable':
       platformLabel = 'Windows (Portable)';
-      targetDownloadUrl = data.downloads.windowsPortable || data.downloads.windows;
+      targetDownloadUrl = data.downloads.windowsPortable || data.downloads.windows || githubReleaseUrl;
       targetFilename = 'KhataGHAR-Windows-Portable.exe';
       helperNote = 'Zero installation needed. Simply download and replace your existing executable.';
       break;
     case 'windows-setup':
       platformLabel = 'Windows (Setup Installer)';
-      targetDownloadUrl = data.downloads.windows;
+      targetDownloadUrl = data.downloads.windows || githubReleaseUrl;
       targetFilename = 'KhataGHAR-Windows-Setup.exe';
       helperNote = 'Standard 64-bit installer with automatic desktop shortcut and start menu integration.';
       break;
     case 'linux-appimage':
       platformLabel = 'Linux (.AppImage)';
-      targetDownloadUrl = data.downloads.linux;
+      targetDownloadUrl = data.downloads.linux || githubReleaseUrl;
       targetFilename = 'KhataGHAR-Linux-x86_64.AppImage';
       helperNote = 'Universal Linux binary. Run chmod +x and launch on Ubuntu, Debian, Fedora, or Arch.';
       break;
     case 'linux-deb':
       platformLabel = 'Linux (Debian / Ubuntu .deb)';
-      targetDownloadUrl = data.downloads.linuxDeb || data.downloads.linux;
+      targetDownloadUrl = data.downloads.linuxDeb || data.downloads.linux || githubReleaseUrl;
       targetFilename = 'KhataGHAR-Linux-amd64.deb';
       helperNote = 'Native package for Debian, Ubuntu, Linux Mint, and derivatives.';
       break;
     case 'linux-tar':
       platformLabel = 'Linux (Tarball Archive)';
-      targetDownloadUrl = data.downloads.linuxTar || data.downloads.linux;
+      targetDownloadUrl = data.downloads.linuxTar || data.downloads.linux || githubReleaseUrl;
       targetFilename = 'KhataGHAR-Linux-x64.tar.gz';
       helperNote = 'Portable compressed tarball. Extract anywhere and execute binary directly.';
       break;
     case 'mac':
       platformLabel = 'macOS (Apple Silicon & Intel)';
-      targetDownloadUrl = data.downloads.mac;
+      targetDownloadUrl = data.downloads.mac || githubReleaseUrl;
       targetFilename = 'KhataGHAR-macOS.dmg';
       helperNote = 'Open the DMG image and drag KhataGHAR to your Applications folder.';
       break;
     case 'android':
       platformLabel = 'Android (Direct APK)';
-      targetDownloadUrl = data.downloads.android;
+      targetDownloadUrl = data.downloads.android || githubReleaseUrl;
       targetFilename = 'KhataGHAR-Android.apk';
       helperNote = 'Direct APK installation. Your offline encrypted database and settings are 100% preserved.';
       break;
@@ -78,8 +81,6 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ open, onClose, data })
       helperNote = 'Web client updates seamlessly in the background via Service Worker cache.';
       break;
   }
-
-  const githubReleaseUrl = data.htmlUrl || `https://github.com/Krrish1411/KhataGHAR/releases/tag/${data.tagName}`;
 
   const handleReloadApp = async () => {
     try {
@@ -183,7 +184,11 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ open, onClose, data })
                 href={targetDownloadUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full py-2.5 px-4 rounded-xl bg-pine-600 hover:bg-pine-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition active:scale-[0.99]"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (targetDownloadUrl) openExternalLink(targetDownloadUrl);
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-pine-600 hover:bg-pine-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition active:scale-[0.99] cursor-pointer"
               >
                 <Download className="w-4 h-4" />
                 <span>Download Update ({platformLabel})</span>
@@ -208,7 +213,11 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({ open, onClose, data })
             href={githubReleaseUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-pine-600 hover:underline"
+            onClick={(e) => {
+              e.preventDefault();
+              openExternalLink(githubReleaseUrl);
+            }}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-pine-600 hover:underline cursor-pointer"
           >
             <span>Browse All Platforms & Checksums on GitHub</span>
             <ExternalLink className="w-3.5 h-3.5" />

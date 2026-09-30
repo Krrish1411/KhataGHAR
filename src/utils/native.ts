@@ -54,3 +54,34 @@ export function initHardwareBackButton(onBack: () => boolean): () => void {
     handle.then((h) => h.remove()).catch(() => {});
   };
 }
+
+/**
+ * Safely open external web links in user's default browser.
+ * Works seamlessly across Electron (desktop), Capacitor (Android), and Web browsers.
+ */
+export async function openExternalLink(url: string): Promise<void> {
+  if (!url) return;
+
+  // 1. Electron Desktop
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.openExternal) {
+    try {
+      await (window as any).electronAPI.openExternal(url);
+      return;
+    } catch (e) {
+      console.warn('[Native] Electron openExternal error:', e);
+    }
+  }
+
+  // 2. Standard Web or Fallback
+  try {
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!opened && typeof window !== 'undefined') {
+      window.location.href = url;
+    }
+  } catch {
+    if (typeof window !== 'undefined') {
+      window.location.href = url;
+    }
+  }
+}
+

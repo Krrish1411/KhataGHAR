@@ -1,30 +1,27 @@
 {
-  "version": "1.0.0-beta.6",
-  "tagName": "v1.0.0-beta.6",
-  "releaseDate": "2026-09-22",
-  "minRequiredVersion": "1.0.0-beta.1",
-  "htmlUrl": "https://github.com/Krrish1411/KhataGHAR/releases/tag/v1.0.0-beta.6",
+  "version": "1.0.0",
+  "tagName": "v1.0.0",
+  "releaseDate": "2026-09-30",
+  "minRequiredVersion": "1.0.0",
+  "htmlUrl": "https://github.com/Krrish1411/KhataGHAR/releases/tag/v1.0.0",
   "changelog": [
-    "Universal Multi-Attachment Everywhere: Attach multiple receipts, deeds, agreements, IOUs, and passbooks to every Transaction, Asset, Liability, Savings Goal, People Ledger Entry, and Account.",
-    "Central Document & Attachment Hub: Sovereign encrypted file manager with pre-built system folders (Receipts, Deeds, Loans, People, Bank, Tax, Unfiled) and custom folders with custom colors and emoji icons.",
-    "Two-Tier Split-Payload Storage: Sub-second vault unlock (< 50ms) and ultra-low RAM footprint (< 30MB) across 1,000+ attachments by separating searchable metadata from heavy binary blobs (lazy-loaded on demand).",
-    "Dual-Directional Entity Linking: Attach files inside any modal or link/unlink existing files across multiple entries directly from the Document Hub.",
-    "Smart Optimized vs. Original RAW: Toggle between smart client-side 1080p compression and bit-exact uncompressed raw file storage.",
-    "Sub-5ms Instant Search & Filter: High-speed full-text search across attachment names, notes, and tags with entity filters and dual view modes (Visual Gallery Grid & Dense List Table).",
-    "Interactive Lightbox Document Viewer: Preview images and PDFs with smooth pan/zoom, 90-degree rotation, folder mover, and sovereign export.",
-    "Hero Card Real-Time Reactivity: Instant live balance calculations down to the single paisa for every entry without freezing.",
-    "First-Class Asset Redemption & Debt Payoff: Dedicated redemption tab with NAV calculations and one-click loan payoffs.",
-    "Android In-Place Update Fix: Continuous release signatures (v1, v2, v3) with persistent keystore ensuring seamless updates over existing installations."
+    "Official v1.0.0 Production Release: Institutional-grade sovereign wealth operating system.",
+    "Native Google Drive & Explorer Parity: Rubber-band marquee drag selection, keyboard navigation (Arrow keys, Enter, Backspace), and multi-item clipboard engine (Ctrl+X / Ctrl+C / Ctrl+V).",
+    "Persistent Selection & Floating Clipboard Bar: Full-width contextual action bar that never clips on mobile and floating bottom paste pill.",
+    "Linux AppImage & Desktop External Links Fix: External web links and download triggers now open directly in the user's default desktop browser via Electron shell.",
+    "In-App Irreversible Vault Deletion: Safe modal confirmation replacing browser prompt, ensuring reliable vault deletion on desktop AppImage, Android, and web.",
+    "Universal Multi-Attachment Hub: Sovereign AES-256 encrypted documents with split-payload lazy loading, folder organization, and direct entity linkages.",
+    "Double-Entry Ledger Integrity: 1-paisa real-time balance reactivity, custodial asset separation, and automated reconciliation."
   ],
   "downloads": {
-    "windows": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.6/KhataGHAR-Windows-Setup-1.0.0-beta.6.exe",
-    "windowsPortable": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.6/KhataGHAR-Windows-Portable-1.0.0-beta.6.exe",
-    "linux": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.6/KhataGHAR-Linux-1.0.0-beta.6-x64.AppImage",
-    "linuxDeb": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.6/KhataGHAR-Linux-1.0.0-beta.6-x64.deb",
-    "linuxTar": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.6/KhataGHAR-Linux-1.0.0-beta.6-x64.tar.gz",
-    "mac": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.6/KhataGHAR-macOS-1.0.0-beta.6-x64.dmg",
-    "macZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.6/KhataGHAR-macOS-1.0.0-beta.6-x64.zip",
-    "android": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.6/KhataGHAR-Android-v1.0.0-beta.6.apk",
-    "webZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0-beta.6/khata-ghar-v1.0.0-beta.6.zip"
+    "windows": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0/KhataGHAR-Windows-Setup-1.0.0.exe",
+    "windowsPortable": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0/KhataGHAR-Windows-Portable-1.0.0.exe",
+    "linux": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0/KhataGHAR-Linux-1.0.0-x64.AppImage",
+    "linuxDeb": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0/KhataGHAR-Linux-1.0.0-x64.deb",
+    "linuxTar": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0/KhataGHAR-Linux-1.0.0-x64.tar.gz",
+    "mac": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0/KhataGHAR-macOS-1.0.0-x64.dmg",
+    "macZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0/KhataGHAR-macOS-1.0.0-x64.zip",
+    "android": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0/KhataGHAR-Android-v1.0.0.apk",
+    "webZip": "https://github.com/Krrish1411/KhataGHAR/releases/download/v1.0.0/khata-ghar-v1.0.0.zip"
   }
 }

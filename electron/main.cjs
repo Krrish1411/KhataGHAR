@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, session, Notification, shell } = require('electron');
 const path = require('path');
 const db = require('./db.cjs');
 
@@ -68,10 +68,24 @@ function createWindow() {
       }
     });
 
-    // Block remote navigation & untrusted window popups
-    mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    // Allow external web links to open in system default browser (Chrome, Firefox, etc.)
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+      if (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('mailto:')) {
+        shell.openExternal(url);
+        return { action: 'deny' };
+      }
+      if (url.startsWith('blob:') || url === 'about:blank') {
+        return { action: 'allow' };
+      }
+      return { action: 'deny' };
+    });
     mainWindow.webContents.on('will-navigate', (event, url) => {
-      if (!url.startsWith('file://')) event.preventDefault();
+      if (!url.startsWith('file://')) {
+        event.preventDefault();
+        if (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('mailto:')) {
+          shell.openExternal(url);
+        }
+      }
     });
 
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
@@ -165,6 +179,18 @@ function registerIpcHandlers() {
       }
     } catch (e) {
       console.warn('Electron notification error:', e);
+    }
+    return false;
+  });
+
+  ipcMain.handle('open-external', async (_event, url) => {
+    try {
+      if (url && (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('mailto:'))) {
+        await shell.openExternal(url);
+        return true;
+      }
+    } catch (e) {
+      console.warn('Electron open-external error:', e);
     }
     return false;
   });

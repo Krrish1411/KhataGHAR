@@ -52,8 +52,7 @@ import {
   Pause,
 } from 'lucide-react';
 import { WelcomeP2PSyncModal } from '../sync/WelcomeP2PSyncModal';
-
-const APP_VERSION = '1.0.0';
+import { APP_VERSION } from '../../types';
 
 interface WelcomeLandingViewProps {
   onBackToLock?: () => void;

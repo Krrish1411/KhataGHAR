@@ -1,5 +1,5 @@
-export const APP_VERSION = '1.0.0-beta.6';
-export const APP_CHANNEL = 'Beta Preview';
+export const APP_VERSION = '1.0.0';
+export const APP_CHANNEL = 'Official Release';
 
 export type AppDistribution =
   | 'windows-setup'

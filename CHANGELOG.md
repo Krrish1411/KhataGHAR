@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.0.0] - 2026-09-30 — Official Production Release
+
+### 🚀 Production Milestones & Stability Polish
+- **Official General Availability (v1.0.0)**: Zero-cloud, 100% offline, institutional-grade personal wealth operating system across Web, Desktop (Linux, Windows, macOS), and Android.
+- **Linux AppImage & Desktop External Links Fix**: External web links, GitHub release downloads, and documentation links now open directly in the user's default desktop browser via Electron shell integration.
+- **In-App Irreversible Vault Deletion**: Replaced browser-native `prompt()` and `alert()` with a secure in-app danger modal requiring typed confirmation, ensuring smooth vault deletion on Linux AppImage, Electron, Android, and web.
+- **Eliminated False Update Prompts**: Synchronized application versioning and release comparators so updated installations never trigger false update notices.
+- **Native Drive & Explorer Parity**: Complete file management suite featuring rubber-band marquee selection, keyboard navigation (`↑↓←→`, `Enter`, `Backspace`), multi-item clipboard (`Ctrl+X`, `Ctrl+C`, `Ctrl+V`), and Google Drive-style floating action pill.
+- **Universal Multi-Attachment Hub**: Encrypted AES-256 storage with two-tier split-payload architecture (< 50ms unlock, < 30MB RAM overhead for 1,000+ files).
+- **Double-Entry Ledger Integrity**: 1-paisa real-time balance calculations, automated ledger reconciliation, and custodial third-party asset segregation.
+
+---
+
 ## [1.0.0-beta.7] - 2026-09-22
 
 ### 🗂️ Drive UX Overhaul — Google Drive / Native Explorer Parity

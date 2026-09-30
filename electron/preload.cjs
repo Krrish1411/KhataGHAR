@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
   platform: process.platform,
+  isAppImage: Boolean(process.env.APPIMAGE),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
   sqlite: {
     isElectron: true,
@@ -23,6 +25,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   system: {
     getMemoryUsage: () => ipcRenderer.invoke('system-memory-usage'),
     clearCache: () => ipcRenderer.invoke('system-clear-cache'),
+    openExternal: (url) => ipcRenderer.invoke('open-external', url),
   },
 
   notification: {

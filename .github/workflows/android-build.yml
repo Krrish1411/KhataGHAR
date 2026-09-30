@@ -87,4 +87,4 @@ jobs:
         with:
           files: |
             release-apk/*.apk
-          prerelease: true
+          prerelease: false

@@ -143,7 +143,7 @@ export class SqliteElectronAdapter implements IDatabase {
         },
         delete: async (): Promise<number> => {
           const res = await this.api.dbRun('DELETE FROM records WHERE vault_id = ?', [vaultId]);
-          return res.changes;
+          return res ? (res.changes || 0) : 0;
         },
       }),
     }),
@@ -187,7 +187,7 @@ export class SqliteElectronAdapter implements IDatabase {
     if (window.electronAPI?.system?.clearCache) {
       await window.electronAPI.system.clearCache();
     }
-    return { reclaimedBytes: res.reclaimedBytes };
+    return { reclaimedBytes: res?.reclaimedBytes || 0 };
   }
 
   async getStats(): Promise<DatabaseStats> {

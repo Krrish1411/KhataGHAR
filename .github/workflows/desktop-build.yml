@@ -87,4 +87,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.artifact_pattern }}
-          prerelease: true
+          prerelease: false

@@ -7,6 +7,7 @@ import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { Select } from '../components/common/Select';
 import { Card } from '../components/common/Card';
+import { Modal } from '../components/common/Modal';
 import { PasswordStrengthMeter } from '../components/security/PasswordStrengthMeter';
 import { OnboardingModal } from '../components/security/OnboardingModal';
 import { SyncMergedVaultModal } from '../components/vault/SyncMergedVaultModal';
@@ -391,18 +392,31 @@ export const SettingsView: React.FC = () => {
   };
 
 
-  // Delete Vault Completely
-  const handleDeleteVault = async () => {
-    if (!activeVault) return;
-    const confirmName = prompt(
-      `DANGER: To delete "${activeVault.name}" forever, type its exact name:`
-    );
+  // Delete Vault Modal State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [isDeletingVault, setIsDeletingVault] = useState(false);
+  const [deleteVaultError, setDeleteVaultError] = useState('');
 
-    if (confirmName === activeVault.name) {
+  const handleOpenDeleteModal = () => {
+    setDeleteConfirmName('');
+    setDeleteVaultError('');
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDeleteVault = async () => {
+    if (!activeVault || deleteConfirmName.trim() !== activeVault.name.trim()) return;
+    try {
+      setIsDeletingVault(true);
+      setDeleteVaultError('');
       await deleteVaultCompletely(activeVault.id);
+      setIsDeleteModalOpen(false);
+      setDeleteConfirmName('');
       window.location.reload();
-    } else if (confirmName !== null) {
-      alert('Vault name does not match. Deletion cancelled.');
+    } catch (err: any) {
+      console.error('Failed to delete vault completely:', err);
+      setDeleteVaultError(err?.message || 'Failed to delete vault completely.');
+      setIsDeletingVault(false);
     }
   };
 
@@ -1379,7 +1393,7 @@ export const SettingsView: React.FC = () => {
               </div>
 
               <Button
-                onClick={handleDeleteVault}
+                onClick={handleOpenDeleteModal}
                 variant="danger"
                 size="sm"
               >
@@ -1531,6 +1545,84 @@ export const SettingsView: React.FC = () => {
             setTimeout(() => setReconcileSuccess(''), 5000);
           }}
         />
+      )}
+
+      {/* Irreversible Delete Vault Confirmation Modal */}
+      {isDeleteModalOpen && activeVault && (
+        <Modal
+          isOpen={isDeleteModalOpen}
+          onClose={() => {
+            if (!isDeletingVault) {
+              setIsDeleteModalOpen(false);
+              setDeleteConfirmName('');
+              setDeleteVaultError('');
+            }
+          }}
+          title="Delete Vault Irreversibly"
+          maxWidth="md"
+        >
+          <div className="space-y-4">
+            <div className="p-3.5 rounded-xl bg-flare-500/10 border border-flare-500/30 flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-flare-500/20 text-flare-600 shrink-0">
+                <AlertTriangle className="w-5 h-5 text-flare-600" />
+              </div>
+              <div className="space-y-1 text-xs">
+                <div className="font-bold text-flare-600">
+                  Warning: Irreversible Data Deletion
+                </div>
+                <p className="text-ink/80 leading-relaxed">
+                  This will permanently wipe the vault <span className="font-bold text-ink underline">"{activeVault.name}"</span> and all accounts, transactions, documents, and records associated with it. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            {deleteVaultError && (
+              <div className="p-2.5 rounded-xl bg-flare-500/10 border border-flare-500/30 text-flare-600 text-xs font-medium">
+                {deleteVaultError}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-ink">
+                Type <span className="font-mono font-bold text-flare-600 selection:bg-flare-500/20">"{activeVault.name}"</span> to confirm:
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmName}
+                onChange={(e) => setDeleteConfirmName(e.target.value)}
+                placeholder={activeVault.name}
+                className="w-full px-3 py-2 rounded-xl bg-moss/50 border border-line text-xs text-ink placeholder:text-ink/30 focus:outline-none focus:ring-2 focus:ring-flare-500/50"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-line">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setDeleteConfirmName('');
+                  setDeleteVaultError('');
+                }}
+                disabled={isDeletingVault}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleConfirmDeleteVault}
+                disabled={isDeletingVault || deleteConfirmName.trim() !== activeVault.name.trim()}
+                className="text-xs font-bold gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeletingVault ? 'Deleting...' : 'Permanently Delete Vault'}</span>
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
