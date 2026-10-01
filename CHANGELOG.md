@@ -6,10 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
-## [1.0.0] - 2026-09-30 — Official Production Release
+## [1.0.0] - 2026-10-01 — Official Production Release
 
 ### 🚀 Production Milestones & Stability Polish
 - **Official General Availability (v1.0.0)**: Zero-cloud, 100% offline, institutional-grade personal wealth operating system across Web, Desktop (Linux, Windows, macOS), and Android.
+- **Restore Vault Password Workflow Fix**: Full master password creation and confirmation UI added for unencrypted portable snapshots, resolving the *"Please enter a password to protect this vault"* error.
+- **Welcome Screen Restore Hub**: "Restore Old Vault" actions integrated directly into the Welcome Landing Header, Hero Section, and Bottom CTA, allowing fresh installs to restore backups immediately without creating dummy vaults.
 - **Linux AppImage & Desktop External Links Fix**: External web links, GitHub release downloads, and documentation links now open directly in the user's default desktop browser via Electron shell integration.
 - **In-App Irreversible Vault Deletion**: Replaced browser-native `prompt()` and `alert()` with a secure in-app danger modal requiring typed confirmation, ensuring smooth vault deletion on Linux AppImage, Electron, Android, and web.
 - **Eliminated False Update Prompts**: Synchronized application versioning and release comparators so updated installations never trigger false update notices.

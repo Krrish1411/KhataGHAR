@@ -6,7 +6,7 @@ import { generateDemoDataset } from '../../services/demoData';
 import { encryptData, deriveKey } from '../../services/crypto';
 import { db } from '../../db';
 import { OnboardingModal } from '../security/OnboardingModal';
-import { importVaultEncrypted } from '../../services/backup';
+import { importVaultEncrypted, importPlainSnapshot } from '../../services/backup';
 import type { EncryptedRecord } from '../../types';
 import {
   Shield,
@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Lock,
   TrendingUp,
+  Eye,
   EyeOff,
   Zap,
   X,
@@ -104,7 +105,11 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
   const [backupFileText, setBackupFileText] = useState('');
   const [backupFileName, setBackupFileName] = useState('');
   const [backupSecret, setBackupSecret] = useState('');
+  const [confirmBackupSecret, setConfirmBackupSecret] = useState('');
+  const [showRestoreSecret, setShowRestoreSecret] = useState(false);
+  const [isFileEncrypted, setIsFileEncrypted] = useState(true);
   const [restoreError, setRestoreError] = useState('');
+  const [restoreSuccess, setRestoreSuccess] = useState('');
   const [isRestoring, setIsRestoring] = useState(false);
 
   // Close modals on Escape key
@@ -279,18 +284,83 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
     }
   };
 
+  const handleRestoreFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setBackupFileName(f.name);
+    setRestoreError('');
+    setRestoreSuccess('');
+    const r = new FileReader();
+    r.onload = (evt) => {
+      const content = evt.target?.result as string;
+      setBackupFileText(content);
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed.format === 'khataghar-portable-snapshot' && !parsed.isEncrypted) {
+          setIsFileEncrypted(false);
+        } else {
+          setIsFileEncrypted(true);
+        }
+      } catch {
+        setIsFileEncrypted(true);
+      }
+    };
+    r.readAsText(f);
+  };
+
   const handleRestoreSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!backupFileText || !backupSecret) return;
+    if (!backupFileText) return;
     setIsRestoring(true);
     setRestoreError('');
+    setRestoreSuccess('');
+
     try {
-      await importVaultEncrypted(backupFileText, backupSecret);
-      await refreshVaultList();
-      setIsRestoreOpen(false);
-      if (onBackToLock) onBackToLock();
+      if (!isFileEncrypted) {
+        if (!backupSecret) {
+          setRestoreError('Please enter a master password to protect this vault on your device.');
+          setIsRestoring(false);
+          return;
+        }
+        if (backupSecret.length < 6) {
+          setRestoreError('Master password must be at least 6 characters.');
+          setIsRestoring(false);
+          return;
+        }
+        if (backupSecret !== confirmBackupSecret) {
+          setRestoreError('Master passwords do not match.');
+          setIsRestoring(false);
+          return;
+        }
+
+        const imported = await importPlainSnapshot(backupFileText, backupSecret);
+        setRestoreSuccess(`Vault "${imported.vault.name}" restored successfully! Opening…`);
+        await refreshVaultList();
+        setTimeout(() => {
+          setSessionCredentials(imported.vault, imported.key);
+          localStorage.setItem('khataghar_welcome_seen', 'true');
+          setIsRestoreOpen(false);
+          if (onBackToLock) onBackToLock();
+        }, 900);
+      } else {
+        if (!backupSecret) {
+          setRestoreError('Please enter your backup passphrase.');
+          setIsRestoring(false);
+          return;
+        }
+
+        const imported = await importVaultEncrypted(backupFileText, backupSecret);
+        setRestoreSuccess(`Vault "${imported.vault.name}" decrypted and restored! Opening…`);
+        await refreshVaultList();
+        setTimeout(() => {
+          setSessionCredentials(imported.vault, imported.key);
+          localStorage.setItem('khataghar_welcome_seen', 'true');
+          setIsRestoreOpen(false);
+          if (onBackToLock) onBackToLock();
+        }, 900);
+      }
     } catch (err: any) {
-      setRestoreError(err?.message || 'Restore failed. Check file and password.');
+      setRestoreError(err?.message || 'Restore failed. Check file and passphrase.');
     } finally {
       setIsRestoring(false);
     }
@@ -636,6 +706,26 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
               <span className="hidden md:inline font-bold">GitHub</span>
             </a>
 
+            {/* Restore Old Vault Header Button */}
+            <button
+              onClick={() => {
+                setRestoreError('');
+                setRestoreSuccess('');
+                setBackupFileText('');
+                setBackupFileName('');
+                setBackupSecret('');
+                setConfirmBackupSecret('');
+                setShowRestoreSecret(false);
+                setIsFileEncrypted(true);
+                setIsRestoreOpen(true);
+              }}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-line bg-card p-1.5 sm:px-2.5 sm:py-1.5 text-xs font-bold text-ink transition-all hover:bg-moss active:scale-95 shadow-xs cursor-pointer shrink-0"
+              title="Restore existing vault from .khataghar backup or snapshot"
+            >
+              <Upload size={14} className="text-pine-600 shrink-0" />
+              <span className="hidden sm:inline font-bold">Restore Vault</span>
+            </button>
+
             {/* Official Buy Me a Coffee Button */}
             <a
               href="https://buymeacoffee.com/Krrish1411"
@@ -747,8 +837,27 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
               </button>
 
               <button
-                onClick={() => setIsSyncOpen(true)}
+                onClick={() => {
+                  setRestoreError('');
+                  setRestoreSuccess('');
+                  setBackupFileText('');
+                  setBackupFileName('');
+                  setBackupSecret('');
+                  setConfirmBackupSecret('');
+                  setShowRestoreSecret(false);
+                  setIsFileEncrypted(true);
+                  setIsRestoreOpen(true);
+                }}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-pine-500/40 bg-card hover:bg-moss px-4 sm:px-5 py-3 text-sm sm:text-base font-bold text-ink shadow-xs transition-all hover:scale-[1.01] cursor-pointer text-center"
+                title="Restore an existing .khataghar backup or snapshot"
+              >
+                <Upload size={17} className="text-pine-600 dark:text-pine-400" />
+                <span>Restore Old Vault</span>
+              </button>
+
+              <button
+                onClick={() => setIsSyncOpen(true)}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-card hover:bg-moss px-4 sm:px-5 py-3 text-sm sm:text-base font-bold text-ink shadow-xs transition-all hover:scale-[1.01] cursor-pointer text-center"
                 title="Direct P2P Sync from existing PC or Phone"
               >
                 <ArrowLeftRight size={17} className="text-pine-600 dark:text-pine-400" />
@@ -1848,7 +1957,9 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm anim-fade"
           role="dialog"
-          onClick={() => setIsRestoreOpen(false)}
+          onClick={() => {
+            if (!isRestoring) setIsRestoreOpen(false);
+          }}
         >
           <div
             className="relative w-full max-w-md rounded-3xl bg-card border border-line shadow-2xl p-6 space-y-4"
@@ -1857,11 +1968,13 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="font-display font-bold text-base text-ink flex items-center gap-2">
                 <Upload className="w-4 h-4 text-pine-600" />
-                <span>Restore .khataghar Backup</span>
+                <span>Restore Vault from Backup</span>
               </h3>
               <button
-                onClick={() => setIsRestoreOpen(false)}
-                className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-moss"
+                onClick={() => {
+                  if (!isRestoring) setIsRestoreOpen(false);
+                }}
+                className="p-1 rounded-lg text-ink/40 hover:text-ink hover:bg-moss cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1873,55 +1986,157 @@ export const WelcomeLandingView: React.FC<WelcomeLandingViewProps> = ({
               </div>
             )}
 
+            {restoreSuccess && (
+              <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200 text-pine-700 dark:text-pine-300 text-xs font-semibold flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-pine-600 shrink-0" />
+                <span>{restoreSuccess}</span>
+              </div>
+            )}
+
             <form onSubmit={handleRestoreSubmit} className="space-y-3.5">
               <div>
                 <label className="block text-xs font-semibold text-ink mb-1.5">
-                  Select .khataghar or .json backup
+                  Select .khataghar or .json backup file
                 </label>
                 <input
                   type="file"
                   accept=".khataghar,.json"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (!f) return;
-                    setBackupFileName(f.name);
-                    const r = new FileReader();
-                    r.onload = (evt) => setBackupFileText(evt.target?.result as string);
-                    r.readAsText(f);
-                  }}
+                  onChange={handleRestoreFileSelected}
                   className="block w-full text-xs text-ink/60 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-moss file:text-ink hover:file:bg-pine-50 cursor-pointer"
                   required
                 />
+                {backupFileName && (
+                  <p className="mt-1 text-[11px] text-pine-600 font-semibold flex items-center gap-1">
+                    <CheckCircle2 size={12} />
+                    <span>Loaded: {backupFileName}</span>
+                  </p>
+                )}
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-ink mb-1">
-                  Backup Password or 12-Word Recovery Phrase
-                </label>
-                <input
-                  type="password"
-                  placeholder="Enter backup secret…"
-                  value={backupSecret}
-                  onChange={(e) => setBackupSecret(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-line bg-ground text-ink text-xs focus:ring-2 focus:ring-pine-500 outline-none"
-                  required
-                />
-              </div>
+              {backupFileText && (
+                <>
+                  {!isFileEncrypted ? (
+                    <div className="space-y-3 pt-1">
+                      <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-xs text-pine-800 dark:text-pine-300 flex items-start gap-2">
+                        <ShieldCheck className="w-4 h-4 text-pine-600 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <div className="font-bold">Unencrypted Snapshot Detected</div>
+                          <p className="text-ink/80 leading-relaxed">
+                            KhataGHAR strictly encrypts all financial data at rest with AES-256. Choose a master password to encrypt and protect this restored vault on this device.
+                          </p>
+                        </div>
+                      </div>
 
-              <div className="flex items-center justify-end gap-2 pt-1">
+                      <div className="relative">
+                        <label className="block text-xs font-semibold text-ink mb-1">
+                          Create Vault Master Password
+                        </label>
+                        <input
+                          type={showRestoreSecret ? 'text' : 'password'}
+                          placeholder="Choose master password (min 6 chars)…"
+                          value={backupSecret}
+                          onChange={(e) => setBackupSecret(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-line bg-ground text-ink text-xs focus:ring-2 focus:ring-pine-500 outline-none pr-10"
+                          autoFocus
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowRestoreSecret(!showRestoreSecret)}
+                          className="absolute right-3 top-7 text-ink/40 hover:text-ink cursor-pointer"
+                          title={showRestoreSecret ? "Hide password" : "Show password"}
+                        >
+                          {showRestoreSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-ink mb-1">
+                          Confirm Master Password
+                        </label>
+                        <input
+                          type={showRestoreSecret ? 'text' : 'password'}
+                          placeholder="Re-enter master password…"
+                          value={confirmBackupSecret}
+                          onChange={(e) => setConfirmBackupSecret(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-line bg-ground text-ink text-xs focus:ring-2 focus:ring-pine-500 outline-none"
+                          required
+                        />
+                        {confirmBackupSecret && (
+                          <div className="mt-1 text-[11px] flex items-center gap-1">
+                            {backupSecret === confirmBackupSecret ? (
+                              <span className="text-pine-600 flex items-center gap-1 font-semibold">
+                                <CheckCircle2 className="w-3 h-3" /> Passwords match
+                              </span>
+                            ) : (
+                              <span className="text-flare-600 font-semibold">
+                                Passwords do not match
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 pt-1">
+                      <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-xs text-pine-800 dark:text-pine-300 flex items-start gap-2">
+                        <Lock className="w-4 h-4 text-pine-600 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <div className="font-bold">Password-Protected Backup Detected</div>
+                          <p className="text-ink/80 leading-relaxed">
+                            Enter the password or recovery passphrase used when exporting this backup file.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="relative">
+                        <label className="block text-xs font-semibold text-ink mb-1">
+                          Backup Passphrase
+                        </label>
+                        <input
+                          type={showRestoreSecret ? 'text' : 'password'}
+                          placeholder="Enter backup passphrase…"
+                          value={backupSecret}
+                          onChange={(e) => setBackupSecret(e.target.value)}
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-line bg-ground text-ink text-xs focus:ring-2 focus:ring-pine-500 outline-none pr-10"
+                          autoFocus
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowRestoreSecret(!showRestoreSecret)}
+                          className="absolute right-3 top-7 text-ink/40 hover:text-ink cursor-pointer"
+                          title={showRestoreSecret ? "Hide password" : "Show password"}
+                        >
+                          {showRestoreSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-line">
                 <button
                   type="button"
                   onClick={() => setIsRestoreOpen(false)}
+                  disabled={isRestoring}
                   className="px-4 py-2 rounded-xl text-xs font-semibold text-ink/60 hover:text-ink hover:bg-moss cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isRestoring}
-                  className="px-4 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 text-white text-xs font-bold shadow-sm cursor-pointer"
+                  disabled={
+                    isRestoring ||
+                    !backupFileText ||
+                    (isFileEncrypted
+                      ? !backupSecret
+                      : !backupSecret || backupSecret !== confirmBackupSecret || backupSecret.length < 6)
+                  }
+                  className="px-4 py-2 rounded-xl bg-pine-700 hover:bg-pine-600 disabled:opacity-50 text-white text-xs font-bold shadow-sm cursor-pointer"
                 >
-                  {isRestoring ? 'Restoring…' : 'Decrypt & Restore Vault'}
+                  {isRestoring ? 'Restoring…' : isFileEncrypted ? 'Decrypt & Open Vault' : 'Encrypt & Open Vault'}
                 </button>
               </div>
             </form>

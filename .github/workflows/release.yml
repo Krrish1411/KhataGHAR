@@ -42,39 +42,93 @@ jobs:
           files: khata-ghar-${{ github.ref_name }}.zip
           prerelease: false
           body: |
-            ## KhataGHAR ${{ github.ref_name }} — Sovereign Wealth Operating System (Official Release)
+            # 🏛️ KhataGHAR ${{ github.ref_name }} — Sovereign Wealth Operating System (Official Release)
 
-            ### 🗂️ Drive UX Overhaul — Google Drive / Native Explorer Parity
-            - 🖱️ **Rubber-band Marquee Selection**: Click-drag anywhere on the canvas to select multiple items exactly like Google Drive Desktop.
-            - ⌨️ **Ctrl+A / Arrow Keys / Enter / Backspace**: Full keyboard navigation parity with native OS file managers.
-            - ✂️ **Multi-item Cut / Copy / Paste** (`Ctrl+X`, `Ctrl+C`, `Ctrl+V`): Move and duplicate files and folders across the Drive.
-            - 🎯 **Cut Visual Indicator**: Cut items appear semi-transparent with a dashed border — native OS behavior.
-            - 🖱️ **Drag-and-drop Move to Folder**: Drag a selection and drop onto a target folder card to move instantly.
-            - 📌 **Fixed Full-Width Selection Action Bar**: Selection mode replaces the entire toolbar row — action buttons scroll horizontally and never clip on mobile.
-            - 📋 **Floating Clipboard Paste Bar**: Google Drive–style floating pill at the bottom of the canvas showing clipboard state, item count, and a one-click "Paste here" button.
-            - 📱 **Mobile Sidebar Slide-over Drawer**: Full-screen overlay slide-in/out on mobile — no more sidebar-only view.
-            - 👆 **Touch-accessible ⋮ Menus**: Options buttons always visible on mobile (hidden-until-hover on desktop).
-            - 🔒 **Context Menu Edge Clamping**: Right-click menu never appears off-screen on any device.
-            - 📄 **Full Folder Names in List View**: Long folder names no longer truncate in List View.
-            - 🖼️ **PDF & Image Preview Fix**: "File data payload is not available" error permanently eliminated.
+            **KhataGHAR (खाताघर)** is a sovereign, zero-cloud, institutional-grade personal wealth operating system. Built for individuals and families who demand absolute financial privacy: **100% offline, zero telemetry, and client-side AES-256-GCM encryption at rest.**
 
-            ### 🔗 Attachment & Linking Engine
-            - Attach any existing Drive file to Transactions, Assets, Liabilities, Goals, People, and Accounts directly from the Hub.
-            - Inspector panel shows all linked entries with Unlink buttons and navigation arrows.
-            - Linked Entries section only appears when entries are actually linked — no phantom empty UI.
+            ---
 
-            ### 📊 Storage Meter Fix
-            - Storage calculation now correctly sums all payload blob sizes — previously under-reported.
+            ### 🌟 Sovereign Manifesto: Why KhataGHAR Exists
+            Modern fintech platforms have fundamentally broken user trust by turning private accounting into corporate surveillance machinery designed to scrape SMS records, monetize transaction histories, and cross-sell high-interest debt.
 
-            ### 🐛 Bug Fixes
-            - `liabilitys` → `liabilities` typo fixed.
-            - VaultContext payload isolation: binary blobs stored under `payload_<docId>` key, no cross-contamination.
+            KhataGHAR was engineered from first principles under a single uncompromising philosophy:
+            > **Your money, your debts, your gold, and your family wealth belong to you alone.**
 
-            ### 📦 Direct Downloads
-            - **Android APK**: Attached below as `KhataGHAR-Android-${{ github.ref_name }}.apk`
-            - **Windows**: Setup & Portable `.exe` executables attached below
-            - **Linux**: AppImage, Debian `.deb`, and `tar.gz` packages attached below
-            - **macOS**: DMG & ZIP packages attached below
-            - **Web Static PWA**: `khata-ghar-${{ github.ref_name }}.zip` (extract and open `index.html`)
+            - **Zero Cloud Databases:** No remote servers store your records. Data resides exclusively in local hardware enclave storage.
+            - **Zero Telemetry & Third-Party SDKs:** No analytics scripts, no advertising trackers, and no tracking pixels.
+            - **Client-Side Cryptography:** AES-256-GCM derived via PBKDF2 (600,000 SHA-256 iterations) using your master secret.
+            - **Decade-Long Durability:** Built on open standards (IndexedDB, Native SQLite, JSON, Web Crypto API) guaranteed to run for decades without depending on external infrastructure.
+            - **100% Free & Open Source:** Licensed under the permissive **MIT License** for universal auditability and sovereign ownership.
+
+            ---
+
+            ### 🗂️ Native Google Drive & OS Explorer Workspace
+            - 🖱️ **Rubber-band Marquee Selection:** Click and drag anywhere across the canvas to select multiple items simultaneously.
+            - ⌨️ **Keyboard Navigation Parity:** `↑ ↓ ← →` arrow key navigation, `Enter` to open or preview, and `Backspace` to navigate up one folder level.
+            - ✂️ **Multi-Item Clipboard Engine:** Select any mixture of documents and folders, then use `Ctrl+X` (Cut), `Ctrl+C` (Copy), and `Ctrl+V` (Paste) to move or duplicate files.
+            - 🎯 **Cut Visual Indicator:** Cut items render with `opacity-50` and a dashed brand-colored border to indicate pending move operations.
+            - 📁 **Drag-and-Drop Folder Filing:** Drag single or multi-item selections and drop them directly onto folder cards.
+            - 📋 **Floating Google Drive Action Pill:** Contextual floating pill showing clipboard state, item count, and a one-click "Paste here" trigger.
+            - 📌 **Full-Width Contextual Toolbar:** Top toolbar transforms into an action strip on selection that scrolls smoothly and never clips on mobile.
+
+            ---
+
+            ### 📁 Universal Multi-Attachment Hub & Split-Payload Architecture
+            - 📎 **Attach Everything Everywhere:** Attach multiple invoices, deeds, agreements, promissory notes, receipts, and passbook scans to any Transaction, Asset, Liability, Goal, or Ledger Entry.
+            - ⚡ **Sub-50ms Vault Unlock:** Two-tier split-payload architecture isolates lightweight metadata from heavy binary payloads (`payload_<docId>`), maintaining sub-30MB RAM usage across thousands of files.
+            - 🔍 **Interactive Lightbox Viewer:** Integrated zoom, pan, 90-degree rotation, and direct export for PDF dossiers and high-resolution images.
+            - 🔗 **Dual-Directional Entity Linking:** Attach files inside transaction modals, or link existing files directly from the Document Hub inspector.
+
+            ---
+
+            ### 📈 Double-Entry Sovereign Financial Ledger
+            - 🪙 **Single-Paisa Real-Time Reactivity:** Reactive balance calculations accurate to the single paisa without UI freezes.
+            - 📊 **Smart SIP Tranche Consolidation:** Automatically merges recurring mutual fund debits into clean, consolidated holding cards with weighted average purchase costs and live NAV tracking.
+            - 🏦 **Segregated Third-Party Custodial Holdings:** Distinguishes sovereign assets from assets managed by custodians or employers (EPF, PPF, corporate gratuity).
+            - ⚖️ **Automated Ledger Reconciliation:** One-click automated discrepancy detection comparing current account ledger records against recorded closing balances.
+
+            ---
+
+            ### 🛡️ Enclave Security & Anti-Extortion Defenses
+            - 🕵️ **Plausible Deniability Decoy Vault (Duress PIN):** If physically coerced to unlock your device, enter an alternate Decoy PIN. The enclave opens a believable dummy vault showing trivial daily expenses and pocket cash.
+            - 🧮 **Camouflage Calculator Mode:** Disguises KhataGHAR as a fully functional standard arithmetic calculator until your secret PIN sequence is evaluated.
+            - 🧹 **RAM Zeroization on Lock:** Cryptographic session keys are cleared from active browser memory upon vault lock.
+            - ⏱️ **Configurable Inactivity Lockouts:** Automatically locks after user-defined inactivity timeouts or immediate background tab switching.
+
+            ---
+
+            ### 🔄 Direct Peer-to-Peer Local Device Sync
+            - 📶 **Local Network Pairing:** Pair desktop workstations, mobile phones, and tablets over your local Wi-Fi network using a temporary 6-digit cryptographic pairing code.
+            - 🔒 **Zero Open Router Ports:** Peer-to-peer communication using end-to-end encrypted WebSockets and Server-Sent Events with zero permanent cloud storage.
+            - 👑 **Primary / Secondary Device Roles:** Designated primary master device propagates authoritative state to satellite mobile readers.
+
+            ---
+
+            ### 📦 Universal Backup & Restore Engine
+            - 💾 **Universal `.khataghar` Backups:** Export password-protected encrypted snapshots with AES-256 for safe cloud archival.
+            - 📄 **Unencrypted Portable Snapshots:** Export plain JSON snapshots for easy machine parsing or self-hosted offline archives.
+            - 🚀 **One-Click Welcome Screen Restore:** Direct restoration from the initial setup screen on fresh devices with automatic master password setup and instant vault unlock.
+
+            ---
+
+            ### 🛠️ Production Polish & Stability Fixes
+            - 🔑 **Restore Vault Password Workflow Fix:** Added full password creation and confirmation UI for unencrypted portable snapshots, resolving the *"Please enter a password to protect this vault"* error.
+            - 🏠 **Welcome Screen Restore Hub:** Added "Restore Old Vault" buttons directly to the Welcome Landing Header, Hero Section, and Bottom CTA, allowing fresh installs to restore backups immediately without creating dummy vaults.
+            - 🐧 **Linux AppImage & Desktop External Links Fix:** Integrated Electron `shell.openExternal` to ensure download buttons, GitHub links, and external documentation open seamlessly in the system default browser.
+            - 🗑️ **Reliable In-App Vault Deletion Modal:** Replaced unsupported Chromium `window.prompt()` with a native in-app danger modal requiring typed confirmation, ensuring smooth vault deletion on Linux AppImage, Electron, Android, and web.
+            - ⏱️ **Version Comparator Synchronization:** Aligned `APP_VERSION` across codebase and release definitions, permanently eliminating false "Update Available" popups.
+
+            ---
+
+            ### 📦 Direct Downloads & Binaries
+            - 🤖 **Android APK**: `KhataGHAR-Android-${{ github.ref_name }}.apk` (Attached below)
+            - 🪟 **Windows Setup Installer**: `KhataGHAR-Windows-Setup-1.0.0.exe` (Attached below)
+            - 🪟 **Windows Portable**: `KhataGHAR-Windows-Portable-1.0.0.exe` (Attached below)
+            - 🐧 **Linux AppImage**: `KhataGHAR-Linux-1.0.0-x64.AppImage` (Attached below)
+            - 🐧 **Linux Debian Package**: `KhataGHAR-Linux-1.0.0-x64.deb` (Attached below)
+            - 🐧 **Linux Tarball**: `KhataGHAR-Linux-1.0.0-x64.tar.gz` (Attached below)
+            - 🍎 **macOS DMG Package**: `KhataGHAR-macOS-1.0.0-x64.dmg` (Attached below)
+            - 🍎 **macOS Zip Archive**: `KhataGHAR-macOS-1.0.0-x64.zip` (Attached below)
+            - 🌐 **Web Offline PWA**: `khata-ghar-${{ github.ref_name }}.zip` (Attached below)
 
             *See [CHANGELOG.md](https://github.com/Krrish1411/KhataGHAR/blob/main/CHANGELOG.md) for complete technical commit history.*

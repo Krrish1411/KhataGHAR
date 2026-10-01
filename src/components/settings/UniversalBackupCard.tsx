@@ -70,6 +70,8 @@ export const UniversalBackupCard: React.FC = () => {
   // Import Modal
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importPassword, setImportPassword] = useState('');
+  const [confirmImportPassword, setConfirmImportPassword] = useState('');
+  const [showImportPassword, setShowImportPassword] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
@@ -190,6 +192,12 @@ export const UniversalBackupCard: React.FC = () => {
         return;
       }
 
+      setImportPassword('');
+      setConfirmImportPassword('');
+      setShowImportPassword(false);
+      setImportError('');
+      setImportSuccess('');
+
       if (parsed.format === 'khataghar-portable-snapshot' && !parsed.isEncrypted) {
         // Direct unencrypted snapshot
         setIsPendingEncrypted(false);
@@ -217,7 +225,17 @@ export const UniversalBackupCard: React.FC = () => {
       if (!isPendingEncrypted) {
         // Restore plain snapshot: requires a password to protect the imported vault on device
         if (!importPassword) {
-          setImportError('Please enter a password to protect this vault on your device.');
+          setImportError('Please enter a master password to protect this vault on your device.');
+          setIsImporting(false);
+          return;
+        }
+        if (importPassword.length < 6) {
+          setImportError('Master password must be at least 6 characters.');
+          setIsImporting(false);
+          return;
+        }
+        if (importPassword !== confirmImportPassword) {
+          setImportError('Master passwords do not match.');
           setIsImporting(false);
           return;
         }
@@ -489,31 +507,111 @@ export const UniversalBackupCard: React.FC = () => {
       {/* 📥 Import Backup Modal */}
       <Modal
         isOpen={isImportModalOpen}
-        onClose={() => setIsImportModalOpen(false)}
-        title="Import Vault Backup"
-        description="Restore your financial database from .khataghar snapshot or backup"
+        onClose={() => {
+          if (!isImporting) {
+            setIsImportModalOpen(false);
+            setImportPassword('');
+            setConfirmImportPassword('');
+            setImportError('');
+            setImportSuccess('');
+          }
+        }}
+        title={isPendingEncrypted ? "Restore Encrypted Backup (.khataghar)" : "Restore Portable Snapshot"}
+        description={
+          isPendingEncrypted
+            ? "Enter your backup passphrase to decrypt and restore your vault"
+            : "Set a master password to encrypt and secure your restored vault on this device"
+        }
         maxWidth="md"
       >
         <div className="space-y-4">
           {isPendingEncrypted ? (
             <div className="space-y-3">
-              <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-xs text-pine-800 dark:text-pine-300 flex items-center gap-2">
-                <Lock className="w-4 h-4 text-pine-600 shrink-0" />
-                <span>This backup is password-protected. Enter the passphrase used during export.</span>
+              <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-xs text-pine-800 dark:text-pine-300 flex items-start gap-2">
+                <Lock className="w-4 h-4 text-pine-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <div className="font-bold">Password-Protected Backup Detected</div>
+                  <p className="text-ink/80 leading-relaxed">
+                    This file was encrypted during export. Enter the original passphrase used to create this backup.
+                  </p>
+                </div>
               </div>
 
-              <Input
-                type="password"
-                label="Passphrase"
-                placeholder="Enter backup password"
-                value={importPassword}
-                onChange={(e) => setImportPassword(e.target.value)}
-                autoFocus
-              />
+              <div className="relative">
+                <Input
+                  type={showImportPassword ? 'text' : 'password'}
+                  label="Backup Passphrase"
+                  placeholder="Enter backup password…"
+                  value={importPassword}
+                  onChange={(e) => setImportPassword(e.target.value)}
+                  autoFocus
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowImportPassword(!showImportPassword)}
+                  className="absolute right-3 top-8 text-ink/40 hover:text-ink cursor-pointer"
+                  title={showImportPassword ? "Hide password" : "Show password"}
+                >
+                  {showImportPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="p-3 rounded-xl bg-moss border border-line text-xs text-ink/75 leading-relaxed">
-              Unencrypted portable snapshot detected. Ready to restore accounts, ledger records, notes, and folders into your workspace.
+            <div className="space-y-3">
+              <div className="p-3 rounded-xl bg-pine-50 dark:bg-pine-950/40 border border-pine-200/60 dark:border-pine-800/40 text-xs text-pine-800 dark:text-pine-300 flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 text-pine-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <div className="font-bold">Unencrypted Snapshot Detected</div>
+                  <p className="text-ink/80 leading-relaxed">
+                    KhataGHAR strictly encrypts all financial data at rest with AES-256. Choose a master password to encrypt and protect this restored vault on this device.
+                  </p>
+                </div>
+              </div>
+
+              <div className="relative">
+                <Input
+                  type={showImportPassword ? 'text' : 'password'}
+                  label="Set Vault Master Password"
+                  placeholder="Choose master password (min 6 characters)"
+                  value={importPassword}
+                  onChange={(e) => setImportPassword(e.target.value)}
+                  autoFocus
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowImportPassword(!showImportPassword)}
+                  className="absolute right-3 top-8 text-ink/40 hover:text-ink cursor-pointer"
+                  title={showImportPassword ? "Hide password" : "Show password"}
+                >
+                  {showImportPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+
+              <div>
+                <Input
+                  type={showImportPassword ? 'text' : 'password'}
+                  label="Confirm Master Password"
+                  placeholder="Re-enter master password"
+                  value={confirmImportPassword}
+                  onChange={(e) => setConfirmImportPassword(e.target.value)}
+                  required
+                />
+                {confirmImportPassword && (
+                  <div className="mt-1 text-[11px] flex items-center gap-1">
+                    {importPassword === confirmImportPassword ? (
+                      <span className="text-pine-600 flex items-center gap-1 font-semibold">
+                        <CheckCircle2 className="w-3 h-3" /> Passwords match
+                      </span>
+                    ) : (
+                      <span className="text-flare-600 font-semibold">
+                        Passwords do not match
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -533,7 +631,12 @@ export const UniversalBackupCard: React.FC = () => {
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
             <Button
               variant="ghost"
-              onClick={() => setIsImportModalOpen(false)}
+              onClick={() => {
+                setIsImportModalOpen(false);
+                setImportPassword('');
+                setConfirmImportPassword('');
+                setImportError('');
+              }}
               disabled={isImporting}
             >
               Cancel
@@ -542,7 +645,11 @@ export const UniversalBackupCard: React.FC = () => {
               variant="primary"
               onClick={handleExecuteImport}
               isLoading={isImporting}
-              disabled={Boolean(isPendingEncrypted && !importPassword)}
+              disabled={
+                isPendingEncrypted
+                  ? !importPassword
+                  : !importPassword || importPassword !== confirmImportPassword || importPassword.length < 6
+              }
             >
               <Upload className="w-3.5 h-3.5 mr-1.5" />
               <span>Restore & Open Vault</span>
